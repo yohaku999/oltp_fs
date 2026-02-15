@@ -5,22 +5,17 @@
 #include <fstream>
 
 // public methods
-BufferPool::BufferPool(const std::string &fileName) : fileName(fileName)
+// TODO: get rid of filePath parameter since the file path can be determined by the file name and a fixed directory path.
+BufferPool::BufferPool()
 {
     buffer = operator new(BUFFER_SIZE_BYTE);
-    std::ifstream ifs(fileName, std::ios::binary);
-    if (!ifs)
-    {
-        spdlog::info("File not found, creating new file: {}", fileName);
-        std::ofstream ofs(fileName, std::ios::binary);
-        ofs.close();
-    }
 };
 
-Page *BufferPool::getPage(int pageID)
+Page *BufferPool::getPage(int pageID, std::string filePath)
 {
-    spdlog::info("Requesting page with ID: {}", pageID);
-    auto it = loadedPageIDs.find(pageID);
+    spdlog::info("Requesting page ID {} from file {}", pageID, filePath);
+    auto key = std::make_pair(pageID, filePath);
+    auto it = loadedPageIDs.find(key);
     if (it != loadedPageIDs.end())
     {
         return it->second;
@@ -29,8 +24,8 @@ Page *BufferPool::getPage(int pageID)
     {
         for (int i = 0; i < BufferPool::MAX_FRAME_COUNT; ++i)
         {
-            auto it = frameIDToPage.find(i);
-            if (it == frameIDToPage.end())
+            // search for a free frame
+            if (usedFrameIDs.find(i) == usedFrameIDs.end())
             {
                 zeroOutFrame(i);
                 char *start_p = static_cast<char *>(buffer) + i * BufferPool::FRAME_SIZE_BYTE;
@@ -39,17 +34,17 @@ Page *BufferPool::getPage(int pageID)
                 {
 
                     // Load the data of the corresponding page from the file into the new frame
-                    std::fstream ifs(fileName, std::ios::in | std::ios::binary);
+                    std::fstream ifs(filePath, std::ios::in | std::ios::binary);
                     if (!ifs)
                     {
-                        throw std::runtime_error("error occured while trying to open file: " + fileName);
+                        throw std::runtime_error("error occured while trying to open file: " + filePath);
                     }
                     ifs.seekg(pageID * Page::PAGE_SIZE_BYTE, std::ios::beg);
                     ifs.read(start_p, Page::PAGE_SIZE_BYTE);
                 }
                 Page *page = new Page(start_p);
-                loadedPageIDs[pageID] = page;
-                frameIDToPage[i] = page;
+                loadedPageIDs[key] = page;
+                usedFrameIDs.insert(i);
                 spdlog::info("Loaded page ID {} into frame ID {}", pageID, i);
                 return page;
             }

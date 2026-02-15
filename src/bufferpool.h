@@ -2,6 +2,7 @@
 #include <string>
 #include <set>
 #include <map>
+#include <utility>
 #include "page.h"
 
 class BufferPool
@@ -17,12 +18,12 @@ private:
     void *buffer;
     void evictPage(int frameID);
     void loadPage(int pageID);
-    std::map<int, Page *> frameIDToPage;
-    std::map<int, Page *> loadedPageIDs;
+    std::set<int> usedFrameIDs;
+    std::map<std::pair<int, std::string>, Page *> loadedPageIDs;
     void zeroOutFrame(int frameID);
 
 public:
-    BufferPool(const std::string &fileName);
-    Page *getPage(int pageID);
+    BufferPool();
+    Page *getPage(int pageID, std::string filePath);
     ~BufferPool();
 };

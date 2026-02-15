@@ -3,7 +3,7 @@
 #include <iostream>
 #include <cstring>
 #include <cstdio>
-
+#include <fstream>
 class BufferPoolTest
 {
 private:
@@ -12,8 +12,13 @@ private:
 
     void setUp()
     {
-        std::remove(TEST_FILE);
-        pool = new BufferPool(TEST_FILE);
+        // create a test file first. this should be created internally by buffer pool.
+        std::ofstream ofs(TEST_FILE, std::ios::binary);
+        char empty[4096] = {0};
+        ofs.write(empty, sizeof(empty));
+        ofs.close();
+
+        pool = new BufferPool();
     }
 
     void tearDown()
@@ -41,7 +46,7 @@ public:
     void getPage_NewPage_ReturnsNonNull()
     {
         setUp();
-        Page *page = pool->getPage(1);
+        Page *page = pool->getPage(1, TEST_FILE);
         assert(page != nullptr);
         tearDown();
         std::cout << "getPage_NewPage_ReturnsNonNull: OK" << std::endl;
@@ -50,8 +55,8 @@ public:
     void getPage_SamePage_ReturnsCachedPage()
     {
         setUp();
-        Page *page1 = pool->getPage(1);
-        Page *page1_again = pool->getPage(1);
+        Page *page1 = pool->getPage(1, TEST_FILE);
+        Page *page1_again = pool->getPage(1, TEST_FILE);
         assert(page1 == page1_again);
         tearDown();
         std::cout << "getPage_SamePage_ReturnsCachedPage: OK" << std::endl;
@@ -60,8 +65,8 @@ public:
     void getPage_DifferentPages_ReturnsDifferentObjects()
     {
         setUp();
-        Page *page1 = pool->getPage(1);
-        Page *page2 = pool->getPage(2);
+        Page *page1 = pool->getPage(1, TEST_FILE);
+        Page *page2 = pool->getPage(2, TEST_FILE);
         assert(page1 != page2);
         tearDown();
         std::cout << "getPage_DifferentPages_ReturnsDifferentObjects: OK" << std::endl;
@@ -72,7 +77,7 @@ public:
         setUp();
         for (size_t i = 0; i < BufferPool::MAX_FRAME_COUNT; ++i)
         {
-            Page *p = pool->getPage(i);
+            Page *p = pool->getPage(i, TEST_FILE);
             assert(p != nullptr);
         }
         tearDown();
@@ -84,11 +89,11 @@ public:
         setUp();
         for (size_t i = 0; i < BufferPool::MAX_FRAME_COUNT; ++i)
         {
-            pool->getPage(i);
+            pool->getPage(i, TEST_FILE);
         }
         try
         {
-            pool->getPage(BufferPool::MAX_FRAME_COUNT);
+            pool->getPage(BufferPool::MAX_FRAME_COUNT, TEST_FILE);
             assert(false);
         }
         catch (const std::runtime_error &e)
