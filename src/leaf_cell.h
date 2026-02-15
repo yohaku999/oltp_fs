@@ -17,4 +17,5 @@ public:
     uint16_t slotID;
     int key;
     static LeafCell decodeCell(char *data_p);
+    void encodeCell(char *data_p) const;
 };

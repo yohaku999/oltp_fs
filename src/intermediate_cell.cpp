@@ -11,3 +11,12 @@ IntermediateCell IntermediateCell::decodeCell(char *data_p)
     cell.key = readValue<int>(cell_key_p);
     return cell;
 }
+
+void IntermediateCell::encodeCell(char *data_p) const
+{
+    std::memcpy(data_p, &keySize, sizeof(uint16_t));
+    data_p += CELL_KEY_SIZE;
+    std::memcpy(data_p, &pageID, sizeof(uint16_t));
+    data_p += PAGE_ID_SIZE;
+    std::memcpy(data_p, &key, sizeof(int));
+}

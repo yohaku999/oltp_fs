@@ -18,5 +18,9 @@ target_link_libraries(dbfs_src PUBLIC spdlog::spdlog)
 add_executable(bufferpool_test test/bufferpool.cpp)
 target_link_libraries(bufferpool_test dbfs_src)
 
+add_executable(cell_test test/cell.cpp)
+target_link_libraries(cell_test dbfs_src)
+
 enable_testing()
 add_test(NAME BufferPoolTest COMMAND bufferpool_test)
+add_test(NAME CellTest COMMAND cell_test)

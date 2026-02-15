@@ -15,4 +15,5 @@ public:
     uint16_t pageID;
     int key;
     static IntermediateCell decodeCell(char *data_p);
+    void encodeCell(char *data_p) const;
 };
