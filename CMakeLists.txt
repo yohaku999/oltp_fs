@@ -8,6 +8,8 @@ find_package(spdlog REQUIRED)
 add_library(dbfs_src
     src/bufferpool.cpp
     src/page.cpp
+    src/intermediate_cell.cpp
+    src/leaf_cell.cpp
 )
 
 target_include_directories(dbfs_src PUBLIC src)
