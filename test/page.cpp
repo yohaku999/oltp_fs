@@ -4,6 +4,7 @@
 #include <cassert>
 #include <cstring>
 #include <iostream>
+#include <optional>
 
 class PageTest
 {
@@ -12,6 +13,7 @@ public:
     {
         testInsertLeafPageAndFind();
         testInsertLeafPageRunsOutOfSpace();
+        testInsertIntermediatePageAndFind();
         std::cout << "All Page tests passed!" << std::endl;
     }
 
@@ -38,9 +40,11 @@ public:
             int slot_id = slot_id_opt.value();
             assert(slot_id == i);
 
-            std::pair<uint16_t, uint16_t> ref = page->findLeafRef(entry.key);
-            assert(ref.first == entry.heap_page_id);
-            assert(ref.second == entry.slot_id);
+            auto ref_opt = page->findLeafRef(entry.key);
+            assert(ref_opt.has_value());
+            auto [heap_page_id, slot_id_ref] = ref_opt.value();
+            assert(heap_page_id == entry.heap_page_id);
+            assert(slot_id_ref == entry.slot_id);
         }
         std::cout << "testInsertLeafPageAndFind: OK" << std::endl;
     }
@@ -69,6 +73,41 @@ public:
         assert(saw_nullopt);
         assert(successful_inserts > 0);
         std::cout << "testInsertLeafPageRunsOutOfSpace: OK after " << successful_inserts << " inserts" << std::endl;
+    }
+
+    void testInsertIntermediatePageAndFind()
+    {
+        char page_data[Page::PAGE_SIZE_BYTE] = {};
+        Page *page = Page::initializePage(page_data, false);
+        struct Entry
+        {
+            int key;
+            uint16_t page_id;
+        } entries[] = {
+            {30000, 21},
+            {20000, 42},
+            {10000, 63}
+        };
+
+        for (const Entry &entry : entries)
+        {
+            auto slot_id_opt = page->insertCell(IntermediateCell(entry.page_id, entry.key));
+            assert(slot_id_opt.has_value());
+        }
+
+        for (const Entry &entry : entries)
+        {
+            uint16_t child_page = page->findChildPage(entry.key);
+            assert(child_page == entry.page_id);
+        }
+
+        uint16_t child_page_for_large_key = page->findChildPage(entries[0].key + 1000);
+        assert(child_page_for_large_key == entries[0].page_id);
+
+        uint16_t child_page_for_small_key = page->findChildPage(entries[2].key - 1);
+        assert(child_page_for_small_key == 0);
+
+        std::cout << "testInsertIntermediatePageAndFind: OK" << std::endl;
     }
 };
 

@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include <spdlog/spdlog.h>
 #include <optional>
+#include <utility>
 
 Page* Page::initializePage(char *start_p, bool is_leaf){
     Page *page = new Page(start_p);
@@ -47,7 +48,7 @@ std::optional<std::pair<uint16_t, uint16_t>> Page::findLeafRef(int key)
         LeafCell cell = getLeafCellOnXthPointer(idx);
         if (cell.key() == key)
         {
-            return {cell.heap_page_id(), cell.slot_id()};
+            return std::make_pair(cell.heap_page_id(), cell.slot_id());
         }
     }
     spdlog::info("key {} not found in this page.", key);
@@ -69,9 +70,8 @@ uint16_t Page::findChildPage(int key)
             return cell.page_id();
         }
     }
-
-    spdlog::info("key {} is greater than all keys in the internal page, returning default child.", key);
-    return 0;
+    spdlog::info("key {} is greater than all keys in the internal page, returning the last child.", key);
+    return 0; //TODO:
 }
 
 /**

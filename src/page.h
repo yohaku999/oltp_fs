@@ -35,7 +35,7 @@ public:
     static constexpr size_t PAGE_SIZE_BYTE = 4096;
     static constexpr size_t CELL_POINTER_SIZE = sizeof(uint16_t);
     char *start_p_;
-    std::pair<uint16_t, uint16_t> findLeafRef(int key);
+    std::optional<std::pair<uint16_t, uint16_t>> findLeafRef(int key);
     uint16_t findChildPage(int key);
     char *getXthSlotValue(int x);
     bool hasKey(int key);
