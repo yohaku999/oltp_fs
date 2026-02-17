@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <stdexcept>
 #include <spdlog/spdlog.h>
+#include <optional>
 
 Page* Page::initializePage(char *start_p, bool is_leaf){
     Page *page = new Page(start_p);
@@ -34,7 +35,7 @@ bool Page::hasKey(int key)
     return false;
 }
 
-std::pair<uint16_t, uint16_t> Page::findLeafRef(int key)
+std::optional<std::pair<uint16_t, uint16_t>> Page::findLeafRef(int key)
 {
     if (!isLeaf())
     {
@@ -49,9 +50,8 @@ std::pair<uint16_t, uint16_t> Page::findLeafRef(int key)
             return {cell.heap_page_id(), cell.slot_id()};
         }
     }
-
-    spdlog::info("key {} is greater than all keys in the leaf page, returning not found.", key);
-    return {static_cast<uint16_t>(-1), static_cast<uint16_t>(-1)};
+    spdlog::info("key {} not found in this page.", key);
+    return std::nullopt;
 }
 
 uint16_t Page::findChildPage(int key)
@@ -77,18 +77,27 @@ uint16_t Page::findChildPage(int key)
 /**
  * returns the slot ID of the inserted cell.
  */
-int Page::insertCell(const Cell &cell)
+std::optional<int> Page::insertCell(const Cell &cell)
 {
+    // check if the page has enough space to insert the new cell.
     uint16_t new_cell_offset = getSlotDirectoryOffset() - cell.payloadSize();
-    // insert cell to the offset.
     char *cell_data_p = start_p_ + new_cell_offset;
+    char *cell_ptr_end_p = start_p_ + Page::HEADDER_SIZE_BYTE + Page::CELL_POINTER_SIZE * (getSlotCount()+1);
+    if (!(cell_data_p > cell_ptr_end_p))
+    {
+        spdlog::info("This page does not have enough space to insert the cell anymore.");
+        return std::nullopt;
+    }
+
     // serialize cell and copy to the page.
     std::vector<std::byte> serialized_data = cell.serialize();
     std::memcpy(cell_data_p, serialized_data.data(), serialized_data.size());
+
     // update cell pointer.
     // cell pointers should be sored by key in ascending order? For now, we just insert the new cell pointer to the end of cell pointers, so the cell pointers are not sorted by key, but we can implement the sorting in the future if needed.
     char *cell_ptr_p = start_p_ + Page::HEADDER_SIZE_BYTE + Page::CELL_POINTER_SIZE * getSlotCount();
     std::memcpy(cell_ptr_p, &new_cell_offset, sizeof(uint16_t));
+
     // update headder.
     updateSlotDirectoryOffset(new_cell_offset);
     updateSlotCount(getSlotCount() + 1);

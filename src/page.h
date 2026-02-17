@@ -4,7 +4,7 @@
 #include "cell.h"
 #include <span>
 #include <utility>
-
+#include <optional>
 /**
  * The structure of page is as follows:
  * | header (256 bytes) | cell pointer array (2 bytes per cell) | cells (variable size) |
@@ -39,7 +39,7 @@ public:
     uint16_t findChildPage(int key);
     char *getXthSlotValue(int x);
     bool hasKey(int key);
-    int insertCell(const Cell &cell);
+    std::optional<int> insertCell(const Cell &cell);
     static Page* initializePage(char *start_p, bool is_leaf);
     static Page* wrap(char *start_p);
     Page(char *start_p) : start_p_(start_p) {};
