@@ -6,6 +6,8 @@
 #include <spdlog/spdlog.h>
 #include <optional>
 #include <utility>
+#include <vector>
+#include <algorithm>
 
 Page* Page::initializePage(char *start_p, bool is_leaf){
     Page *page = new Page(start_p);
@@ -43,6 +45,14 @@ std::optional<std::pair<uint16_t, uint16_t>> Page::findLeafRef(int key)
         throw std::logic_error("findLeafRef called on non-leaf page");
     }
 
+    /**
+     * PERFORMANCE:Since both reads and inserts in a B+ tree must traverse from the root to a leaf (performing an in-page search at each level),
+     * every insert inherently includes a traversal phase. 
+     * Therefore, average performance is sensitive to the number of key comparisons within a page, 
+     * and using binary search to reduce in-page search from O(N_page) to O(log N_page) can be algorithmically advantageous. In practice,
+     * however, the benefit may be small depending on N_page and key-comparison cost (fixed vs. variable length),
+     * so benchmarking is required.
+     */
     for (int idx = 0; idx < getSlotCount(); ++idx)
     {
         LeafCell cell = getLeafCellOnXthPointer(idx);
@@ -62,10 +72,19 @@ uint16_t Page::findChildPage(int key)
         throw std::logic_error("findChildPage called on leaf page");
     }
 
+    // PERFORMANCE: binary search can be implemented here.
+    std::vector<IntermediateCell> cells;
+    cells.reserve(getSlotCount());
     for (int idx = 0; idx < getSlotCount(); ++idx)
     {
-        IntermediateCell cell = getIntermediateCellOnXthPointer(idx);
-        if (cell.key() <= key)
+        cells.push_back(getIntermediateCellOnXthPointer(idx));
+    }
+    std::sort(cells.begin(), cells.end(), [](const IntermediateCell &a, const IntermediateCell &b) {
+        return a.key() < b.key();
+    });
+    for (const IntermediateCell &cell : cells)
+    {
+        if (cell.key() >= key)
         {
             return cell.page_id();
         }

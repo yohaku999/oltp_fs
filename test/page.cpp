@@ -84,9 +84,9 @@ public:
             int key;
             uint16_t page_id;
         } entries[] = {
+            {10000, 63},
             {30000, 21},
-            {20000, 42},
-            {10000, 63}
+            {20000, 42}
         };
 
         for (const Entry &entry : entries)
@@ -101,11 +101,15 @@ public:
             assert(child_page == entry.page_id);
         }
 
-        uint16_t child_page_for_large_key = page->findChildPage(entries[0].key + 1000);
-        assert(child_page_for_large_key == entries[0].page_id);
+        uint16_t child_page_for_large_key = page->findChildPage(entries[2].key + 1);
+        assert(child_page_for_large_key == entries[1].page_id);
 
         uint16_t child_page_for_small_key = page->findChildPage(entries[2].key - 1);
-        assert(child_page_for_small_key == 0);
+        assert(child_page_for_small_key == entries[2].page_id);
+
+        uint16_t child_page_for_largest_key = page->findChildPage(entries[2].key + 1);
+        // what should i return. read book.
+        // TODO: have to ensure all the entries are soreted?t
 
         std::cout << "testInsertIntermediatePageAndFind: OK" << std::endl;
     }
