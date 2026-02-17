@@ -19,19 +19,14 @@ public:
 
     void intermediateCell_encodeAndDecode_RoundTrip()
     {
-        IntermediateCell original;
-        original.keySize = 4;
-        original.pageID = 500;
-        original.key = 77777;
+        IntermediateCell original(500, 77777);
+        std::vector<std::byte> serialized = original.serialize();
 
-        char buffer[8] = {0};
-        original.encodeCell(buffer);
+        IntermediateCell decoded = IntermediateCell::decodeCell(reinterpret_cast<char*>(serialized.data()));
 
-        IntermediateCell decoded = IntermediateCell::decodeCell(buffer);
-
-        assert(decoded.keySize == original.keySize);
-        assert(decoded.pageID == original.pageID);
-        assert(decoded.key == original.key);
+        assert(decoded.key_size() == original.key_size());
+        assert(decoded.page_id() == original.page_id());
+        assert(decoded.key() == original.key());
 
         std::cout << "intermediateCell_encodeAndDecode_RoundTrip: OK" << std::endl;
     }
@@ -40,21 +35,13 @@ public:
 
     void leafCell_encodeAndDecode_RoundTrip()
     {
-        LeafCell original;
-        original.keySize = 4;
-        original.heapPageID = 999;
-        original.slotID = 15;
-        original.key = 11111;
+        LeafCell original(11111, 999, 15);
+        std::vector<std::byte> serialized = original.serialize();
+        LeafCell decoded = LeafCell::decodeCell(reinterpret_cast<char*>(serialized.data()));
 
-        char buffer[10] = {0};
-        original.encodeCell(buffer);
-
-        LeafCell decoded = LeafCell::decodeCell(buffer);
-
-        assert(decoded.keySize == original.keySize);
-        assert(decoded.heapPageID == original.heapPageID);
-        assert(decoded.slotID == original.slotID);
-        assert(decoded.key == original.key);
+        assert(decoded.heap_page_id() == original.heap_page_id());
+        assert(decoded.slot_id() == original.slot_id());
+        assert(decoded.key() == original.key());
 
         std::cout << "leafCell_encodeAndDecode_RoundTrip: OK" << std::endl;
     }
