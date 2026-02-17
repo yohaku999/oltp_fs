@@ -16,6 +16,6 @@ public:
 
     int key() const override { return key_; }
     size_t payloadSize() const override { return sizeof(int) + sizeof(size_t) + value_size_; }
-    std::vector<std::byte> RecordCell::serialize() const;
+    std::vector<std::byte> serialize() const override;
     CellKind kind() const override { return CellKind::Record; }
 };
