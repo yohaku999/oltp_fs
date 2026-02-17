@@ -5,9 +5,9 @@
 #include <stdexcept>
 #include <spdlog/spdlog.h>
 
-Page* Page::initializePage(char *start_p, bool is_leaf_node){
+Page* Page::initializePage(char *start_p, bool is_leaf){
     Page *page = new Page(start_p);
-    page->is_leaf_node_ = is_leaf_node;
+    page->updateNodeTypeFlag(is_leaf);
     page->updateSlotCount(0);
     page->updateSlotDirectoryOffset(Page::PAGE_SIZE_BYTE);
     return page;
@@ -20,7 +20,7 @@ Page* Page::wrap(char *start_p){
 
 bool Page::hasKey(int key)
 {   
-    if(!is_leaf_node_){
+    if(!isLeaf()){
         throw std::logic_error("hasKey should only be called for leaf node.");
     }
 
@@ -36,7 +36,7 @@ bool Page::hasKey(int key)
 
 std::pair<uint16_t, uint16_t> Page::findLeafRef(int key)
 {
-    if (!is_leaf_node_)
+    if (!isLeaf())
     {
         throw std::logic_error("findLeafRef called on non-leaf page");
     }
@@ -56,7 +56,7 @@ std::pair<uint16_t, uint16_t> Page::findLeafRef(int key)
 
 uint16_t Page::findChildPage(int key)
 {
-    if (is_leaf_node_)
+    if (isLeaf())
     {
         throw std::logic_error("findChildPage called on leaf page");
     }
@@ -137,4 +137,15 @@ void Page::updateSlotCount(uint8_t new_count)
 void Page::updateSlotDirectoryOffset(uint16_t new_offset)
 {
     std::memcpy(start_p_ + SLOT_DIRECTORY_OFFSET_BYTE, &new_offset, sizeof(uint16_t));
+}
+
+void Page::updateNodeTypeFlag(bool is_leaf)
+{
+    uint8_t flag = is_leaf ? 1 : 0;
+    std::memcpy(start_p_ + NODE_TYPE_FLAG_BYTE, &flag, sizeof(uint8_t));
+}
+
+bool Page::isLeaf() const
+{
+    return readValue<uint8_t>(start_p_ + NODE_TYPE_FLAG_BYTE) == 1;
 }
