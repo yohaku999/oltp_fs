@@ -20,7 +20,7 @@ public:
     void testInsertLeafPageAndFind()
     {
         char page_data[Page::PAGE_SIZE_BYTE] = {};
-        Page *page = Page::initializePage(page_data, true);
+        Page *page = Page::initializePage(page_data, true, 0);
         struct Entry
         {
             int key;
@@ -52,7 +52,7 @@ public:
     void testInsertLeafPageRunsOutOfSpace()
     {
         char page_data[Page::PAGE_SIZE_BYTE] = {};
-        Page *page = Page::initializePage(page_data, true);
+        Page *page = Page::initializePage(page_data, true, 0);
 
         size_t successful_inserts = 0;
         bool saw_nullopt = false;
@@ -78,7 +78,8 @@ public:
     void testInsertIntermediatePageAndFind()
     {
         char page_data[Page::PAGE_SIZE_BYTE] = {};
-        Page *page = Page::initializePage(page_data, false);
+        uint16_t rightMostChildPageId = 999;
+        Page *page = Page::initializePage(page_data, false, rightMostChildPageId);
         struct Entry
         {
             int key;
@@ -107,10 +108,9 @@ public:
         uint16_t child_page_for_small_key = page->findChildPage(entries[2].key - 1);
         assert(child_page_for_small_key == entries[2].page_id);
 
-        uint16_t child_page_for_largest_key = page->findChildPage(entries[2].key + 1);
+        uint16_t child_page_for_largest_key = page->findChildPage(entries[1].key + 1);
         // what should i return. read book.
-        // TODO: have to ensure all the entries are soreted?t
-
+        assert(child_page_for_largest_key == rightMostChildPageId);
         std::cout << "testInsertIntermediatePageAndFind: OK" << std::endl;
     }
 };

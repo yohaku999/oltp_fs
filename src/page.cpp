@@ -9,11 +9,12 @@
 #include <vector>
 #include <algorithm>
 
-Page* Page::initializePage(char *start_p, bool is_leaf){
+Page* Page::initializePage(char *start_p, bool is_leaf, uint16_t rightMostChildPageId){
     Page *page = new Page(start_p);
     page->updateNodeTypeFlag(is_leaf);
     page->updateSlotCount(0);
     page->updateSlotDirectoryOffset(Page::PAGE_SIZE_BYTE);
+    page->setRightMostChildPageId(rightMostChildPageId);
     return page;
 }
 
@@ -89,8 +90,7 @@ uint16_t Page::findChildPage(int key)
             return cell.page_id();
         }
     }
-    spdlog::info("key {} is greater than all keys in the internal page, returning the last child.", key);
-    return 0; //TODO:
+    return rightMostChildPageId();
 }
 
 /**
@@ -149,31 +149,41 @@ char* Page::getXthSlotValue(int x)
 
 uint8_t Page::getSlotCount()
 {
-    return readValue<uint8_t>(start_p_ + SLOT_COUNT_SIZE_BYTE);
+    return readValue<uint8_t>(start_p_ + SLOT_COUNT_OFFSET);
 }
 
 uint16_t Page::getSlotDirectoryOffset()
 {
-    return readValue<uint16_t>(start_p_ + SLOT_DIRECTORY_OFFSET_BYTE);
+    return readValue<uint16_t>(start_p_ + SLOT_DIRECTORY_OFFSET);
 }
 
 void Page::updateSlotCount(uint8_t new_count)
 {
-    std::memcpy(start_p_ + SLOT_COUNT_SIZE_BYTE, &new_count, sizeof(uint8_t));
+    std::memcpy(start_p_ + SLOT_COUNT_OFFSET, &new_count, sizeof(uint8_t));
 }
 
 void Page::updateSlotDirectoryOffset(uint16_t new_offset)
 {
-    std::memcpy(start_p_ + SLOT_DIRECTORY_OFFSET_BYTE, &new_offset, sizeof(uint16_t));
+    std::memcpy(start_p_ + SLOT_DIRECTORY_OFFSET, &new_offset, sizeof(uint16_t));
 }
 
 void Page::updateNodeTypeFlag(bool is_leaf)
 {
     uint8_t flag = is_leaf ? 1 : 0;
-    std::memcpy(start_p_ + NODE_TYPE_FLAG_BYTE, &flag, sizeof(uint8_t));
+    std::memcpy(start_p_ + NODE_TYPE_FLAG_OFFSET, &flag, sizeof(uint8_t));
 }
 
 bool Page::isLeaf() const
 {
-    return readValue<uint8_t>(start_p_ + NODE_TYPE_FLAG_BYTE) == 1;
+    return readValue<uint8_t>(start_p_ + NODE_TYPE_FLAG_OFFSET) == 1;
+}
+
+uint16_t Page::rightMostChildPageId() const
+{
+    return readValue<uint16_t>(start_p_ + RIGHT_MOST_CHILD_POINTER_OFFSET);
+}
+
+void Page::setRightMostChildPageId(uint16_t page_id)
+{
+    std::memcpy(start_p_ + RIGHT_MOST_CHILD_POINTER_OFFSET, &page_id, sizeof(uint16_t));
 }
