@@ -8,7 +8,7 @@ class IntermediateCell : public Cell
 private:
     // The value range of cell key, pageID is 0~4095 for now, so we can use uint16_t to store them.
     static constexpr size_t KEY_SIZE_BYTE = sizeof(int);
-    static constexpr size_t PAYLOAD_SIZE = sizeof(uint16_t) + sizeof(uint16_t) + KEY_SIZE_BYTE;
+    static constexpr size_t PAYLOAD_SIZE = Cell::FLAG_FIELD_SIZE + sizeof(uint16_t) + sizeof(uint16_t) + KEY_SIZE_BYTE;
     uint16_t key_size_;
     uint16_t page_id_;
     int key_;

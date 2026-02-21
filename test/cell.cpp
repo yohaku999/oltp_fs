@@ -1,3 +1,4 @@
+#include "../src/cell.h"
 #include "../src/intermediate_cell.h"
 #include "../src/leaf_cell.h"
 #include <vector>
@@ -24,4 +25,24 @@ TEST(CellTest, LeafCellRoundTrip)
     EXPECT_EQ(decoded.heap_page_id(), original.heap_page_id());
     EXPECT_EQ(decoded.slot_id(), original.slot_id());
     EXPECT_EQ(decoded.key(), original.key());
+}
+
+TEST(CellTest, IntermediateCellInvalidFlag)
+{
+    IntermediateCell cell(500, 77777);
+    std::vector<std::byte> serialized = cell.serialize();
+    char *cell_bytes = reinterpret_cast<char *>(serialized.data());
+    EXPECT_FALSE(Cell::isInvalid(cell_bytes));
+    Cell::markInvalid(cell_bytes);
+    EXPECT_TRUE(Cell::isInvalid(cell_bytes));
+}
+
+TEST(CellTest, LeafCellInvalidFlag)
+{
+    LeafCell cell(11111, 999, 15);
+    std::vector<std::byte> serialized = cell.serialize();
+    char *cell_bytes = reinterpret_cast<char *>(serialized.data());
+    EXPECT_FALSE(Cell::isInvalid(cell_bytes));
+    Cell::markInvalid(cell_bytes);
+    EXPECT_TRUE(Cell::isInvalid(cell_bytes));
 }

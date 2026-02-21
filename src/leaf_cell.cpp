@@ -8,7 +8,7 @@
  */
 LeafCell LeafCell::decodeCell(char *data_p)
 {
-
+    data_p += Cell::FLAG_FIELD_SIZE;
     uint16_t key_size = readValue<uint16_t>(data_p);
     data_p += sizeof(uint16_t);
 
@@ -26,6 +26,9 @@ std::vector<std::byte> LeafCell::serialize() const
 {
     std::vector<std::byte> buffer(payloadSize());
     char *dst = reinterpret_cast<char *>(buffer.data());
+    uint8_t flags = 0;
+    std::memcpy(dst, &flags, Cell::FLAG_FIELD_SIZE);
+    dst += Cell::FLAG_FIELD_SIZE;
 
     std::memcpy(dst, &key_size_, sizeof(uint16_t));
     dst += sizeof(uint16_t);

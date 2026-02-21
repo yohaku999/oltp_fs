@@ -13,6 +13,20 @@ enum class CellKind
 class Cell
 {
 public:
+    // The first byte of every serialized cell stores per-record flags (bit0 = invalid).
+    static constexpr size_t FLAG_FIELD_SIZE = sizeof(uint8_t);
+    static constexpr uint8_t FLAG_INVALID_MASK = 0x1;
+
+    static void markInvalid(char *cell_start)
+    {
+        cell_start[0] |= FLAG_INVALID_MASK;
+    }
+
+    static bool isInvalid(const char *cell_start)
+    {
+        return (static_cast<uint8_t>(cell_start[0]) & FLAG_INVALID_MASK) != 0;
+    }
+
     virtual ~Cell() = default;
     virtual int key() const = 0;
     virtual size_t payloadSize() const = 0;
