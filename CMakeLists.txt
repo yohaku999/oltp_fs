@@ -21,6 +21,7 @@ add_library(dbfs_src
     src/leaf_cell.cpp
     src/record_cell.cpp
     src/btreecursor.cpp
+    src/frame_directory.cpp
 )
 
 target_include_directories(dbfs_src PUBLIC src)
@@ -41,9 +42,13 @@ target_link_libraries(file_test dbfs_src GTest::gtest_main)
 add_executable(btreecursor_test test/btreecursor.cpp)
 target_link_libraries(btreecursor_test dbfs_src GTest::gtest_main)
 
+add_executable(frame_directory_test test/frame_directory.cpp)
+target_link_libraries(frame_directory_test dbfs_src GTest::gtest_main)
+
 enable_testing()
 add_test(NAME BufferPoolTest COMMAND bufferpool_test)
 add_test(NAME CellTest COMMAND cell_test)
 add_test(NAME PageTest COMMAND page_test)
 add_test(NAME FileTest COMMAND file_test)
 add_test(NAME BTreeCursorTest COMMAND btreecursor_test)
+add_test(NAME FrameDirectoryTest COMMAND frame_directory_test)
