@@ -148,7 +148,8 @@ char* Page::getXthSlotValue(int x)
 {
     char* cell_data = start_p_ + getCellOffsetOnXthPointer(x);
     // return error if invalidated.
-    if (Cell::isInvalid(cell_data)){
+    if (!Cell::isValid(cell_data))
+    {
         throw std::runtime_error("This slot has been invalidated.");
     }
     char *cursor = cell_data + Cell::FLAG_FIELD_SIZE;

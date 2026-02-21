@@ -22,9 +22,9 @@ public:
         cell_start[0] |= FLAG_INVALID_MASK;
     }
 
-    static bool isInvalid(const char *cell_start)
+    static bool isValid(const char *cell_start)
     {
-        return (static_cast<uint8_t>(cell_start[0]) & FLAG_INVALID_MASK) != 0;
+        return (static_cast<uint8_t>(cell_start[0]) & FLAG_INVALID_MASK) == 0;
     }
 
     virtual ~Cell() = default;

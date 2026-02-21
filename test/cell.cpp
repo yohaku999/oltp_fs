@@ -32,9 +32,9 @@ TEST(CellTest, IntermediateCellInvalidFlag)
     IntermediateCell cell(500, 77777);
     std::vector<std::byte> serialized = cell.serialize();
     char *cell_bytes = reinterpret_cast<char *>(serialized.data());
-    EXPECT_FALSE(Cell::isInvalid(cell_bytes));
+    EXPECT_TRUE(Cell::isValid(cell_bytes));
     Cell::markInvalid(cell_bytes);
-    EXPECT_TRUE(Cell::isInvalid(cell_bytes));
+    EXPECT_FALSE(Cell::isValid(cell_bytes));
 }
 
 TEST(CellTest, LeafCellInvalidFlag)
@@ -42,7 +42,7 @@ TEST(CellTest, LeafCellInvalidFlag)
     LeafCell cell(11111, 999, 15);
     std::vector<std::byte> serialized = cell.serialize();
     char *cell_bytes = reinterpret_cast<char *>(serialized.data());
-    EXPECT_FALSE(Cell::isInvalid(cell_bytes));
+    EXPECT_TRUE(Cell::isValid(cell_bytes));
     Cell::markInvalid(cell_bytes);
-    EXPECT_TRUE(Cell::isInvalid(cell_bytes));
+    EXPECT_FALSE(Cell::isValid(cell_bytes));
 }
