@@ -30,6 +30,11 @@ bool Page::hasKey(int key)
     }
 
     for (int cell_pointer_index = 0; cell_pointer_index < getSlotCount(); cell_pointer_index++){
+        char *cell_data = start_p_ + getCellOffsetOnXthPointer(cell_pointer_index);
+        if (!Cell::isValid(cell_data))
+        {
+            continue;
+        }
         LeafCell cell = getLeafCellOnXthPointer(cell_pointer_index);
         if (cell.key() == key)
         {
@@ -39,7 +44,7 @@ bool Page::hasKey(int key)
     return false;
 }
 
-std::optional<std::pair<uint16_t, uint16_t>> Page::findLeafRef(int key)
+std::optional<std::pair<uint16_t, uint16_t>> Page::findLeafRef(int key, bool do_invalidate)
 {
     if (!isLeaf())
     {
@@ -56,9 +61,22 @@ std::optional<std::pair<uint16_t, uint16_t>> Page::findLeafRef(int key)
      */
     for (int idx = 0; idx < getSlotCount(); ++idx)
     {
+        char *cell_data = start_p_ + getCellOffsetOnXthPointer(idx);
+        if (!Cell::isValid(cell_data))
+        {
+            spdlog::debug("findLeafRef skipping invalid slot {}", idx);
+            continue;
+        }
         LeafCell cell = getLeafCellOnXthPointer(idx);
         if (cell.key() == key)
         {
+            // NOTE: traversal leaf node with invalidation since we can check if valid key exists without reading heap.
+            // This design can be changed when designing deleted cell reclamation strategy and concurrency control.
+            if (do_invalidate)
+            {
+                spdlog::debug("findLeafRef invalidating slot {} for key {}", idx, key);
+                invalidateSlot(idx);
+            }
             return std::make_pair(cell.heap_page_id(), cell.slot_id());
         }
     }
@@ -78,6 +96,11 @@ uint16_t Page::findChildPage(int key)
     cells.reserve(getSlotCount());
     for (int idx = 0; idx < getSlotCount(); ++idx)
     {
+        char *cell_data = start_p_ + getCellOffsetOnXthPointer(idx);
+        if (!Cell::isValid(cell_data))
+        {
+            continue;
+        }
         cells.push_back(getIntermediateCellOnXthPointer(idx));
     }
     std::sort(cells.begin(), cells.end(), [](const IntermediateCell &a, const IntermediateCell &b) {
@@ -147,7 +170,6 @@ LeafCell Page::getLeafCellOnXthPointer(int x)
 char* Page::getXthSlotValue(int x)
 {
     char* cell_data = start_p_ + getCellOffsetOnXthPointer(x);
-    // return error if invalidated.
     if (!Cell::isValid(cell_data))
     {
         throw std::runtime_error("This slot has been invalidated.");

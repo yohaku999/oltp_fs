@@ -40,13 +40,13 @@ public:
     static constexpr size_t PAGE_SIZE_BYTE = 4096;
     static constexpr size_t CELL_POINTER_SIZE = sizeof(uint16_t);
     char *start_p_;
-    std::optional<std::pair<uint16_t, uint16_t>> findLeafRef(int key);
+    std::optional<std::pair<uint16_t, uint16_t>> findLeafRef(int key, bool do_invalidate=false);
     uint16_t findChildPage(int key);
     char *getXthSlotValue(int x);
     bool hasKey(int key);
     std::optional<int> insertCell(const Cell &cell);
     void invalidateSlot(uint16_t slot_id);
-    static Page* initializePage(char *start_p, bool is_leaf, uint16_t rightMostChildPageId);
+    static Page* initializePage(char *start_p, bool is_leaf, uint16_t rightMostChildPageId=0);
     static Page* wrap(char *start_p);
     Page(char *start_p) : start_p_(start_p) {};
 };

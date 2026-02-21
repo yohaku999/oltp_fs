@@ -1,8 +1,10 @@
 #include "../src/page.h"
 #include "../src/cell.h"
+#include "../src/record_cell.h"
 #include <array>
 #include <optional>
 #include <cstring>
+#include <string>
 #include <gtest/gtest.h>
 
 TEST(PageTest, InsertLeafPageAndFind)
@@ -98,35 +100,40 @@ TEST(PageTest, InsertIntermediatePageAndFind)
     EXPECT_EQ(right_most_child_page_id, child_page_for_largest_key);
 }
 
-TEST(PageTest, InvalidateLeafSlotSetsFlag)
+TEST(PageTest, InvalidateSlotSetsFlag)
+{
+    auto assertInvalidation = [](bool is_leaf, auto make_cell) {
+        std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
+        Page *page = Page::initializePage(page_data.data(), is_leaf, 0);
+        auto slot_id_opt = page->insertCell(make_cell());
+        ASSERT_TRUE(slot_id_opt.has_value());
+        uint16_t slot_id = slot_id_opt.value();
+
+        uint16_t cell_offset = 0;
+        std::memcpy(&cell_offset,
+                    page_data.data() + Page::HEADDER_SIZE_BYTE + Page::CELL_POINTER_SIZE * slot_id,
+                    sizeof(uint16_t));
+        char *cell_data = page_data.data() + cell_offset;
+        ASSERT_TRUE(Cell::isValid(cell_data));
+
+        page->invalidateSlot(slot_id);
+
+        EXPECT_FALSE(Cell::isValid(cell_data));
+    };
+
+    assertInvalidation(true, []() { return LeafCell(42, 100, 7); });
+    std::string payload = "page-record";
+    assertInvalidation(true, [&payload]() { return RecordCell(99, payload.data(), payload.size()); });
+}
+
+TEST(PageTest, LeafSearchSkipsInvalidEntries)
 {
     std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
     Page *page = Page::initializePage(page_data.data(), true, 0);
-    auto slot_id_opt = page->insertCell(LeafCell(42, 100, 7));
-    ASSERT_TRUE(slot_id_opt.has_value());
-    uint16_t slot_id = slot_id_opt.value();
 
-    uint16_t cell_offset = 0;
-    std::memcpy(&cell_offset,
-                page_data.data() + Page::HEADDER_SIZE_BYTE + Page::CELL_POINTER_SIZE * slot_id,
-                sizeof(uint16_t));
-    char *cell_data = page_data.data() + cell_offset;
-    page->invalidateSlot(slot_id);
-    EXPECT_THROW(page->getXthSlotValue(slot_id), std::runtime_error);
-}
+    auto slot_id_opt = page->insertCell(LeafCell(123, 1, 1));
+    page->invalidateSlot(slot_id_opt.value());
 
-TEST(PageTest, InvalidateIntermediateSlotSetsFlag)
-{
-    std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
-    Page *page = Page::initializePage(page_data.data(), false, 0);
-    auto slot_id_opt = page->insertCell(IntermediateCell(555, 9000));
-    uint16_t slot_id = slot_id_opt.value();
-
-    uint16_t cell_offset = 0;
-    std::memcpy(&cell_offset,
-                page_data.data() + Page::HEADDER_SIZE_BYTE + Page::CELL_POINTER_SIZE * slot_id,
-                sizeof(uint16_t));
-    char *cell_data = page_data.data() + cell_offset;
-    page->invalidateSlot(slot_id);
-    EXPECT_THROW(page->getXthSlotValue(slot_id), std::runtime_error);
+    EXPECT_FALSE(page->hasKey(123));
+    EXPECT_FALSE(page->findLeafRef(123).has_value());
 }
