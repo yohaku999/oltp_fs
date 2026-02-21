@@ -1,113 +1,70 @@
 #include "../src/bufferpool.h"
-#include <cassert>
-#include <iostream>
-#include <cstring>
+#include "../src/page.h"
+#include <array>
 #include <cstdio>
+#include <cstring>
 #include <fstream>
-class BufferPoolTest
+#include <memory>
+#include <stdexcept>
+#include <gtest/gtest.h>
+
+class BufferPoolTest : public ::testing::Test
 {
-private:
-    static constexpr const char *TEST_FILE = "testfile.db";
-    BufferPool *pool = nullptr;
+protected:
+    static constexpr const char *kTestFile = "testfile.db";
+    std::unique_ptr<BufferPool> pool;
 
-    void setUp()
+    void SetUp() override
     {
-        // create a test file first. this should be created internally by buffer pool.
-        std::ofstream ofs(TEST_FILE, std::ios::binary);
-        char empty[4096] = {0};
-        ofs.write(empty, sizeof(empty));
+        std::remove(kTestFile);
+        std::ofstream ofs(kTestFile, std::ios::binary);
+        std::array<char, Page::PAGE_SIZE_BYTE> empty{};
+        ofs.write(empty.data(), empty.size());
         ofs.close();
-
-        pool = new BufferPool();
+        pool = std::make_unique<BufferPool>();
     }
 
-    void tearDown()
+    void TearDown() override
     {
-        delete pool;
-        pool = nullptr;
-        std::remove(TEST_FILE);
-    }
-
-public:
-    void runAll()
-    {
-        // getPage tests
-        getPage_NewPage_ReturnsNonNull();
-        getPage_SamePage_ReturnsCachedPage();
-        getPage_DifferentPages_ReturnsDifferentObjects();
-        getPage_AllFramesFilled_Success();
-        getPage_NoFreeFrame_ThrowsException();
-
-        std::cout << "All tests passed." << std::endl;
-    }
-
-    // ========== getPage tests ==========
-
-    void getPage_NewPage_ReturnsNonNull()
-    {
-        setUp();
-        Page *page = pool->getPage(1, TEST_FILE);
-        assert(page != nullptr);
-        tearDown();
-        std::cout << "getPage_NewPage_ReturnsNonNull: OK" << std::endl;
-    }
-
-    void getPage_SamePage_ReturnsCachedPage()
-    {
-        setUp();
-        Page *page1 = pool->getPage(1, TEST_FILE);
-        Page *page1_again = pool->getPage(1, TEST_FILE);
-        assert(page1 == page1_again);
-        tearDown();
-        std::cout << "getPage_SamePage_ReturnsCachedPage: OK" << std::endl;
-    }
-
-    void getPage_DifferentPages_ReturnsDifferentObjects()
-    {
-        setUp();
-        Page *page1 = pool->getPage(1, TEST_FILE);
-        Page *page2 = pool->getPage(2, TEST_FILE);
-        assert(page1 != page2);
-        tearDown();
-        std::cout << "getPage_DifferentPages_ReturnsDifferentObjects: OK" << std::endl;
-    }
-
-    void getPage_AllFramesFilled_Success()
-    {
-        setUp();
-        for (size_t i = 0; i < BufferPool::MAX_FRAME_COUNT; ++i)
-        {
-            Page *p = pool->getPage(i, TEST_FILE);
-            assert(p != nullptr);
-        }
-        tearDown();
-        std::cout << "getPage_AllFramesFilled_Success: OK" << std::endl;
-    }
-
-    void getPage_NoFreeFrame_ThrowsException()
-    {
-        setUp();
-        for (size_t i = 0; i < BufferPool::MAX_FRAME_COUNT; ++i)
-        {
-            pool->getPage(i, TEST_FILE);
-        }
-        try
-        {
-            pool->getPage(BufferPool::MAX_FRAME_COUNT, TEST_FILE);
-            assert(false);
-        }
-        catch (const std::runtime_error &e)
-        {
-            // Expected
-        }
-        tearDown();
-        std::cout << "getPage_NoFreeFrame_ThrowsException: OK" << std::endl;
+        pool.reset();
+        std::remove(kTestFile);
     }
 };
 
-int main()
+TEST_F(BufferPoolTest, GetPageNewPageReturnsNonNull)
 {
-    BufferPoolTest test;
-    test.runAll();
-    return 0;
+    Page *page = pool->getPage(1, kTestFile);
+    ASSERT_NE(page, nullptr);
+}
+
+TEST_F(BufferPoolTest, GetPageSamePageReturnsCachedPage)
+{
+    Page *page1 = pool->getPage(1, kTestFile);
+    Page *page1_again = pool->getPage(1, kTestFile);
+    EXPECT_EQ(page1, page1_again);
+}
+
+TEST_F(BufferPoolTest, GetPageDifferentPagesReturnsDifferentObjects)
+{
+    Page *page1 = pool->getPage(1, kTestFile);
+    Page *page2 = pool->getPage(2, kTestFile);
+    EXPECT_NE(page1, page2);
+}
+
+TEST_F(BufferPoolTest, GetPageAllFramesFilledSuccessfully)
+{
+    for (size_t i = 0; i < BufferPool::MAX_FRAME_COUNT; ++i)
+    {
+        Page *page = pool->getPage(static_cast<uint16_t>(i), kTestFile);
+        ASSERT_NE(page, nullptr);
+    }
+}
+
+TEST_F(BufferPoolTest, GetPageNoFreeFrameThrowsException)
+{
+    for (size_t i = 0; i < BufferPool::MAX_FRAME_COUNT; ++i)
+    {
+        pool->getPage(static_cast<uint16_t>(i), kTestFile);
+    }
+    EXPECT_THROW(pool->getPage(BufferPool::MAX_FRAME_COUNT, kTestFile), std::runtime_error);
 }

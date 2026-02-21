@@ -1,5 +1,6 @@
 #include "bufferpool.h"
 #include "page.h"
+#include "file.h"
 #include <spdlog/spdlog.h>
 #include <string>
 #include <fstream>
@@ -18,31 +19,28 @@ Page *BufferPool::getPage(int pageID, std::string filePath)
     auto it = loadedPageIDs.find(key);
     if (it != loadedPageIDs.end())
     {
+        // page is already loaded in the buffer pool, return it directly.
         return it->second;
     }
     else
     {
+        File file(filePath);
         for (int i = 0; i < BufferPool::MAX_FRAME_COUNT; ++i)
         {
             // search for a free frame
             if (usedFrameIDs.find(i) == usedFrameIDs.end())
             {
                 zeroOutFrame(i);
-                char *start_p = static_cast<char *>(buffer) + i * BufferPool::FRAME_SIZE_BYTE;
-                bool is_new_page = false; // TODO: consider proper way.
-                if (!is_new_page)
+                char *frame_p = static_cast<char *>(buffer) + i * BufferPool::FRAME_SIZE_BYTE;
+                if (!file.isPageIDUsed(pageID))
                 {
-
-                    // Load the data of the corresponding page from the file into the new frame
-                    std::fstream ifs(filePath, std::ios::in | std::ios::binary);
-                    if (!ifs)
-                    {
-                        throw std::runtime_error("error occured while trying to open file: " + filePath);
-                    }
-                    ifs.seekg(pageID * Page::PAGE_SIZE_BYTE, std::ios::beg);
-                    ifs.read(start_p, Page::PAGE_SIZE_BYTE);
+                    file.loadPageOnFrame(pageID, frame_p);
+                }else{
+                    // Initialize a new page
+                     // TODO: determine whether the new page is a leaf node or an intermediate node.
+                    Page *new_page = Page::initializePage(frame_p, true, file.allocateNextPageId());
                 }
-                Page *page = new Page(start_p);
+                Page *page = Page::wrap(frame_p);
                 loadedPageIDs[key] = page;
                 usedFrameIDs.insert(i);
                 spdlog::info("Loaded page ID {} into frame ID {}", pageID, i);
@@ -55,7 +53,7 @@ Page *BufferPool::getPage(int pageID, std::string filePath)
 
 void BufferPool::evictPage(int frameID)
 {
-    char *start_p = static_cast<char *>(buffer) + frameID * BufferPool::FRAME_SIZE_BYTE;
+    char *frame_p = static_cast<char *>(buffer) + frameID * BufferPool::FRAME_SIZE_BYTE;
     // buffered i/o, random access
     std::fstream ofs(fileName, std::ios::in | std::ios::out | std::ios::binary);
     // create file if not exist
@@ -66,15 +64,15 @@ void BufferPool::evictPage(int frameID)
         ofs.open(fileName, std::ios::in | std::ios::out | std::ios::binary);
     }
     ofs.seekp(frameID * BufferPool::FRAME_SIZE_BYTE, std::ios::beg);
-    ofs.write(start_p, BufferPool::FRAME_SIZE_BYTE);
+    ofs.write(frame_p, BufferPool::FRAME_SIZE_BYTE);
 };
 
 // private methods
 void BufferPool::zeroOutFrame(int frameID)
 {
     spdlog::debug("Zeroing out frame ID: {}", frameID);
-    char *start_p = static_cast<char *>(buffer) + frameID * BufferPool::FRAME_SIZE_BYTE;
-    std::memset(start_p, 0, BufferPool::FRAME_SIZE_BYTE);
+    char *frame_p = static_cast<char *>(buffer) + frameID * BufferPool::FRAME_SIZE_BYTE;
+    std::memset(frame_p, 0, BufferPool::FRAME_SIZE_BYTE);
 };
 
 BufferPool::~BufferPool()
