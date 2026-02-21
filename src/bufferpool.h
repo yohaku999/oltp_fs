@@ -12,7 +12,6 @@ class BufferPool
 private:
     static constexpr size_t BUFFER_SIZE_BYTE = 4096 * 10;
     static constexpr size_t FRAME_SIZE_BYTE = 4096;
-    static constexpr size_t MAX_FRAME_COUNT = 10;
     static constexpr size_t MAX_PAGE_COUNT = 10;
     std::string fileName;
     void *buffer;
@@ -21,8 +20,8 @@ private:
     std::set<int> usedFrameIDs;
     std::map<std::pair<int, std::string>, Page *> loadedPageIDs;
     void zeroOutFrame(int frameID);
-
 public:
+    static constexpr size_t MAX_FRAME_COUNT = 10;
     BufferPool();
     Page *getPage(int pageID, std::string filePath);
     ~BufferPool();
