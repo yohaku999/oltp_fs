@@ -2,6 +2,7 @@
 #include "../src/cell.h"
 #include <array>
 #include <optional>
+#include <cstring>
 #include <gtest/gtest.h>
 
 TEST(PageTest, InsertLeafPageAndFind)
@@ -95,4 +96,37 @@ TEST(PageTest, InsertIntermediatePageAndFind)
 
     uint16_t child_page_for_largest_key = page->findChildPage(entries[1].key + 1);
     EXPECT_EQ(right_most_child_page_id, child_page_for_largest_key);
+}
+
+TEST(PageTest, InvalidateLeafSlotSetsFlag)
+{
+    std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
+    Page *page = Page::initializePage(page_data.data(), true, 0);
+    auto slot_id_opt = page->insertCell(LeafCell(42, 100, 7));
+    ASSERT_TRUE(slot_id_opt.has_value());
+    uint16_t slot_id = slot_id_opt.value();
+
+    uint16_t cell_offset = 0;
+    std::memcpy(&cell_offset,
+                page_data.data() + Page::HEADDER_SIZE_BYTE + Page::CELL_POINTER_SIZE * slot_id,
+                sizeof(uint16_t));
+    char *cell_data = page_data.data() + cell_offset;
+    page->invalidateSlot(slot_id);
+    EXPECT_THROW(page->getXthSlotValue(slot_id), std::runtime_error);
+}
+
+TEST(PageTest, InvalidateIntermediateSlotSetsFlag)
+{
+    std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
+    Page *page = Page::initializePage(page_data.data(), false, 0);
+    auto slot_id_opt = page->insertCell(IntermediateCell(555, 9000));
+    uint16_t slot_id = slot_id_opt.value();
+
+    uint16_t cell_offset = 0;
+    std::memcpy(&cell_offset,
+                page_data.data() + Page::HEADDER_SIZE_BYTE + Page::CELL_POINTER_SIZE * slot_id,
+                sizeof(uint16_t));
+    char *cell_data = page_data.data() + cell_offset;
+    page->invalidateSlot(slot_id);
+    EXPECT_THROW(page->getXthSlotValue(slot_id), std::runtime_error);
 }

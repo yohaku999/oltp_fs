@@ -147,6 +147,10 @@ LeafCell Page::getLeafCellOnXthPointer(int x)
 char* Page::getXthSlotValue(int x)
 {
     char* cell_data = start_p_ + getCellOffsetOnXthPointer(x);
+    // return error if invalidated.
+    if (Cell::isInvalid(cell_data)){
+        throw std::runtime_error("This slot has been invalidated.");
+    }
     char *cursor = cell_data + Cell::FLAG_FIELD_SIZE;
     // forward the pointer to the value part of the cell.
     int stored_key = readValue<int>(cursor);
