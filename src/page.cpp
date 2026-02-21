@@ -147,13 +147,14 @@ LeafCell Page::getLeafCellOnXthPointer(int x)
 char* Page::getXthSlotValue(int x)
 {
     char* cell_data = start_p_ + getCellOffsetOnXthPointer(x);
+    char *cursor = cell_data + Cell::FLAG_FIELD_SIZE;
     // forward the pointer to the value part of the cell.
-    int stored_key = readValue<int>(cell_data);
-    cell_data += sizeof(int);
-    size_t value_size = readValue<size_t>(cell_data);
+    int stored_key = readValue<int>(cursor);
+    cursor += sizeof(int);
+    size_t value_size = readValue<size_t>(cursor);
     (void)value_size;
-    cell_data += sizeof(size_t);
-    return cell_data;
+    cursor += sizeof(size_t);
+    return cursor;
 }
 
 uint8_t Page::getSlotCount()
