@@ -71,7 +71,7 @@ void File::close()
 
     stream_->clear();
     stream_->flush();
-    stream_->fsync();
+    // fsync is not directly available on std::fstream, platform-specific implementation is required.
     stream_->close();
 
     if (stream_->fail())
