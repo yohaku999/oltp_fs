@@ -1,123 +1,98 @@
 #include "../src/page.h"
 #include "../src/cell.h"
 #include <array>
-#include <cassert>
-#include <cstring>
-#include <iostream>
 #include <optional>
+#include <gtest/gtest.h>
 
-class PageTest
+TEST(PageTest, InsertLeafPageAndFind)
 {
-public:
-    void runAll()
+    std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
+    Page *page = Page::initializePage(page_data.data(), true, 0);
+    struct Entry
     {
-        testInsertLeafPageAndFind();
-        testInsertLeafPageRunsOutOfSpace();
-        testInsertIntermediatePageAndFind();
-        std::cout << "All Page tests passed!" << std::endl;
-    }
+        int key;
+        uint16_t heap_page_id;
+        uint16_t slot_id;
+    } entries[] = {
+        {11111, 999, 15},
+        {22222, 500, 2},
+        {33333, 123, 7}
+    };
 
-    void testInsertLeafPageAndFind()
+    for (int i = 0; i < static_cast<int>(std::size(entries)); ++i)
     {
-        char page_data[Page::PAGE_SIZE_BYTE] = {};
-        Page *page = Page::initializePage(page_data, true, 0);
-        struct Entry
-        {
-            int key;
-            uint16_t heap_page_id;
-            uint16_t slot_id;
-        } entries[] = {
-            {11111, 999, 15},
-            {22222, 500, 2},
-            {33333, 123, 7}
-        };
+        const Entry &entry = entries[i];
+        auto slot_id_opt = page->insertCell(LeafCell(entry.key, entry.heap_page_id, entry.slot_id));
+        ASSERT_TRUE(slot_id_opt.has_value());
+        int slot_id = slot_id_opt.value();
+        EXPECT_EQ(i, slot_id);
 
-        for (int i = 0; i < static_cast<int>(std::size(entries)); ++i)
-        {
-            const Entry &entry = entries[i];
-            auto slot_id_opt = page->insertCell(LeafCell(entry.key, entry.heap_page_id, entry.slot_id));
-            assert(slot_id_opt.has_value());
-            int slot_id = slot_id_opt.value();
-            assert(slot_id == i);
-
-            auto ref_opt = page->findLeafRef(entry.key);
-            assert(ref_opt.has_value());
-            auto [heap_page_id, slot_id_ref] = ref_opt.value();
-            assert(heap_page_id == entry.heap_page_id);
-            assert(slot_id_ref == entry.slot_id);
-        }
-        std::cout << "testInsertLeafPageAndFind: OK" << std::endl;
+        auto ref_opt = page->findLeafRef(entry.key);
+        ASSERT_TRUE(ref_opt.has_value());
+        auto [heap_page_id, slot_id_ref] = ref_opt.value();
+        EXPECT_EQ(entry.heap_page_id, heap_page_id);
+        EXPECT_EQ(entry.slot_id, slot_id_ref);
     }
+}
 
-    void testInsertLeafPageRunsOutOfSpace()
-    {
-        char page_data[Page::PAGE_SIZE_BYTE] = {};
-        Page *page = Page::initializePage(page_data, true, 0);
-
-        size_t successful_inserts = 0;
-        bool saw_nullopt = false;
-        const size_t max_attempts = Page::PAGE_SIZE_BYTE;
-
-        for (size_t attempt = 0; attempt < max_attempts; ++attempt)
-        {
-            LeafCell cell(100000 + static_cast<int>(attempt), static_cast<uint16_t>(attempt), static_cast<uint16_t>(attempt));
-            auto slot_id_opt = page->insertCell(cell);
-            if (!slot_id_opt.has_value())
-            {
-                saw_nullopt = true;
-                break;
-            }
-            ++successful_inserts;
-        }
-
-        assert(saw_nullopt);
-        assert(successful_inserts > 0);
-        std::cout << "testInsertLeafPageRunsOutOfSpace: OK after " << successful_inserts << " inserts" << std::endl;
-    }
-
-    void testInsertIntermediatePageAndFind()
-    {
-        char page_data[Page::PAGE_SIZE_BYTE] = {};
-        uint16_t rightMostChildPageId = 999;
-        Page *page = Page::initializePage(page_data, false, rightMostChildPageId);
-        struct Entry
-        {
-            int key;
-            uint16_t page_id;
-        } entries[] = {
-            {10000, 63},
-            {30000, 21},
-            {20000, 42}
-        };
-
-        for (const Entry &entry : entries)
-        {
-            auto slot_id_opt = page->insertCell(IntermediateCell(entry.page_id, entry.key));
-            assert(slot_id_opt.has_value());
-        }
-
-        for (const Entry &entry : entries)
-        {
-            uint16_t child_page = page->findChildPage(entry.key);
-            assert(child_page == entry.page_id);
-        }
-
-        uint16_t child_page_for_large_key = page->findChildPage(entries[2].key + 1);
-        assert(child_page_for_large_key == entries[1].page_id);
-
-        uint16_t child_page_for_small_key = page->findChildPage(entries[2].key - 1);
-        assert(child_page_for_small_key == entries[2].page_id);
-
-        uint16_t child_page_for_largest_key = page->findChildPage(entries[1].key + 1);
-        // what should i return. read book.
-        assert(child_page_for_largest_key == rightMostChildPageId);
-        std::cout << "testInsertIntermediatePageAndFind: OK" << std::endl;
-    }
-};
-
-int main()
+TEST(PageTest, InsertLeafPageRunsOutOfSpace)
 {
-    PageTest test;
-    test.runAll();
-    return 0;
+    std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
+    Page *page = Page::initializePage(page_data.data(), true, 0);
+
+    size_t successful_inserts = 0;
+    bool saw_nullopt = false;
+    const size_t max_attempts = Page::PAGE_SIZE_BYTE;
+
+    for (size_t attempt = 0; attempt < max_attempts; ++attempt)
+    {
+        LeafCell cell(100000 + static_cast<int>(attempt), static_cast<uint16_t>(attempt), static_cast<uint16_t>(attempt));
+        auto slot_id_opt = page->insertCell(cell);
+        if (!slot_id_opt.has_value())
+        {
+            saw_nullopt = true;
+            break;
+        }
+        ++successful_inserts;
+    }
+
+    EXPECT_TRUE(saw_nullopt);
+    EXPECT_GT(successful_inserts, 0u);
+}
+
+TEST(PageTest, InsertIntermediatePageAndFind)
+{
+    std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
+    uint16_t right_most_child_page_id = 999;
+    Page *page = Page::initializePage(page_data.data(), false, right_most_child_page_id);
+    struct Entry
+    {
+        int key;
+        uint16_t page_id;
+    } entries[] = {
+        {10000, 63},
+        {30000, 21},
+        {20000, 42}
+    };
+
+    for (const Entry &entry : entries)
+    {
+        auto slot_id_opt = page->insertCell(IntermediateCell(entry.page_id, entry.key));
+        ASSERT_TRUE(slot_id_opt.has_value());
+    }
+
+    for (const Entry &entry : entries)
+    {
+        uint16_t child_page = page->findChildPage(entry.key);
+        EXPECT_EQ(entry.page_id, child_page);
+    }
+
+    uint16_t child_page_for_large_key = page->findChildPage(entries[2].key + 1);
+    EXPECT_EQ(entries[1].page_id, child_page_for_large_key);
+
+    uint16_t child_page_for_small_key = page->findChildPage(entries[2].key - 1);
+    EXPECT_EQ(entries[2].page_id, child_page_for_small_key);
+
+    uint16_t child_page_for_largest_key = page->findChildPage(entries[1].key + 1);
+    EXPECT_EQ(right_most_child_page_id, child_page_for_largest_key);
 }
