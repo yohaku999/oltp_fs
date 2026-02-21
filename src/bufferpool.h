@@ -4,6 +4,7 @@
 #include <map>
 #include <utility>
 #include "page.h"
+#include "file.h"
 
 class BufferPool
 {
@@ -23,6 +24,6 @@ private:
 public:
     static constexpr size_t MAX_FRAME_COUNT = 10;
     BufferPool();
-    Page *getPage(int pageID, std::string filePath);
+    Page *getPage(int pageID, File file);
     ~BufferPool();
 };

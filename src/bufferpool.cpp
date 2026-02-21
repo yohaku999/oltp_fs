@@ -12,10 +12,10 @@ BufferPool::BufferPool()
     buffer = operator new(BUFFER_SIZE_BYTE);
 };
 
-Page *BufferPool::getPage(int pageID, std::string filePath)
+Page *BufferPool::getPage(int pageID, File file)
 {
-    spdlog::info("Requesting page ID {} from file {}", pageID, filePath);
-    auto key = std::make_pair(pageID, filePath);
+    spdlog::info("Requesting page ID {} from file {}", pageID, file.getFilePath());
+    auto key = std::make_pair(pageID, file.getFilePath());
     auto it = loadedPageIDs.find(key);
     if (it != loadedPageIDs.end())
     {
@@ -24,7 +24,6 @@ Page *BufferPool::getPage(int pageID, std::string filePath)
     }
     else
     {
-        File file(filePath);
         for (int i = 0; i < BufferPool::MAX_FRAME_COUNT; ++i)
         {
             // search for a free frame
