@@ -157,6 +157,12 @@ char* Page::getXthSlotValue(int x)
     return cursor;
 }
 
+void Page::invalidateSlot(uint16_t slot_id)
+{
+    char *cell_data = start_p_ + getCellOffsetOnXthPointer(slot_id);
+    Cell::markInvalid(cell_data);
+}
+
 uint8_t Page::getSlotCount()
 {
     return readValue<uint8_t>(start_p_ + SLOT_COUNT_OFFSET);

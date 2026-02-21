@@ -45,6 +45,7 @@ public:
     char *getXthSlotValue(int x);
     bool hasKey(int key);
     std::optional<int> insertCell(const Cell &cell);
+    void invalidateSlot(uint16_t slot_id);
     static Page* initializePage(char *start_p, bool is_leaf, uint16_t rightMostChildPageId);
     static Page* wrap(char *start_p);
     Page(char *start_p) : start_p_(start_p) {};
