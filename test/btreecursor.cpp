@@ -7,6 +7,7 @@
 #include <cstring>
 #include <memory>
 #include <string>
+#include <vector>
 #include <gtest/gtest.h>
 
 class BTreeCursorTest : public ::testing::Test
@@ -44,12 +45,42 @@ protected:
     }
 };
 
-TEST_F(BTreeCursorTest, InsertAndGetRecord)
+TEST_F(BTreeCursorTest, InsertAndGetMultipleRecords)
 {
-    std::string payload = "value1";
+    std::vector<std::pair<int, std::string>> records = {
+        {1, "value1"},
+        {2, "value-two"},
+        {10, "value-003"}
+    };
 
-    BTreeCursor::insert(pool_, *index_file_, *heap_file_, 1, payload.data(), payload.size());
-    char *stored = BTreeCursor::getRecord(pool_, *index_file_, *heap_file_, 1);
-    std::string restored(stored, payload.size());
-    EXPECT_EQ(payload, restored);
+    // insert
+    for (const auto &record : records)
+    {
+        char *value_ptr = const_cast<char *>(record.second.data());
+        BTreeCursor::insert(pool_, *index_file_, *heap_file_, record.first, value_ptr, record.second.size());
+    }
+
+    // read
+    for (const auto &record : records)
+    {
+        char *stored = BTreeCursor::read(pool_, *index_file_, *heap_file_, record.first);
+        std::string restored(stored, record.second.size());
+        EXPECT_EQ(record.second, restored);
+    }
 }
+
+TEST_F(BTreeCursorTest, InsertDeleteThenFailToRead)
+{
+    const int key = 99;
+    std::string payload = "transient";
+
+    char *value_ptr = payload.data();
+    BTreeCursor::insert(pool_, *index_file_, *heap_file_, key, value_ptr, payload.size());
+
+    // delete the record
+    BTreeCursor::remove(pool_, *index_file_, *heap_file_, key);
+
+    // reading should now fail because the slot has been invalidated
+    EXPECT_THROW({ BTreeCursor::read(pool_, *index_file_, *heap_file_, key); }, std::runtime_error);
+}
+

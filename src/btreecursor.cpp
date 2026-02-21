@@ -26,23 +26,31 @@ int BTreeCursor::findLeafPageID(BufferPool& pool, File& indexFile, int key)
     return pageID;
 }
 
-std::pair<uint16_t, uint16_t> BTreeCursor::findRecordLocation(BufferPool& pool, File& indexFile, int key)
+std::pair<uint16_t, uint16_t> BTreeCursor::findRecordLocation(BufferPool& pool, File& indexFile, int key, bool do_invalidate)
 {
+    // TODO: do not invalidate index nodes during traversal for now. we will come back to this when we start to support concurrency.
     int pageID = findLeafPageID(pool, indexFile, key);
     Page *leafPage = pool.getPage(pageID, indexFile);
     auto ref = leafPage->findLeafRef(key);
     if (!ref.has_value())
     {
-        throw std::out_of_range("Key " + std::to_string(key) + " not found in leaf page.");
+        throw std::runtime_error("Key " + std::to_string(key) + " not found in leaf page.");
     }
     return ref.value();
 }
 
-char* BTreeCursor::getRecord(BufferPool& pool, File& indexFile, File& heapFile, int key)
+char* BTreeCursor::read(BufferPool& pool, File& indexFile, File& heapFile, int key)
 {
     auto [pageID, slotID] = findRecordLocation(pool, indexFile, key);
     Page *page = pool.getPage(pageID, heapFile);
     return page->getXthSlotValue(slotID);
+}
+
+void BTreeCursor::remove(BufferPool& pool, File& indexFile, File& heapFile, int key)
+{   auto [pageID, slotID] = findRecordLocation(pool, indexFile, key, true);
+    Page *page = pool.getPage(pageID, heapFile);
+    page->invalidateSlot(slotID);
+    spdlog::info("Removed record with key {} successfully.", key);
 }
 
 void BTreeCursor::insert(BufferPool& pool, File& indexFile, File& heapFile, int key, char* value, size_t value_size)
