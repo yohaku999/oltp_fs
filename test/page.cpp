@@ -137,3 +137,41 @@ TEST(PageTest, LeafSearchSkipsInvalidEntries)
     EXPECT_FALSE(page->hasKey(123));
     EXPECT_FALSE(page->findLeafRef(123).has_value());
 }
+
+TEST(PageTest, LeafInsertInvalidateReuseSlot)
+{
+    std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
+    Page *page = Page::initializePage(page_data.data(), true, 0);
+
+    auto first_slot = page->insertCell(LeafCell(1, 1, 1));
+    ASSERT_TRUE(first_slot.has_value());
+    page->invalidateSlot(first_slot.value());
+    EXPECT_FALSE(page->hasKey(1));
+
+    auto second_slot = page->insertCell(LeafCell(1, 1, 1));
+    ASSERT_TRUE(second_slot.has_value());
+    EXPECT_TRUE(page->hasKey(1));
+
+    auto ref = page->findLeafRef(1);
+    ASSERT_TRUE(ref.has_value());
+    EXPECT_EQ(ref->first, 1);
+    EXPECT_EQ(ref->second, 1);
+}
+
+TEST(PageTest, HeapInsertInvalidateReuseSlot)
+{
+    std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
+    Page *page = Page::initializePage(page_data.data(), true, 0);
+
+    std::string payload = "heap-value";
+    auto first_slot = page->insertCell(RecordCell(10, payload.data(), payload.size()));
+    ASSERT_TRUE(first_slot.has_value());
+    page->invalidateSlot(first_slot.value());
+
+    auto second_slot = page->insertCell(RecordCell(10, payload.data(), payload.size()));
+    ASSERT_TRUE(second_slot.has_value());
+    EXPECT_NE(first_slot.value(), second_slot.value());
+
+    char *value_ptr = page->getXthSlotValue(second_slot.value());
+    EXPECT_EQ(std::string(value_ptr, payload.size()), payload);
+}
