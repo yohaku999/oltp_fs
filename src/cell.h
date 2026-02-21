@@ -10,10 +10,20 @@ enum class CellKind
     Record
 };
 
+/**
+ * Base class for page-resident cells.
+ *
+ * Serialization:
+ *  - byte[0]: per-cell flags (bit0 = invalid)
+ *  - byte[1..]: type-specific payload
+ *
+ * Note: Cell does not own memory; it only provides helpers for (de)serialization and
+ * flag manipulation.
+ */
 class Cell
 {
 public:
-    // The first byte of every serialized cell stores per-record flags (bit0 = invalid).
+    // NOTE: byte[0] currently packs an invalid flag; extend this byte (or move to a bitmap) if more per-cell flags are required.
     static constexpr size_t FLAG_FIELD_SIZE = sizeof(uint8_t);
     static constexpr uint8_t FLAG_INVALID_MASK = 0x1;
 
