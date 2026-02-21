@@ -120,6 +120,8 @@ std::optional<int> Page::insertCell(const Cell &cell)
     // update headder.
     updateSlotDirectoryOffset(new_cell_offset);
     updateSlotCount(getSlotCount() + 1);
+
+    spdlog::info("Inserted a new cell with key {} into page. New slot count: {}, new slot directory offset: {}", cell.key(), getSlotCount(), getSlotDirectoryOffset());
     return getSlotCount() - 1;
 }
 
