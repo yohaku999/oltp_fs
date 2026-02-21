@@ -71,6 +71,7 @@ void File::close()
 
     stream_->clear();
     stream_->flush();
+    stream_->fsync();
     stream_->close();
 
     if (stream_->fail())
