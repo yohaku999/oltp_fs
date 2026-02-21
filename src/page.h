@@ -31,10 +31,20 @@ private:
     void updateNodeTypeFlag(bool is_leaf);
     uint16_t rightMostChildPageId() const;
     void setRightMostChildPageId(uint16_t page_id);
+    bool is_dirty_ = false;
     
 
 public:
     static constexpr size_t HEADDER_SIZE_BYTE = 256;
+    void markDirty(){
+        is_dirty_ = true;
+    };
+    void clearDirty(){
+        is_dirty_ = false;
+    };
+    bool isDirty(){
+        return is_dirty_;
+    };
     bool isLeaf() const;
     // The value range of cell is 0~4095 for now, so we can use uint16_t to store them.
     static constexpr size_t PAGE_SIZE_BYTE = 4096;

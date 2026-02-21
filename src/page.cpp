@@ -144,6 +144,8 @@ std::optional<int> Page::insertCell(const Cell &cell)
     updateSlotDirectoryOffset(new_cell_offset);
     updateSlotCount(getSlotCount() + 1);
 
+    this->markDirty();
+
     spdlog::info("Inserted a new cell with key {} into page. New slot count: {}, new slot directory offset: {}", cell.key(), getSlotCount(), getSlotDirectoryOffset());
     return getSlotCount() - 1;
 }

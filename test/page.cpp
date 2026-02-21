@@ -11,6 +11,7 @@ TEST(PageTest, InsertLeafPageAndFind)
 {
     std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
     Page *page = Page::initializePage(page_data.data(), true, 0);
+    EXPECT_FALSE(page->isDirty());
     struct Entry
     {
         int key;
@@ -27,6 +28,7 @@ TEST(PageTest, InsertLeafPageAndFind)
         const Entry &entry = entries[i];
         auto slot_id_opt = page->insertCell(LeafCell(entry.key, entry.heap_page_id, entry.slot_id));
         ASSERT_TRUE(slot_id_opt.has_value());
+        EXPECT_TRUE(page->isDirty());
         int slot_id = slot_id_opt.value();
         EXPECT_EQ(i, slot_id);
 
@@ -38,6 +40,7 @@ TEST(PageTest, InsertLeafPageAndFind)
     }
 }
 
+// when page runs out of space, insertCell should return nullopt and not modify the page.
 TEST(PageTest, InsertLeafPageRunsOutOfSpace)
 {
     std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
@@ -56,6 +59,7 @@ TEST(PageTest, InsertLeafPageRunsOutOfSpace)
             saw_nullopt = true;
             break;
         }
+        EXPECT_TRUE(page->isDirty());
         ++successful_inserts;
     }
 
@@ -68,6 +72,7 @@ TEST(PageTest, InsertIntermediatePageAndFind)
     std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
     uint16_t right_most_child_page_id = 999;
     Page *page = Page::initializePage(page_data.data(), false, right_most_child_page_id);
+    EXPECT_FALSE(page->isDirty());
     struct Entry
     {
         int key;
@@ -82,6 +87,7 @@ TEST(PageTest, InsertIntermediatePageAndFind)
     {
         auto slot_id_opt = page->insertCell(IntermediateCell(entry.page_id, entry.key));
         ASSERT_TRUE(slot_id_opt.has_value());
+        EXPECT_TRUE(page->isDirty());
     }
 
     for (const Entry &entry : entries)
@@ -100,6 +106,7 @@ TEST(PageTest, InsertIntermediatePageAndFind)
     EXPECT_EQ(right_most_child_page_id, child_page_for_largest_key);
 }
 
+// TODO: invalidation should be done via page API. we will implement later.
 TEST(PageTest, InvalidateSlotSetsFlag)
 {
     auto assertInvalidation = [](bool is_leaf, auto make_cell) {
@@ -117,6 +124,7 @@ TEST(PageTest, InvalidateSlotSetsFlag)
         ASSERT_TRUE(Cell::isValid(cell_data));
 
         page->invalidateSlot(slot_id);
+        EXPECT_TRUE(page->isDirty());
 
         EXPECT_FALSE(Cell::isValid(cell_data));
     };
@@ -142,6 +150,7 @@ TEST(PageTest, LeafInsertInvalidateReuseSlot)
 {
     std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
     Page *page = Page::initializePage(page_data.data(), true, 0);
+    EXPECT_FALSE(page->isDirty());
 
     auto first_slot = page->insertCell(LeafCell(1, 1, 1));
     ASSERT_TRUE(first_slot.has_value());
