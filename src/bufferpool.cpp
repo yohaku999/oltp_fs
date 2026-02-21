@@ -12,7 +12,7 @@ BufferPool::BufferPool()
     buffer = operator new(BUFFER_SIZE_BYTE);
 };
 
-Page *BufferPool::getPage(int pageID, File file)
+Page *BufferPool::getPage(int pageID, File &file)
 {
     spdlog::info("Requesting page ID {} from file {}", pageID, file.getFilePath());
     auto key = std::make_pair(pageID, file.getFilePath());

@@ -24,6 +24,6 @@ private:
 public:
     static constexpr size_t MAX_FRAME_COUNT = 10;
     BufferPool();
-    Page *getPage(int pageID, File file);
+    Page *getPage(int pageID, File &file);
     ~BufferPool();
 };
