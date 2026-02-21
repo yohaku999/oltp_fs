@@ -140,6 +140,7 @@ File::File(const std::string &filePath, uint16_t max_page_id) : filePath_(filePa
     }
 }
 
+// this method should be called only from buffer pool in prod.
 void File::writePageOnFile(uint16_t const page_id, char *buffer)
 {
     initializeStreamIfClosed();

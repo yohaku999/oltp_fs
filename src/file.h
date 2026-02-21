@@ -5,6 +5,7 @@
 #include <string>
 #include <unordered_map>
 #include <memory>
+#include <spdlog/spdlog.h>
 /**
  * The same file can be accessed by multiple buffer pool frames, so we can cache the file stream in memory to avoid opening the same file multiple times.
  * File class should not own memory, it just provides utility functions to read/write pages from/to the buffer pool.
@@ -27,4 +28,6 @@ public:
     void close();
     void loadPageOnFrame(uint16_t const page_id, char *buffer);    
     void writePageOnFile(uint16_t const page_id, char *buffer);
+    std::string getFilePath() const { return filePath_; }
+    uint16_t getMaxPageID() const { return max_page_id_; }
 };
