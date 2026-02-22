@@ -18,7 +18,6 @@ private:
         std::string file_path;
         int pin_count = 0;
         
-        bool isOccupied() const { return page != nullptr; }
         void clear() { *this = Frame{}; }
     };
     std::array<Frame, MAX_FRAME_COUNT> frames_;

@@ -77,7 +77,7 @@ bool FrameDirectory::isPinned(int frameID) const
 std::optional<int> FrameDirectory::findVictimFrame()
 {
     for (int i = 0; i < MAX_FRAME_COUNT; ++i) {
-        if (frames_[i].isOccupied() && frames_[i].pin_count == 0) {
+        if (frames_[i].pin_count == 0) {
             spdlog::debug("Found victim frame {}", i);
             return i;
         }

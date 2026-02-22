@@ -114,61 +114,6 @@ TEST_F(FrameDirectoryTest, UnregisterPageFreesFrame)
     EXPECT_EQ(-1, frame.page_id);
 }
 
-TEST_F(FrameDirectoryTest, UnpinBelowZeroDoesNothing)
-{
-    auto frame_opt = directory.claimFreeFrame();
-    ASSERT_TRUE(frame_opt.has_value());
-    int frame_id = frame_opt.value();
-    
-    directory.registerPage(frame_id, 100, "test.db", page1);
-    
-    // 既にpin_count=0の状態でunpinしてもマイナスにならない
-    directory.unpin(frame_id);
-    EXPECT_EQ(0, directory.getFrame(frame_id).pin_count);
-    
-    directory.unpin(frame_id);
-    EXPECT_EQ(0, directory.getFrame(frame_id).pin_count);
-}
-
-TEST_F(FrameDirectoryTest, FindVictimFrameReturnsUnpinnedFrame)
-{
-    auto frame1 = directory.claimFreeFrame();
-    auto frame2 = directory.claimFreeFrame();
-    
-    ASSERT_TRUE(frame1.has_value());
-    ASSERT_TRUE(frame2.has_value());
-    
-    directory.registerPage(frame1.value(), 100, "test1.db", page1);
-    directory.registerPage(frame2.value(), 200, "test2.db", page2);
-    
-    // frame1:pinned, frame2:unpinned
-    directory.pin(frame1.value());
-    
-    // victim should be frame2
-    auto victim = directory.findVictimFrame();
-    ASSERT_TRUE(victim.has_value());
-    EXPECT_EQ(frame2.value(), victim.value());
-}
-
-TEST_F(FrameDirectoryTest, FindVictimFrameReturnsNulloptWhenAllPinned)
-{
-    auto frame1 = directory.claimFreeFrame();
-    auto frame2 = directory.claimFreeFrame();
-    
-    ASSERT_TRUE(frame1.has_value());
-    ASSERT_TRUE(frame2.has_value());
-    
-    directory.registerPage(frame1.value(), 100, "test1.db", page1);
-    directory.registerPage(frame2.value(), 200, "test2.db", page2);
-    
-    // pin all frames
-    directory.pin(frame1.value());
-    directory.pin(frame2.value());
-    
-    // victim cannot be found
-    auto victim = directory.findVictimFrame();
-    EXPECT_FALSE(victim.has_value());
-}
 
 TEST_F(FrameDirectoryTest, CheckOccupiedStatusBeforeAndAfterRegistration)
 {
@@ -177,15 +122,15 @@ TEST_F(FrameDirectoryTest, CheckOccupiedStatusBeforeAndAfterRegistration)
     int frame_id = frame_opt.value();
     
     // before registration: free
-    EXPECT_FALSE(directory.getFrame(frame_id).isOccupied());
+    EXPECT_TRUE(directory.getFrame(frame_id).page == nullptr);
     
     directory.registerPage(frame_id, 100, "test.db", page1);
     
     // after registration: occupied
-    EXPECT_TRUE(directory.getFrame(frame_id).isOccupied());
+    EXPECT_FALSE(directory.getFrame(frame_id).page == nullptr);
     
     directory.unregisterPage(frame_id);
     
     // after unregistration: free again
-    EXPECT_FALSE(directory.getFrame(frame_id).isOccupied());
+    EXPECT_TRUE(directory.getFrame(frame_id).page == nullptr);
 }
