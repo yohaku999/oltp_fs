@@ -25,9 +25,11 @@ private:
     //   - They are inseparable (SRP: separate responsibilities, but coupled lifecycle)
     // Future: Eviction strategies (FIFO/LRU/Clock) will be injected into FrameDirectory via Strategy pattern
     FrameDirectory frameDirectory_;
+    int obtainFreeFrame();
 public:
     static constexpr size_t MAX_FRAME_COUNT = 10;
     BufferPool();
     Page *getPage(int pageID, File &file);
+    Page *createPage(bool is_leaf, File &file);
     ~BufferPool();
 };

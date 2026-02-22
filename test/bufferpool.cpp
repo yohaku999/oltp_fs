@@ -38,35 +38,39 @@ protected:
 
 TEST_F(BufferPoolTest, GetPageSamePageReturnsCachedPage)
 {
-    Page *page1 = pool->getPage(1, *testFile);
-    Page *page1_again = pool->getPage(1, *testFile);
+    Page *page1 = pool->createPage(true, *testFile);
+    uint16_t page_id = testFile->getMaxPageID();
+    Page *page1_again = pool->getPage(page_id, *testFile);
     EXPECT_EQ(page1, page1_again);
 }
 
-TEST_F(BufferPoolTest, GetPageAllFramesFilledSuccessfully)
+TEST_F(BufferPoolTest, CreatePageAllFramesFilledSuccessfully)
 {
     for (size_t i = 0; i < BufferPool::MAX_FRAME_COUNT; ++i)
     {
-        Page *page = pool->getPage(static_cast<uint16_t>(i), *testFile);
+        Page *page = pool->createPage(true, *testFile);
         ASSERT_NE(page, nullptr);
     }
 }
 
 // test eviction by filling more than max frames and verifying evicted pages can be reloaded correctly and also make sure reloaded through storage as well.
-TEST_F(BufferPoolTest, GetPageWithEviction)
+TEST_F(BufferPoolTest, CreatePageWithEviction)
 {
     // Store copies of page contents for later comparison
     // 10 pages will be evicted.
     std::array<std::array<char, Page::PAGE_SIZE_BYTE>, BufferPool::MAX_FRAME_COUNT+10> page_copies;
+    std::array<uint16_t, BufferPool::MAX_FRAME_COUNT+10> page_ids;
     
     // Fill all frames and write unique data to each page
     for (size_t i = 0; i < BufferPool::MAX_FRAME_COUNT + 10; ++i)
     {
-        Page *page = pool->getPage(static_cast<uint16_t>(i), *testFile);
+        Page *page = pool->createPage(true, *testFile);
         ASSERT_NE(page, nullptr);
         
-        // Initialize and write unique data to each page
-        Page::initializePage(page->start_p_, true, static_cast<uint16_t>(i));
+        // Store the page ID (it's the max page ID after allocation)
+        page_ids[i] = testFile->getMaxPageID();
+        
+        // Write unique data to each page
         char test_data[50];
         std::snprintf(test_data, sizeof(test_data), "test_data_page_%zu", i);
         RecordCell cell(static_cast<uint16_t>(i * 10), test_data, std::strlen(test_data) + 1);
@@ -86,7 +90,7 @@ TEST_F(BufferPoolTest, GetPageWithEviction)
     // Verify all pages can still be accessed and their contents match
     for (size_t i = 0; i < BufferPool::MAX_FRAME_COUNT+10; ++i)
     {
-        Page *page = pool->getPage(static_cast<uint16_t>(i), *testFile);
+        Page *page = pool->getPage(page_ids[i], *testFile);
         ASSERT_NE(page, nullptr) << "Should be able to access/reload page " << i;
         
         // Compare the page content with the saved copy

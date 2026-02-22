@@ -12,6 +12,32 @@ BufferPool::BufferPool()
 {
 };
 
+Page* BufferPool::createPage(bool is_leaf, File &file)
+{
+    u_int16_t pageID = file.allocateNextPageId();
+    int frame_id = obtainFreeFrame();
+    char *frame_p = static_cast<char *>(buffer) + frame_id * BufferPool::FRAME_SIZE_BYTE;
+
+    // TODO: what i should set for the right most
+    Page* page = Page::initializePage(frame_p, is_leaf, 0);
+    page->markDirty();
+    frameDirectory_.registerPage(frame_id, pageID, file.getFilePath(), page);
+    spdlog::info("Created new page ID {} as {} page in frame ID {}", 
+                 pageID, is_leaf ? "leaf" : "internal", frame_id);
+    return page;
+}
+
+int BufferPool::obtainFreeFrame(){
+    auto free_frame = frameDirectory_.claimFreeFrame();
+    if(!free_frame.has_value()){
+        evictPage();
+        free_frame = frameDirectory_.claimFreeFrame();
+    }
+    int frame_id = free_frame.value();
+    zeroOutFrame(frame_id);
+    return frame_id;
+}
+
 Page *BufferPool::getPage(int pageID, File &file)
 {
     spdlog::info("Requesting page ID {} from file {}", pageID, file.getFilePath());
@@ -21,29 +47,16 @@ Page *BufferPool::getPage(int pageID, File &file)
         int frame_id = it.value();
         return frameDirectory_.getFrame(frame_id).page;
     }else{
-        // prepare frame
-        auto free_frame = frameDirectory_.claimFreeFrame();
-        if(!free_frame.has_value()){
-            spdlog::warn("No free frames available for page ID {} from file {}", pageID, file.getFilePath());
-            evictPage();
-            free_frame = frameDirectory_.claimFreeFrame();
-        }
-        int frame_id = free_frame.value();
-        zeroOutFrame(frame_id);
+        int frame_id = obtainFreeFrame();
         char *frame_p = static_cast<char *>(buffer) + frame_id * BufferPool::FRAME_SIZE_BYTE;
 
         // load page on frame
-        Page *page;
-        if (file.isPageIDUsed(pageID))
-        {
-            file.loadPageOnFrame(pageID, frame_p);
-            page = Page::wrap(frame_p);
+        if (!file.isPageIDUsed(pageID))
+        {   
+            throw std::logic_error(fmt::format("Should not expected to call getPage on uninitialized page ID {} in file {}", pageID, file.getFilePath()));
         }
-        else
-        {
-            // TODO: determine whether the new page is a leaf node or an intermediate node. all true for now.
-            page = Page::initializePage(frame_p, true, file.allocateNextPageId());
-        }
+        file.loadPageOnFrame(pageID, frame_p);
+        Page *page = Page::wrap(frame_p);
         frameDirectory_.registerPage(frame_id, pageID, file.getFilePath(), page);
         spdlog::info("Loaded page ID {} into frame ID {}", pageID, frame_id);
         return page;
