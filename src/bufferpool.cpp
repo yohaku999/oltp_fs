@@ -12,7 +12,7 @@ BufferPool::BufferPool()
 {
 };
 
-Page* BufferPool::createPage(bool is_leaf, File &file)
+u_int16_t BufferPool::createPage(bool is_leaf, File &file)
 {
     u_int16_t pageID = file.allocateNextPageId();
     int frame_id = obtainFreeFrame();
@@ -24,7 +24,7 @@ Page* BufferPool::createPage(bool is_leaf, File &file)
     frameDirectory_.registerPage(frame_id, pageID, file.getFilePath(), page);
     spdlog::info("Created new page ID {} as {} page in frame ID {}", 
                  pageID, is_leaf ? "leaf" : "internal", frame_id);
-    return page;
+    return pageID;
 }
 
 int BufferPool::obtainFreeFrame(){

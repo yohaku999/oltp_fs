@@ -38,8 +38,8 @@ protected:
 
 TEST_F(BufferPoolTest, GetPageSamePageReturnsCachedPage)
 {
-    Page *page1 = pool->createPage(true, *testFile);
-    uint16_t page_id = testFile->getMaxPageID();
+    uint16_t page_id = pool->createPage(true, *testFile);
+    Page *page1 = pool->getPage(page_id, *testFile);
     Page *page1_again = pool->getPage(page_id, *testFile);
     EXPECT_EQ(page1, page1_again);
 }
@@ -48,7 +48,8 @@ TEST_F(BufferPoolTest, CreatePageAllFramesFilledSuccessfully)
 {
     for (size_t i = 0; i < BufferPool::MAX_FRAME_COUNT; ++i)
     {
-        Page *page = pool->createPage(true, *testFile);
+        uint16_t page_id = pool->createPage(true, *testFile);
+        Page *page = pool->getPage(page_id, *testFile);
         ASSERT_NE(page, nullptr);
     }
 }
@@ -64,11 +65,12 @@ TEST_F(BufferPoolTest, CreatePageWithEviction)
     // Fill all frames and write unique data to each page
     for (size_t i = 0; i < BufferPool::MAX_FRAME_COUNT + 10; ++i)
     {
-        Page *page = pool->createPage(true, *testFile);
+        uint16_t page_id = pool->createPage(true, *testFile);
+        Page *page = pool->getPage(page_id, *testFile);
         ASSERT_NE(page, nullptr);
         
         // Store the page ID (it's the max page ID after allocation)
-        page_ids[i] = testFile->getMaxPageID();
+        page_ids[i] = page_id;
         
         // Write unique data to each page
         char test_data[50];

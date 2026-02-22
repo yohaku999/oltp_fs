@@ -30,6 +30,6 @@ public:
     static constexpr size_t MAX_FRAME_COUNT = 10;
     BufferPool();
     Page *getPage(int pageID, File &file);
-    Page *createPage(bool is_leaf, File &file);
+    u_int16_t createPage(bool is_leaf, File &file);
     ~BufferPool();
 };
