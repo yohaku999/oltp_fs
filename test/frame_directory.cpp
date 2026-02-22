@@ -134,3 +134,127 @@ TEST_F(FrameDirectoryTest, CheckOccupiedStatusBeforeAndAfterRegistration)
     // after unregistration: free again
     EXPECT_TRUE(directory.getFrame(frame_id).page == nullptr);
 }
+
+// TEST EVICTION
+TEST_F(FrameDirectoryTest, MultipleRegisterUnregisterCycles)
+{
+    // Perform multiple cycles of filling frames and freeing them
+    for (int cycle = 0; cycle < 3; ++cycle)
+    {
+        // Fill all frames
+        std::vector<int> claimed_frames;
+        for (size_t i = 0; i < FrameDirectory::MAX_FRAME_COUNT; ++i)
+        {
+            auto frame_opt = directory.claimFreeFrame();
+            ASSERT_TRUE(frame_opt.has_value()) << "Failed to claim frame in cycle " << cycle;
+            int frame_id = frame_opt.value();
+            claimed_frames.push_back(frame_id);
+            
+            // Create a unique page for this cycle and frame
+            std::array<char, 4096> buffer;
+            Page* page = Page::initializePage(buffer.data(), true, 0);
+            int page_id = cycle * 100 + i;
+            
+            directory.registerPage(frame_id, page_id, "test.db", page);
+            
+            // Verify registration
+            auto found = directory.findFrameByPage(page_id, "test.db");
+            EXPECT_TRUE(found.has_value());
+            EXPECT_EQ(frame_id, found.value());
+        }
+        
+        // All frames should be occupied now
+        auto no_frame = directory.claimFreeFrame();
+        EXPECT_FALSE(no_frame.has_value()) << "Should have no free frames after filling all";
+        
+        // Unregister all frames
+        for (int frame_id : claimed_frames)
+        {
+            directory.unregisterPage(frame_id);
+        }
+        
+        // All frames should be free again
+        for (size_t i = 0; i < FrameDirectory::MAX_FRAME_COUNT; ++i)
+        {
+            auto frame_opt = directory.claimFreeFrame();
+            EXPECT_TRUE(frame_opt.has_value()) << "Frame should be free after unregister in cycle " << cycle;
+            if (frame_opt.has_value())
+            {
+                directory.unregisterPage(frame_opt.value()); // Clean up for next iteration
+            }
+        }
+    }
+}
+
+TEST_F(FrameDirectoryTest, FrameReuseAfterUnregister)
+{
+    // Track all frame IDs used
+    std::set<int> used_frame_ids;
+    
+    // Fill all frames
+    std::vector<int> initial_frames;
+    for (size_t i = 0; i < FrameDirectory::MAX_FRAME_COUNT; ++i)
+    {
+        auto frame_opt = directory.claimFreeFrame();
+        ASSERT_TRUE(frame_opt.has_value());
+        int frame_id = frame_opt.value();
+        initial_frames.push_back(frame_id);
+        used_frame_ids.insert(frame_id);
+        
+        std::array<char, 4096> buffer;
+        Page* page = Page::initializePage(buffer.data(), true, 0);
+        directory.registerPage(frame_id, i, "test.db", page);
+    }
+    
+    // No free frames should be available
+    EXPECT_FALSE(directory.claimFreeFrame().has_value());
+    
+    // Unregister one frame
+    int unregistered_frame_id = initial_frames[0];
+    directory.unregisterPage(unregistered_frame_id);
+    
+    // Claim the freed frame
+    auto reused_frame_opt = directory.claimFreeFrame();
+    ASSERT_TRUE(reused_frame_opt.has_value());
+    int reused_frame_id = reused_frame_opt.value();
+    
+    // The reused frame should be exactly the same frame ID that was just unregistered
+    EXPECT_EQ(unregistered_frame_id, reused_frame_id)
+        << "Reused frame ID should be the same as the unregistered frame ID";
+    
+    // Register a new page in the reused frame
+    std::array<char, 4096> new_buffer;
+    Page* new_page = Page::initializePage(new_buffer.data(), true, 0);
+    directory.registerPage(reused_frame_id, 999, "new.db", new_page);
+    
+    // Verify the new registration
+    auto found = directory.findFrameByPage(999, "new.db");
+    ASSERT_TRUE(found.has_value());
+    EXPECT_EQ(reused_frame_id, found.value());
+}
+
+TEST_F(FrameDirectoryTest, FindVictimFrameWhenAllFramesFilled)
+{
+    // Fill all frames
+    for (size_t i = 0; i < FrameDirectory::MAX_FRAME_COUNT; ++i)
+    {
+        auto frame_opt = directory.claimFreeFrame();
+        ASSERT_TRUE(frame_opt.has_value());
+        
+        std::array<char, 4096> buffer;
+        Page* page = Page::initializePage(buffer.data(), true, 0);
+        directory.registerPage(frame_opt.value(), i, "test.db", page);
+    }
+    
+    // No free frames should be available
+    EXPECT_FALSE(directory.claimFreeFrame().has_value());
+    
+    // Should be able to find a victim frame for eviction.
+    auto victim_opt = directory.findVictimFrame();
+    ASSERT_TRUE(victim_opt.has_value())
+        << "Should find a victim frame when all frames are filled";
+    
+    // The victim frame should not be pinned
+    int victim_frame_id = victim_opt.value();
+    EXPECT_FALSE(directory.isPinned(victim_frame_id));
+}
