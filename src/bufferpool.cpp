@@ -10,61 +10,68 @@
 BufferPool::BufferPool()
 {
     buffer = operator new(BUFFER_SIZE_BYTE);
+    frameDirectory_ = FrameDirectory();
 };
 
 Page *BufferPool::getPage(int pageID, File &file)
 {
     spdlog::info("Requesting page ID {} from file {}", pageID, file.getFilePath());
     auto key = std::make_pair(pageID, file.getFilePath());
-    auto it = loadedPageIDs.find(key);
-    if (it != loadedPageIDs.end())
-    {
-        // page is already loaded in the buffer pool, return it directly.
-        return it->second;
-    }
-    else
-    {
-        for (int i = 0; i < BufferPool::MAX_FRAME_COUNT; ++i)
-        {
-            // search for a free frame
-            if (usedFrameIDs.find(i) == usedFrameIDs.end())
-            {
-                zeroOutFrame(i);
-                char *frame_p = static_cast<char *>(buffer) + i * BufferPool::FRAME_SIZE_BYTE;
-                if (!file.isPageIDUsed(pageID))
-                {
-                    file.loadPageOnFrame(pageID, frame_p);
-                }else{
-                    // Initialize a new page
-                     // TODO: determine whether the new page is a leaf node or an intermediate node.
-                    Page *new_page = Page::initializePage(frame_p, true, file.allocateNextPageId());
-                }
-                Page *page = Page::wrap(frame_p);
-                loadedPageIDs[key] = page;
-                usedFrameIDs.insert(i);
-                spdlog::info("Loaded page ID {} into frame ID {}", pageID, i);
-                return page;
-            }
+    auto it = frameDirectory_.findFrameByPage(pageID, file.getFilePath());
+    if (it.has_value()){
+        int frame_id = it.value();
+        return frameDirectory_.getFrame(frame_id).page;
+    }else{
+        if(!frameDirectory_.findFreeFrame().has_value()){
+            spdlog::warn("No free frames available for page ID {} from file {}", pageID, file.getFilePath());
+            evictPage();
         }
-        throw std::runtime_error("no free frame available");
-    };
+        int frame_id = frameDirectory_.findFreeFrame().value();
+        zeroOutFrame(frame_id);
+        char *frame_p = static_cast<char *>(buffer) + frame_id * BufferPool::FRAME_SIZE_BYTE;
+        if (file.isPageIDUsed(pageID))
+        {
+            file.loadPageOnFrame(pageID, frame_p);
+        }
+        else
+        {
+            // TODO: determine whether the new page is a leaf node or an intermediate node. all true for now.
+            Page::initializePage(frame_p, true, file.allocateNextPageId());
+        }
+        Page *page = Page::wrap(frame_p);
+        frameDirectory_.registerPage(frame_id, pageID, file.getFilePath(), page);
+        spdlog::info("Loaded page ID {} into frame ID {}", pageID, frame_id);
+        return page;
+    }
 };
 
-void BufferPool::evictPage(int frameID)
+void BufferPool::evictPage()
 {
-    char *frame_p = static_cast<char *>(buffer) + frameID * BufferPool::FRAME_SIZE_BYTE;
-    // buffered i/o, random access
-    std::fstream ofs(fileName, std::ios::in | std::ios::out | std::ios::binary);
-    // create file if not exist
-    if (!ofs)
+    // decide which unused page to evict.
+    auto victim_opt = frameDirectory_.findVictimFrame();
+    if (!victim_opt.has_value())
     {
-        ofs.open(fileName, std::ios::out | std::ios::binary);
-        ofs.close();
-        ofs.open(fileName, std::ios::in | std::ios::out | std::ios::binary);
+        // TODO: we should sleep or kill queries.
+        throw std::runtime_error("No victim frame found for eviction. All frames are pinned.");
     }
-    ofs.seekp(frameID * BufferPool::FRAME_SIZE_BYTE, std::ios::beg);
-    ofs.write(frame_p, BufferPool::FRAME_SIZE_BYTE);
+    // write the page back to the file if it's dirty.
+    int victim_frame_id = victim_opt.value();
+    auto &victim_frame = frameDirectory_.getFrame(victim_frame_id);
+    // REFACTOR: Have to cache these values before unregistering the page since the frame will be cleared in unregisterPage().
+    int evicted_page_id = victim_frame.page_id;
+    std::string evicted_file_path = victim_frame.file_path;
+    if (victim_frame.page->isDirty()){
+        // this clearDirty() call is not necessary, since it will be cleared when loading the page again with Page constructor.
+        // However, it can help to avoid confusion and potential bugs in the future.
+        victim_frame.page->clearDirty();
+        File file(victim_frame.file_path);
+        file.writePageOnFile(victim_frame.page_id, victim_frame.page->start_p_);
+        spdlog::info("Evicted dirty page ID {} from file {} in frame ID {}", victim_frame.page_id, victim_frame.file_path, victim_frame_id);
+    }
+    frameDirectory_.unregisterPage(victim_frame_id);
+    spdlog::info("Evicted page from frame ID {}, page ID {}", victim_frame_id, evicted_page_id);
 };
+
 
 // private methods
 void BufferPool::zeroOutFrame(int frameID)

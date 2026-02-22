@@ -5,6 +5,7 @@
 #include <utility>
 #include "page.h"
 #include "file.h"
+#include "frame_directory.h"
 
 class BufferPool
 {
@@ -16,11 +17,10 @@ private:
     static constexpr size_t MAX_PAGE_COUNT = 10;
     std::string fileName;
     void *buffer;
-    void evictPage(int frameID);
+    void evictPage();
     void loadPage(int pageID);
-    std::set<int> usedFrameIDs;
-    std::map<std::pair<int, std::string>, Page *> loadedPageIDs;
     void zeroOutFrame(int frameID);
+    FrameDirectory frameDirectory_;
 public:
     static constexpr size_t MAX_FRAME_COUNT = 10;
     BufferPool();
