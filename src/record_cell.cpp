@@ -1,6 +1,12 @@
 #include "record_cell.h"
 #include <vector>
 
+int RecordCell::getKey(const char *data_p)
+{
+    // Skip: FLAG (1 byte)
+    return readValue<int>(data_p + Cell::FLAG_FIELD_SIZE);
+}
+
 std::vector<std::byte> RecordCell::serialize() const
 {
     std::vector<std::byte> buffer(payloadSize());

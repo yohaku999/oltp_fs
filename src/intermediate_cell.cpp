@@ -18,6 +18,12 @@ IntermediateCell IntermediateCell::decodeCell(char *data_p)
     return IntermediateCell(cell_pageID, cell_key);
 }
 
+int IntermediateCell::getKey(const char *data_p)
+{
+    // Skip: FLAG (1 byte) + key_size (2 bytes) + page_id (2 bytes)
+    return readValue<int>(data_p + Cell::FLAG_FIELD_SIZE + sizeof(uint16_t) * 2);
+}
+
 std::vector<std::byte> IntermediateCell::serialize() const
 {
     std::vector<std::byte> buffer(payloadSize());

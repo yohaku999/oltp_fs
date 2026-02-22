@@ -16,6 +16,7 @@ private:
 
 public:
     static LeafCell decodeCell(char *data_p);
+    static int getKey(const char *data_p);
     LeafCell(int key, uint16_t heap_page_id, uint16_t slot_id)
         : key_size_(KEY_SIZE_BYTE), heap_page_id_(heap_page_id), slot_id_(slot_id), key_(key) {}
 

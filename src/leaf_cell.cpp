@@ -22,6 +22,12 @@ LeafCell LeafCell::decodeCell(char *data_p)
     return LeafCell(key, heap_page_id, slot_id);
 }
 
+int LeafCell::getKey(const char *data_p)
+{
+    // Skip: FLAG (1 byte) + key_size (2 bytes) + heap_page_id (2 bytes) + slot_id (2 bytes)
+    return readValue<int>(data_p + Cell::FLAG_FIELD_SIZE + sizeof(uint16_t) * 3);
+}
+
 std::vector<std::byte> LeafCell::serialize() const
 {
     std::vector<std::byte> buffer(payloadSize());
