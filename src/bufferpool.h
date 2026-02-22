@@ -9,8 +9,6 @@
 
 class BufferPool
 {
-    friend class BufferPoolTest;
-
 private:
     static constexpr size_t BUFFER_SIZE_BYTE = 4096 * 10;
     static constexpr size_t FRAME_SIZE_BYTE = 4096;
@@ -20,10 +18,10 @@ private:
     void evictPage();
     void loadPage(int pageID);
     void zeroOutFrame(int frameID);
-    FrameDirectory frameDirectory_;
+    std::unique_ptr<FrameDirectory> frameDirectory_;
 public:
     static constexpr size_t MAX_FRAME_COUNT = 10;
-    BufferPool();
+    BufferPool(std::unique_ptr<FrameDirectory> frameDirectory);
     Page *getPage(int pageID, File &file);
     ~BufferPool();
 };

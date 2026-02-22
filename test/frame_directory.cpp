@@ -22,24 +22,24 @@ protected:
     }
 };
 
-TEST_F(FrameDirectoryTest, TestFindFreeFrame)
+TEST_F(FrameDirectoryTest, TestClaimFreeFrame)
 {
     // use all frames
     for (int i = 0; i < FrameDirectory::MAX_FRAME_COUNT; ++i) {
-        auto frame_opt = directory.findFreeFrame();
+        auto frame_opt = directory.claimFreeFrame();
         ASSERT_TRUE(frame_opt.has_value());
         EXPECT_GE(frame_opt.value(), 0);
         EXPECT_LT(frame_opt.value(), FrameDirectory::MAX_FRAME_COUNT);
     }
     
     // check api returns nullopt when no free frames
-    auto no_frame = directory.findFreeFrame();
+    auto no_frame = directory.claimFreeFrame();
     EXPECT_FALSE(no_frame.has_value());
 }
 
 TEST_F(FrameDirectoryTest, RegisterAndFindPageByID)
 {
-    auto frame_opt = directory.findFreeFrame();
+    auto frame_opt = directory.claimFreeFrame();
     ASSERT_TRUE(frame_opt.has_value());
     int frame_id = frame_opt.value();
     
@@ -66,9 +66,9 @@ TEST_F(FrameDirectoryTest, FindNonExistentPageReturnsNullopt)
 
 TEST_F(FrameDirectoryTest, RegisterMultiplePagesInDifferentFrames)
 {
-    auto frame1 = directory.findFreeFrame();
-    auto frame2 = directory.findFreeFrame();
-    auto frame3 = directory.findFreeFrame();
+    auto frame1 = directory.claimFreeFrame();
+    auto frame2 = directory.claimFreeFrame();
+    auto frame3 = directory.claimFreeFrame();
     
     ASSERT_TRUE(frame1.has_value());
     ASSERT_TRUE(frame2.has_value());
@@ -91,7 +91,7 @@ TEST_F(FrameDirectoryTest, RegisterMultiplePagesInDifferentFrames)
 
 TEST_F(FrameDirectoryTest, UnregisterPageFreesFrame)
 {
-    auto frame_opt = directory.findFreeFrame();
+    auto frame_opt = directory.claimFreeFrame();
     ASSERT_TRUE(frame_opt.has_value());
     int frame_id = frame_opt.value();
     
@@ -116,7 +116,7 @@ TEST_F(FrameDirectoryTest, UnregisterPageFreesFrame)
 
 TEST_F(FrameDirectoryTest, UnpinBelowZeroDoesNothing)
 {
-    auto frame_opt = directory.findFreeFrame();
+    auto frame_opt = directory.claimFreeFrame();
     ASSERT_TRUE(frame_opt.has_value());
     int frame_id = frame_opt.value();
     
@@ -132,8 +132,8 @@ TEST_F(FrameDirectoryTest, UnpinBelowZeroDoesNothing)
 
 TEST_F(FrameDirectoryTest, FindVictimFrameReturnsUnpinnedFrame)
 {
-    auto frame1 = directory.findFreeFrame();
-    auto frame2 = directory.findFreeFrame();
+    auto frame1 = directory.claimFreeFrame();
+    auto frame2 = directory.claimFreeFrame();
     
     ASSERT_TRUE(frame1.has_value());
     ASSERT_TRUE(frame2.has_value());
@@ -152,8 +152,8 @@ TEST_F(FrameDirectoryTest, FindVictimFrameReturnsUnpinnedFrame)
 
 TEST_F(FrameDirectoryTest, FindVictimFrameReturnsNulloptWhenAllPinned)
 {
-    auto frame1 = directory.findFreeFrame();
-    auto frame2 = directory.findFreeFrame();
+    auto frame1 = directory.claimFreeFrame();
+    auto frame2 = directory.claimFreeFrame();
     
     ASSERT_TRUE(frame1.has_value());
     ASSERT_TRUE(frame2.has_value());
@@ -172,7 +172,7 @@ TEST_F(FrameDirectoryTest, FindVictimFrameReturnsNulloptWhenAllPinned)
 
 TEST_F(FrameDirectoryTest, CheckOccupiedStatusBeforeAndAfterRegistration)
 {
-    auto frame_opt = directory.findFreeFrame();
+    auto frame_opt = directory.claimFreeFrame();
     ASSERT_TRUE(frame_opt.has_value());
     int frame_id = frame_opt.value();
     

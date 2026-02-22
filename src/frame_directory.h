@@ -23,11 +23,12 @@ private:
     };
     std::array<Frame, MAX_FRAME_COUNT> frames_;
     std::map<std::pair<int, std::string>, int> page_to_frame_;
+    // optimization to find free frames in O(1) and avoid sequential search.
     std::unordered_set<int> free_frames_;
 public:
     FrameDirectory();
         
-    std::optional<int> findFreeFrame();
+    std::optional<int> claimFreeFrame();
     std::optional<int> findFrameByPage(int pageID, const std::string& filePath);
     
     void registerPage(int frameID, int pageID, const std::string& filePath, Page* page);

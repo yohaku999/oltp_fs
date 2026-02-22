@@ -8,7 +8,7 @@ FrameDirectory::FrameDirectory()
     }
 }
 
-std::optional<int> FrameDirectory::findFreeFrame()
+std::optional<int> FrameDirectory::claimFreeFrame()
 {
     if (free_frames_.empty()) {
         return std::nullopt;
