@@ -18,10 +18,16 @@ private:
     void evictPage();
     void loadPage(int pageID);
     void zeroOutFrame(int frameID);
-    std::unique_ptr<FrameDirectory> frameDirectory_;
+    // Design Intent:
+    // BufferPool and FrameDirectory are tightly coupled (1:1, same lifetime).
+    // FrameDirectory is held by value (not pointer) because:
+    //   - No polymorphism needed for FrameDirectory itself
+    //   - They are inseparable (SRP: separate responsibilities, but coupled lifecycle)
+    // Future: Eviction strategies (FIFO/LRU/Clock) will be injected into FrameDirectory via Strategy pattern
+    FrameDirectory frameDirectory_;
 public:
     static constexpr size_t MAX_FRAME_COUNT = 10;
-    BufferPool(std::unique_ptr<FrameDirectory> frameDirectory);
+    BufferPool();
     Page *getPage(int pageID, File &file);
     ~BufferPool();
 };
