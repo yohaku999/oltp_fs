@@ -19,6 +19,7 @@ Page* Page::initializePage(char *start_p, bool is_leaf, uint16_t rightMostChildP
 }
 
 Page* Page::wrap(char *start_p){
+    // FIX: potential memory leak?
     Page *page = new Page(start_p);
     return page;
 };
