@@ -1,6 +1,9 @@
 #include "frame_directory.h"
 #include <spdlog/spdlog.h>
-
+#include <optional>
+#include <utility>
+#include <vector>
+#include <random>
 FrameDirectory::FrameDirectory()
 {
     for (int i = 0; i < MAX_FRAME_COUNT; ++i) {
@@ -30,9 +33,9 @@ std::optional<int> FrameDirectory::findFrameByPage(int pageID, const std::string
     return std::nullopt;
 }
 
-void FrameDirectory::registerPage(int frameID, int pageID, const std::string& filePath, Page* page)
+void FrameDirectory::registerPage(int frameID, int pageID, const std::string& filePath, std::unique_ptr<Page> page)
 {
-    frames_[frameID].page = page;
+    frames_[frameID].page = std::move(page);
     frames_[frameID].page_id = pageID;
     frames_[frameID].file_path = filePath;
     frames_[frameID].pin_count = 0;
@@ -52,7 +55,7 @@ void FrameDirectory::unregisterPage(int frameID)
     
     free_frames_.insert(frameID);
     
-    spdlog::debug("Unregistered page from frame {}", frameID);
+    spdlog::debug("Unregistered and deleted page from frame {}", frameID);
 }
 
 void FrameDirectory::pin(int frameID)
@@ -76,16 +79,28 @@ bool FrameDirectory::isPinned(int frameID) const
 
 std::optional<int> FrameDirectory::findVictimFrame()
 {
+    std::vector<int> candidates;
     for (int i = 0; i < MAX_FRAME_COUNT; ++i) {
-        if (frames_[i].pin_count == 0) {
-            spdlog::debug("Found victim frame {}", i);
-            return i;
+        if (frames_[i].pin_count == 0 && frames_[i].page != nullptr) {
+            candidates.push_back(i);
         }
     }
     
-    spdlog::warn("No evictable frames found (all pinned or empty)");
-    return std::nullopt;
+    if (candidates.empty()) {
+        spdlog::warn("No evictable frames found (all pinned or empty)");
+        return std::nullopt;
+    }
+    
+    // Random selection from candidates
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> dis(0, candidates.size() - 1);
+    int victim = candidates[dis(gen)];
+    
+    spdlog::debug("Found victim frame {} (randomly selected from {} candidates)", victim, candidates.size());
+    return victim;
 }
+
 
 const FrameDirectory::Frame& FrameDirectory::getFrame(int frameID) const
 {

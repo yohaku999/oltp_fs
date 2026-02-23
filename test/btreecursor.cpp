@@ -43,7 +43,7 @@ protected:
     static void initializeLeafPage(File &file)
     {
         std::array<char, Page::PAGE_SIZE_BYTE> buffer{};
-        new Page(buffer.data(), true, 0, 0);
+        auto page = std::make_unique<Page>(buffer.data(), true, 0, 0);
         file.writePageOnFile(0, buffer.data());
     }
 };

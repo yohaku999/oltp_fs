@@ -1,6 +1,7 @@
 #include "../src/frame_directory.h"
 #include "../src/page.h"
 #include <array>
+#include <memory>
 #include <gtest/gtest.h>
 
 class FrameDirectoryTest : public ::testing::Test
@@ -10,15 +11,15 @@ protected:
     std::array<char, 4096> page_buffer1;
     std::array<char, 4096> page_buffer2;
     std::array<char, 4096> page_buffer3;
-    Page* page1;
-    Page* page2;
-    Page* page3;
+    std::unique_ptr<Page> page1;
+    std::unique_ptr<Page> page2;
+    std::unique_ptr<Page> page3;
 
     void SetUp() override
     {
-        page1 = new Page(page_buffer1.data(), true, 0, 1);
-        page2 = new Page(page_buffer2.data(), true, 0, 2);
-        page3 = new Page(page_buffer3.data(), true, 0, 3);
+        page1 = std::make_unique<Page>(page_buffer1.data(), true, 0, 1);
+        page2 = std::make_unique<Page>(page_buffer2.data(), true, 0, 2);
+        page3 = std::make_unique<Page>(page_buffer3.data(), true, 0, 3);
     }
 };
 
@@ -43,7 +44,7 @@ TEST_F(FrameDirectoryTest, RegisterAndFindPageByID)
     ASSERT_TRUE(frame_opt.has_value());
     int frame_id = frame_opt.value();
     
-    directory.registerPage(frame_id, 100, "test.db", page1);
+    directory.registerPage(frame_id, 100, "test.db", std::move(page1));
     
     // search frame by pageID
     auto found_frame = directory.findFrameByPage(100, "test.db");
@@ -52,10 +53,13 @@ TEST_F(FrameDirectoryTest, RegisterAndFindPageByID)
     
     // checkinside frame details
     const auto& frame = directory.getFrame(frame_id);
-    EXPECT_EQ(page1, frame.page);
+    EXPECT_NE(nullptr, frame.page);
     EXPECT_EQ(100, frame.page_id);
     EXPECT_EQ("test.db", frame.file_path);
     EXPECT_EQ(0, frame.pin_count);
+    
+    // Clean up
+    directory.unregisterPage(frame_id);
 }
 
 TEST_F(FrameDirectoryTest, FindNonExistentPageReturnsNullopt)
@@ -74,9 +78,9 @@ TEST_F(FrameDirectoryTest, RegisterMultiplePagesInDifferentFrames)
     ASSERT_TRUE(frame2.has_value());
     ASSERT_TRUE(frame3.has_value());
     
-    directory.registerPage(frame1.value(), 10, "file1.db", page1);
-    directory.registerPage(frame2.value(), 20, "file2.db", page2);
-    directory.registerPage(frame3.value(), 30, "file1.db", page3);
+    directory.registerPage(frame1.value(), 10, "file1.db", std::move(page1));
+    directory.registerPage(frame2.value(), 20, "file2.db", std::move(page2));
+    directory.registerPage(frame3.value(), 30, "file1.db", std::move(page3));
     
     // each page can be found by its pageID and filePath
     auto found1 = directory.findFrameByPage(10, "file1.db");
@@ -87,6 +91,11 @@ TEST_F(FrameDirectoryTest, RegisterMultiplePagesInDifferentFrames)
     EXPECT_EQ(frame1.value(), found1.value());
     EXPECT_EQ(frame2.value(), found2.value());
     EXPECT_EQ(frame3.value(), found3.value());
+    
+    // Clean up
+    directory.unregisterPage(frame1.value());
+    directory.unregisterPage(frame2.value());
+    directory.unregisterPage(frame3.value());
 }
 
 TEST_F(FrameDirectoryTest, UnregisterPageFreesFrame)
@@ -95,7 +104,7 @@ TEST_F(FrameDirectoryTest, UnregisterPageFreesFrame)
     ASSERT_TRUE(frame_opt.has_value());
     int frame_id = frame_opt.value();
     
-    directory.registerPage(frame_id, 100, "test.db", page1);
+    directory.registerPage(frame_id, 100, "test.db", std::move(page1));
     
     // check registerd
     auto found = directory.findFrameByPage(100, "test.db");
@@ -124,7 +133,7 @@ TEST_F(FrameDirectoryTest, CheckOccupiedStatusBeforeAndAfterRegistration)
     // before registration: free
     EXPECT_TRUE(directory.getFrame(frame_id).page == nullptr);
     
-    directory.registerPage(frame_id, 100, "test.db", page1);
+    directory.registerPage(frame_id, 100, "test.db", std::move(page1));
     
     // after registration: occupied
     EXPECT_FALSE(directory.getFrame(frame_id).page == nullptr);
@@ -152,10 +161,10 @@ TEST_F(FrameDirectoryTest, MultipleRegisterUnregisterCycles)
             
             // Create a unique page for this cycle and frame
             std::array<char, 4096> buffer;
-            Page* page = new Page(buffer.data(), true, 0, i);
+            auto page = std::make_unique<Page>(buffer.data(), true, 0, i);
             int page_id = cycle * 100 + i;
             
-            directory.registerPage(frame_id, page_id, "test.db", page);
+            directory.registerPage(frame_id, page_id, "test.db", std::move(page));
             
             // Verify registration
             auto found = directory.findFrameByPage(page_id, "test.db");
@@ -202,8 +211,8 @@ TEST_F(FrameDirectoryTest, FrameReuseAfterUnregister)
         used_frame_ids.insert(frame_id);
         
         std::array<char, 4096> buffer;
-        Page* page = new Page(buffer.data(), true, 0, i);
-        directory.registerPage(frame_id, i, "test.db", page);
+        auto page = std::make_unique<Page>(buffer.data(), true, 0, i);
+        directory.registerPage(frame_id, i, "test.db", std::move(page));
     }
     
     // No free frames should be available
@@ -224,8 +233,8 @@ TEST_F(FrameDirectoryTest, FrameReuseAfterUnregister)
     
     // Register a new page in the reused frame
     std::array<char, 4096> new_buffer;
-    Page* new_page = new Page(new_buffer.data(), true, 0, 99);
-    directory.registerPage(reused_frame_id, 999, "new.db", new_page);
+    auto new_page = std::make_unique<Page>(new_buffer.data(), true, 0, 99);
+    directory.registerPage(reused_frame_id, 999, "new.db", std::move(new_page));
     
     // Verify the new registration
     auto found = directory.findFrameByPage(999, "new.db");
@@ -242,8 +251,8 @@ TEST_F(FrameDirectoryTest, FindVictimFrameWhenAllFramesFilled)
         ASSERT_TRUE(frame_opt.has_value());
         
         std::array<char, 4096> buffer;
-        Page* page = new Page(buffer.data(), true, 0, i);
-        directory.registerPage(frame_opt.value(), i, "test.db", page);
+        auto page = std::make_unique<Page>(buffer.data(), true, 0, i);
+        directory.registerPage(frame_opt.value(), i, "test.db", std::move(page));
     }
     
     // No free frames should be available

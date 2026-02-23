@@ -6,6 +6,7 @@
 #include <string>
 #include <optional>
 #include <cstdint>
+#include <memory>
 
 class FrameDirectory {
 public:
@@ -13,7 +14,7 @@ public:
     
 private:
     struct Frame {
-        Page* page = nullptr;
+        std::unique_ptr<Page> page = nullptr;
         int page_id = -1;
         std::string file_path;
         int pin_count = 0;
@@ -30,7 +31,7 @@ public:
     std::optional<int> claimFreeFrame();
     std::optional<int> findFrameByPage(int pageID, const std::string& filePath);
     
-    void registerPage(int frameID, int pageID, const std::string& filePath, Page* page);
+    void registerPage(int frameID, int pageID, const std::string& filePath, std::unique_ptr<Page> page);
     void unregisterPage(int frameID);
     
     void pin(int frameID);
