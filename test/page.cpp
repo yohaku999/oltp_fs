@@ -10,8 +10,8 @@
 TEST(PageTest, InsertLeafPageAndFind)
 {
     std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
-    Page *page = Page::initializePage(page_data.data(), true, 0);
-    EXPECT_FALSE(page->isDirty());
+    Page *page = new Page(page_data.data(), true, 0, 1);
+    EXPECT_TRUE(page->isDirty());
     struct Entry
     {
         int key;
@@ -44,7 +44,7 @@ TEST(PageTest, InsertLeafPageAndFind)
 TEST(PageTest, InsertLeafPageRunsOutOfSpace)
 {
     std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
-    Page *page = Page::initializePage(page_data.data(), true, 0);
+    Page *page = new Page(page_data.data(), true, 0, 1);
 
     size_t successful_inserts = 0;
     bool saw_nullopt = false;
@@ -71,8 +71,8 @@ TEST(PageTest, InsertIntermediatePageAndFind)
 {
     std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
     uint16_t right_most_child_page_id = 999;
-    Page *page = Page::initializePage(page_data.data(), false, right_most_child_page_id);
-    EXPECT_FALSE(page->isDirty());
+    Page *page = new Page(page_data.data(), false, right_most_child_page_id, 1);
+    EXPECT_TRUE(page->isDirty());
     struct Entry
     {
         int key;
@@ -111,7 +111,7 @@ TEST(PageTest, InvalidateSlotSetsFlag)
 {
     auto assertInvalidation = [](bool is_leaf, auto make_cell) {
         std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
-        Page *page = Page::initializePage(page_data.data(), is_leaf, 0);
+        Page *page = new Page(page_data.data(), is_leaf, 0, 1);
         auto slot_id_opt = page->insertCell(make_cell());
         ASSERT_TRUE(slot_id_opt.has_value());
         uint16_t slot_id = slot_id_opt.value();
@@ -137,7 +137,7 @@ TEST(PageTest, InvalidateSlotSetsFlag)
 TEST(PageTest, LeafSearchSkipsInvalidEntries)
 {
     std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
-    Page *page = Page::initializePage(page_data.data(), true, 0);
+    Page *page = new Page(page_data.data(), true, 0, 1);
 
     auto slot_id_opt = page->insertCell(LeafCell(123, 1, 1));
     page->invalidateSlot(slot_id_opt.value());
@@ -149,8 +149,8 @@ TEST(PageTest, LeafSearchSkipsInvalidEntries)
 TEST(PageTest, LeafInsertInvalidateReuseSlot)
 {
     std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
-    Page *page = Page::initializePage(page_data.data(), true, 0);
-    EXPECT_FALSE(page->isDirty());
+    Page *page = new Page(page_data.data(), true, 0, 1);
+    EXPECT_TRUE(page->isDirty());
 
     auto first_slot = page->insertCell(LeafCell(1, 1, 1));
     ASSERT_TRUE(first_slot.has_value());
@@ -170,7 +170,7 @@ TEST(PageTest, LeafInsertInvalidateReuseSlot)
 TEST(PageTest, HeapInsertInvalidateReuseSlot)
 {
     std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
-    Page *page = Page::initializePage(page_data.data(), true, 0);
+    Page *page = new Page(page_data.data(), true, 0, 1);
 
     std::string payload = "heap-value";
     auto first_slot = page->insertCell(RecordCell(10, payload.data(), payload.size()));

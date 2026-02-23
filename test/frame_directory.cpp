@@ -16,9 +16,9 @@ protected:
 
     void SetUp() override
     {
-        page1 = Page::initializePage(page_buffer1.data(), true, 0);
-        page2 = Page::initializePage(page_buffer2.data(), true, 0);
-        page3 = Page::initializePage(page_buffer3.data(), true, 0);
+        page1 = new Page(page_buffer1.data(), true, 0, 1);
+        page2 = new Page(page_buffer2.data(), true, 0, 2);
+        page3 = new Page(page_buffer3.data(), true, 0, 3);
     }
 };
 
@@ -152,7 +152,7 @@ TEST_F(FrameDirectoryTest, MultipleRegisterUnregisterCycles)
             
             // Create a unique page for this cycle and frame
             std::array<char, 4096> buffer;
-            Page* page = Page::initializePage(buffer.data(), true, 0);
+            Page* page = new Page(buffer.data(), true, 0, i);
             int page_id = cycle * 100 + i;
             
             directory.registerPage(frame_id, page_id, "test.db", page);
@@ -202,7 +202,7 @@ TEST_F(FrameDirectoryTest, FrameReuseAfterUnregister)
         used_frame_ids.insert(frame_id);
         
         std::array<char, 4096> buffer;
-        Page* page = Page::initializePage(buffer.data(), true, 0);
+        Page* page = new Page(buffer.data(), true, 0, i);
         directory.registerPage(frame_id, i, "test.db", page);
     }
     
@@ -224,7 +224,7 @@ TEST_F(FrameDirectoryTest, FrameReuseAfterUnregister)
     
     // Register a new page in the reused frame
     std::array<char, 4096> new_buffer;
-    Page* new_page = Page::initializePage(new_buffer.data(), true, 0);
+    Page* new_page = new Page(new_buffer.data(), true, 0, 99);
     directory.registerPage(reused_frame_id, 999, "new.db", new_page);
     
     // Verify the new registration
@@ -242,7 +242,7 @@ TEST_F(FrameDirectoryTest, FindVictimFrameWhenAllFramesFilled)
         ASSERT_TRUE(frame_opt.has_value());
         
         std::array<char, 4096> buffer;
-        Page* page = Page::initializePage(buffer.data(), true, 0);
+        Page* page = new Page(buffer.data(), true, 0, i);
         directory.registerPage(frame_opt.value(), i, "test.db", page);
     }
     

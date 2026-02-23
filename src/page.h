@@ -32,6 +32,8 @@ private:
     uint16_t rightMostChildPageId() const;
     void setRightMostChildPageId(uint16_t page_id);
     bool is_dirty_ = false;
+    int pageID_ = -1;
+    int parentPageID_ = -1;
     
 
 public:
@@ -45,7 +47,18 @@ public:
     bool isDirty(){
         return is_dirty_;
     };
+    int getPageID() const {
+        return pageID_;
+    };
+    int getParentPageID() const {
+        return parentPageID_;
+    };
+    void setParentPageID(int parent_page_id) {
+        parentPageID_ = parent_page_id;
+    };
     bool isLeaf() const;
+    char* getSeparateKey();
+    void transferCellsTo(Page* new_page, char* separate_key);
     // The value range of cell is 0~4095 for now, so we can use uint16_t to store them.
     static constexpr size_t PAGE_SIZE_BYTE = 4096;
     static constexpr size_t CELL_POINTER_SIZE = sizeof(uint16_t);
@@ -56,7 +69,10 @@ public:
     bool hasKey(int key);
     std::optional<int> insertCell(const Cell &cell);
     void invalidateSlot(uint16_t slot_id);
-    static Page* initializePage(char *start_p, bool is_leaf, uint16_t rightMostChildPageId=0);
-    static Page* wrap(char *start_p);
-    Page(char *start_p) : start_p_(start_p) {};
+    
+    // Constructor for creating a new page
+    Page(char *start_p, bool is_leaf, uint16_t rightMostChildPageId, uint16_t page_id);
+    
+    // Constructor for wrapping existing page data
+    Page(char *start_p, uint16_t page_id);
 };

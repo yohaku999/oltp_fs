@@ -9,20 +9,23 @@
 #include <vector>
 #include <algorithm>
 
-Page* Page::initializePage(char *start_p, bool is_leaf, uint16_t rightMostChildPageId){
-    Page *page = new Page(start_p);
-    page->updateNodeTypeFlag(is_leaf);
-    page->updateSlotCount(0);
-    page->updateSlotDirectoryOffset(Page::PAGE_SIZE_BYTE);
-    page->setRightMostChildPageId(rightMostChildPageId);
-    return page;
+// Constructor for creating a new page
+Page::Page(char *start_p, bool is_leaf, uint16_t rightMostChildPageId, uint16_t page_id)
+    : start_p_(start_p), pageID_(page_id), parentPageID_(-1), is_dirty_(false)
+{
+    updateNodeTypeFlag(is_leaf);
+    updateSlotCount(0);
+    updateSlotDirectoryOffset(Page::PAGE_SIZE_BYTE);
+    setRightMostChildPageId(rightMostChildPageId);
+    markDirty();
 }
 
-Page* Page::wrap(char *start_p){
-    // FIX: potential memory leak?
-    Page *page = new Page(start_p);
-    return page;
-};
+// Constructor for wrapping existing page data
+Page::Page(char *start_p, uint16_t page_id)
+    : start_p_(start_p), pageID_(page_id), parentPageID_(-1), is_dirty_(false)
+{
+    // Existing page data is already initialized, so we don't need to do anything
+}
 
 bool Page::hasKey(int key)
 {   
@@ -93,6 +96,7 @@ uint16_t Page::findChildPage(int key)
     }
 
     // PERFORMANCE: binary search can be implemented here.
+    // collect valid intermediate cells.
     std::vector<IntermediateCell> cells;
     cells.reserve(getSlotCount());
     for (int idx = 0; idx < getSlotCount(); ++idx)
@@ -104,9 +108,13 @@ uint16_t Page::findChildPage(int key)
         }
         cells.push_back(getIntermediateCellOnXthPointer(idx));
     }
+
+    // sort cells based on key.
     std::sort(cells.begin(), cells.end(), [](const IntermediateCell &a, const IntermediateCell &b) {
         return a.key() < b.key();
     });
+
+    // return the first cell whose key is greater than or equal to the given key.
     for (const IntermediateCell &cell : cells)
     {
         if (cell.key() >= key)
@@ -114,6 +122,7 @@ uint16_t Page::findChildPage(int key)
             return cell.page_id();
         }
     }
+    spdlog::info("All keys in this page are smaller than the key {}. Going to the right most child page {}.", key, rightMostChildPageId());
     return rightMostChildPageId();
 }
 
@@ -122,6 +131,7 @@ uint16_t Page::findChildPage(int key)
  */
 std::optional<int> Page::insertCell(const Cell &cell)
 {
+    spdlog::info("Attempting to insert cell with key {} into page", cell.key());
     // check if the page has enough space to insert the new cell.
     uint16_t new_cell_offset = getSlotDirectoryOffset() - cell.payloadSize();
     char *cell_data_p = start_p_ + new_cell_offset;
@@ -185,6 +195,44 @@ char* Page::getXthSlotValue(int x)
     (void)value_size;
     cursor += sizeof(size_t);
     return cursor;
+}
+
+void Page::transferCellsTo(Page* new_page, char* separate_key)
+{
+    // transfer valid cells whose key is smaller than separate key to new_page.
+    int separate_key_value = LeafCell::getKey(separate_key);
+    
+    for (int cell_pointer_index = 0; cell_pointer_index < getSlotCount(); cell_pointer_index++){
+        char *cell_data = start_p_ + getCellOffsetOnXthPointer(cell_pointer_index);
+        if (!Cell::isValid(cell_data)) {
+            continue;
+        }
+        
+        int cell_key = LeafCell::getKey(cell_data);
+        if (cell_key < separate_key_value)
+        {
+            new_page->insertCell(LeafCell::decodeCell(cell_data));
+            // TODO: delete physically.
+            invalidateSlot(cell_pointer_index);
+        }
+    }
+}
+
+char* Page::getSeparateKey(){
+    // Since the cell pointers are sorted, just return the key value of the cell that the middle slot pointer points to.
+    int middle_slot_index = getSlotCount() / 2;
+    while (true){
+        char *cell_data = start_p_ + getCellOffsetOnXthPointer(middle_slot_index);
+        if (Cell::isValid(cell_data))
+        {
+            return cell_data;
+        }
+        middle_slot_index++;
+        if (middle_slot_index >= getSlotCount()){
+            // TODO: this is a corner case, but we should deal with this.
+            throw std::runtime_error("All cells in this page are invalid.");
+        }
+    }
 }
 
 void Page::invalidateSlot(uint16_t slot_id)

@@ -19,8 +19,7 @@ u_int16_t BufferPool::createPage(bool is_leaf, File &file)
     char *frame_p = static_cast<char *>(buffer) + frame_id * BufferPool::FRAME_SIZE_BYTE;
 
     // TODO: what i should set for the right most
-    Page* page = Page::initializePage(frame_p, is_leaf, 0);
-    page->markDirty();
+    Page* page = new Page(frame_p, is_leaf, 0, pageID);
     frameDirectory_.registerPage(frame_id, pageID, file.getFilePath(), page);
     spdlog::info("Created new page ID {} as {} page in frame ID {}", 
                  pageID, is_leaf ? "leaf" : "internal", frame_id);
@@ -56,7 +55,7 @@ Page *BufferPool::getPage(int pageID, File &file)
             throw std::logic_error(fmt::format("Should not expected to call getPage on uninitialized page ID {} in file {}", pageID, file.getFilePath()));
         }
         file.loadPageOnFrame(pageID, frame_p);
-        Page *page = Page::wrap(frame_p);
+        Page *page = new Page(frame_p, pageID);
         frameDirectory_.registerPage(frame_id, pageID, file.getFilePath(), page);
         spdlog::info("Loaded page ID {} into frame ID {}", pageID, frame_id);
         return page;
