@@ -1,5 +1,5 @@
 #include "frame_directory.h"
-#include <spdlog/spdlog.h>
+#include "logging.h"
 #include <optional>
 #include <utility>
 #include <vector>
@@ -19,7 +19,7 @@ std::optional<int> FrameDirectory::claimFreeFrame()
     
     int frame_id = *free_frames_.begin();
     free_frames_.erase(free_frames_.begin());
-    spdlog::debug("Found free frame {}", frame_id);
+    LOG_DEBUG("Found free frame {}", frame_id);
     return frame_id;
 }
 
@@ -43,7 +43,7 @@ void FrameDirectory::registerPage(int frameID, int pageID, const std::string& fi
     auto key = std::make_pair(pageID, filePath);
     page_to_frame_[key] = frameID;
     
-    spdlog::debug("Registered page {} from {} in frame {}", pageID, filePath, frameID);
+    LOG_DEBUG("Registered page {} from {} in frame {}", pageID, filePath, frameID);
 }
 
 void FrameDirectory::unregisterPage(int frameID)
@@ -55,20 +55,20 @@ void FrameDirectory::unregisterPage(int frameID)
     
     free_frames_.insert(frameID);
     
-    spdlog::debug("Unregistered and deleted page from frame {}", frameID);
+    LOG_DEBUG("Unregistered and deleted page from frame {}", frameID);
 }
 
 void FrameDirectory::pin(int frameID)
 {
     frames_[frameID].pin_count++;
-    spdlog::debug("Marked frame {} as pinned, count = {}", frameID, frames_[frameID].pin_count);
+    LOG_DEBUG("Marked frame {} as pinned, count = {}", frameID, frames_[frameID].pin_count);
 }
 
 void FrameDirectory::unpin(int frameID)
 {
     if (frames_[frameID].pin_count > 0) {
         frames_[frameID].pin_count--;
-        spdlog::debug("Marked frame {} as unpinned, count = {}", frameID, frames_[frameID].pin_count);
+        LOG_DEBUG("Marked frame {} as unpinned, count = {}", frameID, frames_[frameID].pin_count);
     }
 }
 
@@ -87,7 +87,12 @@ std::optional<int> FrameDirectory::findVictimFrame()
     }
     
     if (candidates.empty()) {
-        spdlog::warn("No evictable frames found (all pinned or empty)");
+        // Dump frame directory state to help debugging why no victim exists
+        std::string dump = "FrameDirectory dump: ";
+        for (int i = 0; i < MAX_FRAME_COUNT; ++i) {
+            dump += fmt::format("[id={} pin={} has_page={}] ", i, frames_[i].pin_count, frames_[i].page != nullptr);
+        }
+        LOG_WARN("No evictable frames found (all pinned or empty). {}", dump);
         return std::nullopt;
     }
     
@@ -97,7 +102,7 @@ std::optional<int> FrameDirectory::findVictimFrame()
     std::uniform_int_distribution<> dis(0, candidates.size() - 1);
     int victim = candidates[dis(gen)];
     
-    spdlog::debug("Found victim frame {} (randomly selected from {} candidates)", victim, candidates.size());
+    LOG_DEBUG("Found victim frame {} (randomly selected from {} candidates)", victim, candidates.size());
     return victim;
 }
 

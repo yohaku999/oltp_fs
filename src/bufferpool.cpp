@@ -2,6 +2,7 @@
 #include "page.h"
 #include "file.h"
 #include <spdlog/spdlog.h>
+#include "logging.h"
 #include <string>
 #include <fstream>
 
@@ -22,7 +23,7 @@ u_int16_t BufferPool::createPage(bool is_leaf, File &file)
     auto page = std::make_unique<Page>(frame_p, is_leaf, 0, pageID);
     Page* page_ptr = page.get();
     frameDirectory_.registerPage(frame_id, pageID, file.getFilePath(), std::move(page));
-    spdlog::info("Created new page ID {} as {} page in frame ID {}", 
+    LOG_INFO("Created new page ID {} as {} page in frame ID {}", 
                  pageID, is_leaf ? "leaf" : "internal", frame_id);
     return pageID;
 }
@@ -30,8 +31,14 @@ u_int16_t BufferPool::createPage(bool is_leaf, File &file)
 int BufferPool::obtainFreeFrame(){
     auto free_frame = frameDirectory_.claimFreeFrame();
     if(!free_frame.has_value()){
+        LOG_DEBUG("No free frame available, attempting eviction");
         evictPage();
         free_frame = frameDirectory_.claimFreeFrame();
+        if (!free_frame.has_value()) {
+            LOG_WARN("Eviction completed but no free frame reclaimed");
+        } else {
+            LOG_DEBUG("Eviction reclaimed free frame {}", free_frame.value());
+        }
     }
     int frame_id = free_frame.value();
     zeroOutFrame(frame_id);
@@ -40,7 +47,7 @@ int BufferPool::obtainFreeFrame(){
 
 Page *BufferPool::getPage(int pageID, File &file)
 {
-    spdlog::info("Requesting page ID {} from file {}", pageID, file.getFilePath());
+    LOG_INFO("Requesting page ID {} from file {}", pageID, file.getFilePath());
     auto key = std::make_pair(pageID, file.getFilePath());
     auto it = frameDirectory_.findFrameByPage(pageID, file.getFilePath());
     if (it.has_value()){
@@ -59,7 +66,7 @@ Page *BufferPool::getPage(int pageID, File &file)
         auto page = std::make_unique<Page>(frame_p, pageID);
         Page* page_ptr = page.get();
         frameDirectory_.registerPage(frame_id, pageID, file.getFilePath(), std::move(page));
-        spdlog::info("Loaded page ID {} into frame ID {}", pageID, frame_id);
+        LOG_INFO("Loaded page ID {} into frame ID {}", pageID, frame_id);
         return page_ptr;
     }
 };
@@ -85,17 +92,17 @@ void BufferPool::evictPage()
         victim_frame.page->clearDirty();
         File file(victim_frame.file_path);
         file.writePageOnFile(victim_frame.page_id, victim_frame.page->start_p_);
-        spdlog::info("Evicted dirty page ID {} from file {} in frame ID {}", victim_frame.page_id, victim_frame.file_path, victim_frame_id);
+        LOG_INFO("Evicted dirty page ID {} from file {} in frame ID {}", victim_frame.page_id, victim_frame.file_path, victim_frame_id);
     }
     frameDirectory_.unregisterPage(victim_frame_id);
-    spdlog::info("Evicted page from frame ID {}, page ID {}", victim_frame_id, evicted_page_id);
+    LOG_INFO("Evicted page from frame ID {}, page ID {}", victim_frame_id, evicted_page_id);
 };
 
 
 // private methods
 void BufferPool::zeroOutFrame(int frameID)
 {
-    spdlog::debug("Zeroing out frame ID: {}", frameID);
+    LOG_DEBUG("Zeroing out frame ID: {}", frameID);
     char *frame_p = static_cast<char *>(buffer) + frameID * BufferPool::FRAME_SIZE_BYTE;
     std::memset(frame_p, 0, BufferPool::FRAME_SIZE_BYTE);
 };

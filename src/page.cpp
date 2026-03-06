@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <stdexcept>
 #include <spdlog/spdlog.h>
+#include "logging.h"
 #include <optional>
 #include <utility>
 #include <vector>
@@ -68,7 +69,7 @@ std::optional<std::pair<uint16_t, uint16_t>> Page::findLeafRef(int key, bool do_
         char *cell_data = start_p_ + getCellOffsetOnXthPointer(idx);
         if (!Cell::isValid(cell_data))
         {
-            spdlog::debug("findLeafRef skipping invalid slot {}", idx);
+            LOG_DEBUG("findLeafRef skipping invalid slot {}", idx);
             continue;
         }
         LeafCell cell = getLeafCellOnXthPointer(idx);
@@ -78,13 +79,13 @@ std::optional<std::pair<uint16_t, uint16_t>> Page::findLeafRef(int key, bool do_
             // This design can be changed when designing deleted cell reclamation strategy and concurrency control.
             if (do_invalidate)
             {
-                spdlog::debug("findLeafRef invalidating slot {} for key {}", idx, key);
+                LOG_DEBUG("findLeafRef invalidating slot {} for key {}", idx, key);
                 invalidateSlot(idx);
             }
             return std::make_pair(cell.heap_page_id(), cell.slot_id());
         }
     }
-    spdlog::info("key {} not found in this page.", key);
+    LOG_INFO("key {} not found in this page.", key);
     return std::nullopt;
 }
 
@@ -122,7 +123,7 @@ uint16_t Page::findChildPage(int key)
             return cell.page_id();
         }
     }
-    spdlog::info("All keys in this page are smaller than the key {}. Going to the right most child page {}.", key, rightMostChildPageId());
+    LOG_INFO("All keys in this page are smaller than the key {}. Going to the right most child page {}.", key, rightMostChildPageId());
     return rightMostChildPageId();
 }
 
@@ -131,14 +132,14 @@ uint16_t Page::findChildPage(int key)
  */
 std::optional<int> Page::insertCell(const Cell &cell)
 {
-    spdlog::info("Attempting to insert cell with key {} into page", cell.key());
+    LOG_INFO("Attempting to insert cell with key {} into page", cell.key());
     // check if the page has enough space to insert the new cell.
     uint16_t new_cell_offset = getSlotDirectoryOffset() - cell.payloadSize();
     char *cell_data_p = start_p_ + new_cell_offset;
     char *cell_ptr_end_p = start_p_ + Page::HEADDER_SIZE_BYTE + Page::CELL_POINTER_SIZE * (getSlotCount()+1);
     if (!(cell_data_p > cell_ptr_end_p))
     {
-        spdlog::info("This page does not have enough space to insert the cell anymore.");
+        LOG_INFO("This page does not have enough space to insert the cell anymore.");
         return std::nullopt;
     }
 
@@ -157,7 +158,7 @@ std::optional<int> Page::insertCell(const Cell &cell)
 
     this->markDirty();
 
-    spdlog::info("Inserted a new cell with key {} into page. New slot count: {}, new slot directory offset: {}", cell.key(), getSlotCount(), getSlotDirectoryOffset());
+    LOG_INFO("Inserted a new cell with key {} into page. New slot count: {}, new slot directory offset: {}", cell.key(), getSlotCount(), getSlotDirectoryOffset());
     return getSlotCount() - 1;
 }
 

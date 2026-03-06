@@ -8,6 +8,7 @@
 #include <stdexcept>
 #include <unordered_map>
 #include <spdlog/spdlog.h>
+#include "logging.h"
 
 std::unordered_map<std::string, std::weak_ptr<std::fstream>> File::stream_cache_;
 
@@ -101,11 +102,11 @@ File::~File()
     }
     catch (const std::exception &ex)
     {
-        spdlog::error("failed to close file {} in destructor: {}", filePath_, ex.what());
+        LOG_ERROR("failed to close file {} in destructor: {}", filePath_, ex.what());
     }
     catch (...)
     {
-        spdlog::error("failed to close file {} in destructor: unknown error", filePath_);
+        LOG_ERROR("failed to close file {} in destructor: unknown error", filePath_);
     }
 }
 
@@ -113,7 +114,7 @@ File::File(const std::string &filePath, uint16_t max_page_id) : filePath_(filePa
 {
     const bool is_new_file = !std::filesystem::exists(filePath_) ||
                              std::filesystem::file_size(filePath_) == 0;
-    spdlog::info("initializing File object for path: {}, is_new_file: {}, provided max_page_id: {}", filePath_, is_new_file, max_page_id);
+    LOG_INFO("initializing File object for path: {}, is_new_file: {}, provided max_page_id: {}", filePath_, is_new_file, max_page_id);
 
     if (!is_new_file)
     {
@@ -124,7 +125,7 @@ File::File(const std::string &filePath, uint16_t max_page_id) : filePath_(filePa
         std::unique_ptr<char[]> headder = std::make_unique<char[]>(File::HEADDER_SIZE_BYTE);
         stream_->read(headder.get(), File::HEADDER_SIZE_BYTE);
         max_page_id_ = readValue<uint16_t>(headder.get());
-        spdlog::info("opened existing file: {}, max_page_id loaded from header: {}", filePath_, max_page_id_);
+        LOG_INFO("opened existing file: {}, max_page_id loaded from header: {}", filePath_, max_page_id_);
     }
     else
     {
@@ -133,7 +134,7 @@ File::File(const std::string &filePath, uint16_t max_page_id) : filePath_(filePa
         {
             throw std::runtime_error("failed to create file: " + filePath_);
         }
-        spdlog::info("created new file: {}", filePath_);
+        LOG_INFO("created new file: {}", filePath_);
         creator.close();
 
         initializeStreamIfClosed();

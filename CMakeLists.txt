@@ -22,6 +22,7 @@ add_library(dbfs_src
     src/record_cell.cpp
     src/btreecursor.cpp
     src/frame_directory.cpp
+    src/logging.cpp
 )
 
 target_include_directories(dbfs_src PUBLIC src)
