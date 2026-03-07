@@ -17,7 +17,9 @@ private:
     std::shared_ptr<std::fstream> stream_;
     uint16_t max_page_id_;
     uint16_t root_page_id_;
+    bool header_dirty_ = false;
     std::string filePath_;
+    void writeHeader();
 public:
     static constexpr size_t HEADDER_SIZE_BYTE = 256;
     static constexpr size_t MAX_PAGE_ID_SIZE_BYTE = 2;
@@ -34,5 +36,6 @@ public:
     uint16_t getRootPageID() const { return root_page_id_; }
     void setRootPageID(uint16_t root_page_id){
         root_page_id_ = root_page_id;
+        header_dirty_ = true;
     };
 };

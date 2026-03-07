@@ -24,15 +24,48 @@ uint16_t File::allocateNextPageId()
 		throw std::overflow_error("page ID overflow");
 	}
 	max_page_id_ += 1;
+	header_dirty_ = true;
 	return max_page_id_;
 }
 
+void File::writeHeader()
+{
+    initializeStreamIfClosed();
+
+    char buffer[File::HEADDER_SIZE_BYTE];
+    std::memset(buffer, 0, sizeof(buffer));
+
+    std::memcpy(buffer, &max_page_id_, sizeof(uint16_t));
+    std::memcpy(buffer + File::MAX_PAGE_ID_SIZE_BYTE, &root_page_id_, sizeof(uint16_t));
+
+    stream_->seekp(0, std::ios::beg);
+    if (!*stream_)
+    {
+        stream_->clear();
+        throw std::runtime_error("failed to seek file when writing header: " + filePath_);
+    }
+
+    stream_->write(buffer, sizeof(buffer));
+    if (!*stream_)
+    {
+        stream_->clear();
+        throw std::runtime_error("failed to write header: " + filePath_);
+    }
+
+    stream_->clear();
+    header_dirty_ = false;
+}
+
+/**
+ * Ensure stream_ holds an open fstream for this file path,
+ * reusing a cached shared instance or creating a new one if needed.
+ * 
+ * This way we keep at most one OS-level stream per file path while still
+ * allowing multiple File objects to share it safely via shared_ptr/weak_ptr.
+ * The last owning File closes the underlying fstream when its shared_ptr is released.
+ */
 void File::initializeStreamIfClosed()
 {
-    /**
-     * Maintain a per-instance stream_ (RAII owner) while caching weak references in stream_cache_.
-     * The strong owner guarantees proper close(); closing is deferred until the last owner releases stream_.
-     */
     if (stream_ && stream_->is_open())
     {
         return;
@@ -64,15 +97,34 @@ void File::initializeStreamIfClosed()
 
 void File::close()
 {
+    if (header_dirty_)
+    {
+        try
+        {
+            writeHeader();
+        }
+        catch (const std::exception &ex)
+        {
+            LOG_ERROR("failed to write header for file {} during close: {}", filePath_, ex.what());
+            // fall through and still attempt to close the stream
+        }
+        catch (...)
+        {
+            LOG_ERROR("failed to write header for file {} during close: unknown error", filePath_);
+            // fall through and still attempt to close the stream
+        }
+    }
+
+    // just reset the shared_ptr if there are other owners
     if (stream_.use_count() > 1)
     {
         stream_.reset();
         return;
     }
 
+    // Close the stream and remove from cache otherwise.
     stream_->clear();
     stream_->flush();
-    // fsync is not directly available on std::fstream, platform-specific implementation is required.
     stream_->close();
 
     if (stream_->fail())
@@ -139,6 +191,10 @@ File::File(const std::string &filePath, uint16_t max_page_id) : filePath_(filePa
         creator.close();
 
         initializeStreamIfClosed();
+        // For a new file, header has not been written yet.
+        max_page_id_ = 0;
+        root_page_id_ = 0;
+        header_dirty_ = true;
     }
 }
 

@@ -74,21 +74,24 @@ TEST_F(FileTest, LoadMaxPageIdFromHeader)
     EXPECT_TRUE(file_p->isPageIDUsed(next));
 }
 
-TEST_F(FileTest, LoadMaxAndRootPageIdFromHeader)
+TEST_F(FileTest, TestPersistanceLoadFromHeader)
 {
     constexpr uint16_t persisted_max = 100;
     constexpr uint16_t persisted_root = 5;
 
+    for (uint16_t i = 0; i < persisted_max; ++i)
+    {
+        uint16_t pid = file_p->allocateNextPageId();
+        EXPECT_EQ(static_cast<uint16_t>(i + 1), pid);
+    }
+    EXPECT_EQ(persisted_max, file_p->getMaxPageID());
+
+    file_p->setRootPageID(persisted_root);
+
+    // Close File so the header is flushed to disk.
     file_p.reset();
 
-    std::vector<char> header(File::HEADDER_SIZE_BYTE, 0);
-    std::memcpy(header.data(), &persisted_max, sizeof(persisted_max));
-    std::memcpy(header.data() + File::MAX_PAGE_ID_SIZE_BYTE, &persisted_root, sizeof(persisted_root));
-
-    std::ofstream ofs(test_file_path_, std::ios::binary | std::ios::trunc);
-    ofs.write(header.data(), header.size());
-    ofs.close();
-
+    // Reopen and verify header was persisted correctly.
     file_p = std::make_unique<File>(test_file_path_);
 
     EXPECT_EQ(persisted_max, file_p->getMaxPageID());
