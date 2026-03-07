@@ -10,6 +10,7 @@
 #include <spdlog/spdlog.h>
 #include <stdexcept>
 #include "logging.h"
+#include <ostream>
 
 int BTreeCursor::findLeafPageID(BufferPool& pool, File& indexFile, int key)
 {
@@ -119,6 +120,7 @@ void BTreeCursor::insert(BufferPool& pool, File& indexFile, File& heapFile, int 
     LOG_INFO("Inserted record with key {} into heap page ID {} successfully.", key, targetPageID);
 
     // find the leaf page to insert the new record.
+    // OPTIMIZE : currently we are traversing the same path twice and can be omitted.
     int leaf_page_id = findLeafPageID(pool, indexFile, key);
     Page* leafPage = pool.getPage(leaf_page_id, indexFile);
     auto leaf_slot_id = leafPage->insertCell(LeafCell(key, targetPageID, insertedSlotID.value()));
@@ -175,4 +177,20 @@ void BTreeCursor::splitPage(BufferPool& pool, File& index_file, Page* old_page)
         pool.unpin(new_page, index_file);
     }
     pool.unpin(parent_page, index_file);
+}
+
+void BTreeCursor::dumpTree(BufferPool& pool, File& indexFile, std::ostream& os)
+{
+    const uint16_t maxPageId = indexFile.getMaxPageID();
+    for (uint16_t pid = 0; pid <= maxPageId; ++pid)
+    {
+        if (!indexFile.isPageIDUsed(pid))
+        {
+            continue;
+        }
+
+        Page* page = pool.getPage(pid, indexFile);
+        page->dump(os);
+        pool.unpin(page, indexFile);
+    }
 }

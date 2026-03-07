@@ -5,6 +5,7 @@
 #include <span>
 #include <utility>
 #include <optional>
+#include <ostream>
 /**
  * The structure of page is as follows:
  * | header (256 bytes) | cell pointer array (2 bytes per cell) | cells (variable size) |
@@ -77,4 +78,6 @@ public:
     
     // Constructor for wrapping existing page data
     Page(char *start_p, uint16_t page_id);
+
+    void dump(std::ostream& os);
 };

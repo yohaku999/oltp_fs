@@ -9,6 +9,7 @@
 #include <utility>
 #include <vector>
 #include <algorithm>
+#include <ostream>
 
 // Constructor for creating a new page
 Page::Page(char *start_p, bool is_leaf, uint16_t rightMostChildPageId, uint16_t page_id)
@@ -281,4 +282,42 @@ uint16_t Page::rightMostChildPageId() const
 void Page::setRightMostChildPageId(uint16_t page_id)
 {
     std::memcpy(start_p_ + RIGHT_MOST_CHILD_POINTER_OFFSET, &page_id, sizeof(uint16_t));
+}
+
+void Page::dump(std::ostream& os)
+{
+    os << "=== Page " << pageID_
+       << " (" << (isLeaf() ? "leaf" : "internal") << ") ===\n";
+    os << "parent=" << parentPageID_
+       << " slotCount=" << static_cast<int>(getSlotCount());
+    if (!isLeaf())
+    {
+        os << " rightMostChild=" << rightMostChildPageId();
+    }
+    os << "\n";
+
+    for (int i = 0; i < getSlotCount(); ++i)
+    {
+        char* cell_data = start_p_ + getCellOffsetOnXthPointer(i);
+        if (!Cell::isValid(cell_data))
+        {
+            os << "  [" << i << "] <invalid>\n";
+            continue;
+        }
+
+        if (isLeaf())
+        {
+            LeafCell c = getLeafCellOnXthPointer(i);
+            os << "  [" << i << "] Leaf  key=" << c.key()
+               << " heapPage=" << c.heap_page_id()
+               << " slot=" << c.slot_id() << "\n";
+        }
+        else
+        {
+            IntermediateCell c = getIntermediateCellOnXthPointer(i);
+            os << "  [" << i << "] Inter key=" << c.key()
+               << " childPage=" << c.page_id() << "\n";
+        }
+    }
+    os << "\n";
 }

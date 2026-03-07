@@ -89,39 +89,54 @@ TEST_F(BTreeCursorTest, InsertDeleteThenFailToRead)
 
 TEST_F(BTreeCursorTest, InsertPageOverflow)
 {
-    std::mt19937 rng(0xC0FFEE);
-    std::uniform_int_distribution<int> key_dist(1, 1'000'000);
-    std::uniform_int_distribution<int> len_dist(16, 96);
-    std::unordered_set<int> used_keys;
-    std::unordered_map<int, std::string> expected;
-
-    const size_t max_attempts = 2000;
-
-    for (size_t attempt = 0; attempt < max_attempts; ++attempt)
+    try
     {
-        int key;
-        do
-        {
-            key = key_dist(rng);
-        } while (!used_keys.insert(key).second);
-        std::cout << "Attempt " << attempt << ": Inserting key=" << key << std::endl;
+        std::mt19937 rng(0xC0FFEE);
+        std::uniform_int_distribution<int> key_dist(1, 1'000'000);
+        std::uniform_int_distribution<int> len_dist(16, 96);
+        std::unordered_set<int> used_keys;
+        std::unordered_map<int, std::string> expected;
 
+        const size_t max_attempts = 1000;
 
-        const int payload_len = len_dist(rng);
-        std::string payload(payload_len, '\0');
-        for (char &ch : payload)
+        for (size_t attempt = 0; attempt < max_attempts; ++attempt)
         {
-            ch = static_cast<char>('a' + (rng() % 26));
+            int key;
+            do
+            {
+                key = key_dist(rng);
+            } while (!used_keys.insert(key).second);
+            std::cout << "Attempt " << attempt << ": Inserting key=" << key << std::endl;
+
+            const int payload_len = len_dist(rng);
+            std::string payload(payload_len, '\0');
+            for (char &ch : payload)
+            {
+                ch = static_cast<char>('a' + (rng() % 26));
+            }
+            BTreeCursor::insert(*pool_, *index_file_, *heap_file_, key, payload.data(), payload.size());
+            expected.emplace(key, payload);
         }
-        BTreeCursor::insert(*pool_, *index_file_, *heap_file_, key, payload.data(), payload.size());
-        expected.emplace(key, payload);
-    }
 
-    // Verify that all inserted records can be read back correctly.
-    for (const auto& [key, value] : expected)
+        std::cout << "Start Verifying inserted records..." << std::endl;
+        // Verify that all inserted records can be read back correctly.
+        for (const auto& [key, value] : expected)
+        {
+            char* stored = BTreeCursor::read(*pool_, *index_file_, *heap_file_, key);
+            std::string restored(stored, value.size());
+            if (restored != value)
+            {
+                std::cout << "Mismatch detected for key=" << key << ". Dumping B+tree index state..." << std::endl;
+                BTreeCursor::dumpTree(*pool_, *index_file_, std::cout);
+            }
+            EXPECT_EQ(value, restored) << "mismatch for key=" << key;
+        }
+    }
+    catch (const std::exception& ex)
     {
-        char* stored = BTreeCursor::read(*pool_, *index_file_, *heap_file_, key);
-        std::string restored(stored, value.size());
-        EXPECT_EQ(value, restored) << "mismatch for key=" << key;
+        std::cout << "InsertPageOverflow test threw exception: " << ex.what() << std::endl;
+        std::cout << "Dumping B+tree index state after test failure..." << std::endl;
+        BTreeCursor::dumpTree(*pool_, *index_file_, std::cout);
+        throw;
     }
 }

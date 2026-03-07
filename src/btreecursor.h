@@ -2,6 +2,7 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <ostream>
 #include "bufferpool.h"
 
 /**
@@ -25,4 +26,6 @@ public:
     static void insert(BufferPool& pool, File& indexFile, File& heapFile, int key, char* value, size_t value_size);
     static void remove(BufferPool& pool, File& indexFile, File& heapFile, int key);
     static void update(BufferPool& pool, File& indexFile, File& heapFile, int key, char* value, size_t value_size);
+
+    static void dumpTree(BufferPool& pool, File& indexFile, std::ostream& os);
 };
