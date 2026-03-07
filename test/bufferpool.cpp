@@ -42,6 +42,8 @@ TEST_F(BufferPoolTest, GetPageSamePageReturnsCachedPage)
     Page *page1 = pool->getPage(page_id, *testFile);
     Page *page1_again = pool->getPage(page_id, *testFile);
     EXPECT_EQ(page1, page1_again);
+    pool->unpin(page1, *testFile);
+    pool->unpin(page1_again, *testFile);
 }
 
 TEST_F(BufferPoolTest, createNewPageAllFramesFilledSuccessfully)
@@ -51,6 +53,7 @@ TEST_F(BufferPoolTest, createNewPageAllFramesFilledSuccessfully)
         uint16_t page_id = pool->createNewPage(true, *testFile);
         Page *page = pool->getPage(page_id, *testFile);
         ASSERT_NE(page, nullptr);
+        pool->unpin(page, *testFile);
     }
 }
 
@@ -80,6 +83,7 @@ TEST_F(BufferPoolTest, createNewPageWithEviction)
         
         // Copy the page content
         std::memcpy(page_copies[i].data(), page->start_p_, Page::PAGE_SIZE_BYTE);
+        pool->unpin(page, *testFile);
     }
 
     // make sure file size has incresed by eviction.
@@ -98,5 +102,6 @@ TEST_F(BufferPoolTest, createNewPageWithEviction)
         // Compare the page content with the saved copy
         int cmp_result = std::memcmp(page->start_p_, page_copies[i].data(), Page::PAGE_SIZE_BYTE);
         EXPECT_EQ(cmp_result, 0) << "Page " << i << " content should match after eviction and reload";
+        pool->unpin(page, *testFile);
     }
 }
