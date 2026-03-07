@@ -125,7 +125,8 @@ File::File(const std::string &filePath, uint16_t max_page_id) : filePath_(filePa
         std::unique_ptr<char[]> headder = std::make_unique<char[]>(File::HEADDER_SIZE_BYTE);
         stream_->read(headder.get(), File::HEADDER_SIZE_BYTE);
         max_page_id_ = readValue<uint16_t>(headder.get());
-        LOG_INFO("opened existing file: {}, max_page_id loaded from header: {}", filePath_, max_page_id_);
+        root_page_id_ = readValue<uint16_t>(headder.get() + File::MAX_PAGE_ID_SIZE_BYTE);
+        LOG_INFO("opened existing file: {}, max_page_id loaded from header: {}, root_page_id loaded from header: {}", filePath_, max_page_id_, root_page_id_);
     }
     else
     {

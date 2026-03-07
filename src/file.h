@@ -16,6 +16,7 @@ private:
     static std::unordered_map<std::string, std::weak_ptr<std::fstream>> stream_cache_;
     std::shared_ptr<std::fstream> stream_;
     uint16_t max_page_id_;
+    uint16_t root_page_id_;
     std::string filePath_;
 public:
     static constexpr size_t HEADDER_SIZE_BYTE = 256;
@@ -30,4 +31,8 @@ public:
     void writePageOnFile(uint16_t const page_id, char *buffer);
     std::string getFilePath() const { return filePath_; }
     uint16_t getMaxPageID() const { return max_page_id_; }
+    uint16_t getRootPageID() const { return root_page_id_; }
+    void setRootPageID(uint16_t root_page_id){
+        root_page_id_ = root_page_id;
+    };
 };
