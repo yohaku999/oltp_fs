@@ -51,6 +51,7 @@ void File::writeHeader()
         stream_->clear();
         throw std::runtime_error("failed to write header: " + filePath_);
     }
+    LOG_INFO("Wrote header for file {}: max_page_id {}, root_page_id {}", filePath_, max_page_id_, root_page_id_);
 
     stream_->clear();
     header_dirty_ = false;
@@ -162,11 +163,11 @@ File::~File()
     }
 }
 
-File::File(const std::string &filePath, uint16_t max_page_id) : filePath_(filePath), max_page_id_(max_page_id)
+File::File(const std::string &filePath) : filePath_(filePath)
 {
     const bool is_new_file = !std::filesystem::exists(filePath_) ||
                              std::filesystem::file_size(filePath_) == 0;
-    LOG_INFO("initializing File object for path: {}, is_new_file: {}, provided max_page_id: {}", filePath_, is_new_file, max_page_id);
+    LOG_INFO("initializing File object for path: {}, is_new_file: {}", filePath_, is_new_file);
 
     if (!is_new_file)
     {

@@ -25,7 +25,7 @@ public:
     static constexpr size_t MAX_PAGE_ID_SIZE_BYTE = 2;
     uint16_t allocateNextPageId();
     bool isPageIDUsed(uint16_t page_id) const;
-    File(const std::string &filePath, uint16_t max_page_id=0);
+    File(const std::string &filePath);
     ~File();
     void initializeStreamIfClosed();
     void close();
