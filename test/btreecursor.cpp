@@ -9,6 +9,7 @@
 #include <random>
 #include <string>
 #include <unordered_set>
+#include <unordered_map>
 #include <vector>
 #include <gtest/gtest.h>
 
@@ -80,38 +81,47 @@ TEST_F(BTreeCursorTest, InsertDeleteThenFailToRead)
     char *value_ptr = payload.data();
     BTreeCursor::insert(*pool_, *index_file_, *heap_file_, key, value_ptr, payload.size());
 
-    // delete the record
     BTreeCursor::remove(*pool_, *index_file_, *heap_file_, key);
 
     // reading should now fail because the slot has been invalidated
     EXPECT_THROW({ BTreeCursor::read(*pool_, *index_file_, *heap_file_, key); }, std::runtime_error);
 }
 
-// TEST_F(BTreeCursorTest, InsertPageOverflow)
-// {
-//     std::mt19937 rng(0xC0FFEE);
-//     std::uniform_int_distribution<int> key_dist(1, 1'000'000);
-//     std::uniform_int_distribution<int> len_dist(16, 96);
-//     std::unordered_set<int> used_keys;
+TEST_F(BTreeCursorTest, InsertPageOverflow)
+{
+    std::mt19937 rng(0xC0FFEE);
+    std::uniform_int_distribution<int> key_dist(1, 1'000'000);
+    std::uniform_int_distribution<int> len_dist(16, 96);
+    std::unordered_set<int> used_keys;
+    std::unordered_map<int, std::string> expected;
 
-//     const size_t max_attempts = 20000;
+    const size_t max_attempts = 2000;
 
-//     for (size_t attempt = 0; attempt < max_attempts; ++attempt)
-//     {
-//         int key;
-//         do
-//         {
-//             key = key_dist(rng);
-//         } while (!used_keys.insert(key).second);
-//         std::cout << "Attempt " << attempt << ": Inserting key=" << key << std::endl;
+    for (size_t attempt = 0; attempt < max_attempts; ++attempt)
+    {
+        int key;
+        do
+        {
+            key = key_dist(rng);
+        } while (!used_keys.insert(key).second);
+        std::cout << "Attempt " << attempt << ": Inserting key=" << key << std::endl;
 
 
-//         const int payload_len = len_dist(rng);
-//         std::string payload(payload_len, '\0');
-//         for (char &ch : payload)
-//         {
-//             ch = static_cast<char>('a' + (rng() % 26));
-//         }
-//         EXPECT_NO_THROW(BTreeCursor::insert(*pool_, *index_file_, *heap_file_, key, payload.data(), payload.size()));
-//     }
-// }
+        const int payload_len = len_dist(rng);
+        std::string payload(payload_len, '\0');
+        for (char &ch : payload)
+        {
+            ch = static_cast<char>('a' + (rng() % 26));
+        }
+        BTreeCursor::insert(*pool_, *index_file_, *heap_file_, key, payload.data(), payload.size());
+        expected.emplace(key, payload);
+    }
+
+    // Verify that all inserted records can be read back correctly.
+    for (const auto& [key, value] : expected)
+    {
+        char* stored = BTreeCursor::read(*pool_, *index_file_, *heap_file_, key);
+        std::string restored(stored, value.size());
+        EXPECT_EQ(value, restored) << "mismatch for key=" << key;
+    }
+}

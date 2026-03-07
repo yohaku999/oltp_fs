@@ -33,10 +33,11 @@ private:
     void setRightMostChildPageId(uint16_t page_id);
     bool is_dirty_ = false;
     int pageID_ = -1;
-    int parentPageID_ = -1;
+    int parentPageID_ = HAS_NO_PARENT;
     
 
 public:
+    static constexpr int HAS_NO_PARENT = -1;
     static constexpr size_t HEADDER_SIZE_BYTE = 256;
     void markDirty(){
         is_dirty_ = true;
@@ -53,6 +54,7 @@ public:
     int getParentPageID() const {
         return parentPageID_;
     };
+    // NOTE : Relation between PageID will be collected on traversal for now. This can be bothring later.
     void setParentPageID(int parent_page_id) {
         parentPageID_ = parent_page_id;
     };

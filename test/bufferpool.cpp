@@ -38,24 +38,24 @@ protected:
 
 TEST_F(BufferPoolTest, GetPageSamePageReturnsCachedPage)
 {
-    uint16_t page_id = pool->createPage(true, *testFile);
+    uint16_t page_id = pool->createNewPage(true, *testFile);
     Page *page1 = pool->getPage(page_id, *testFile);
     Page *page1_again = pool->getPage(page_id, *testFile);
     EXPECT_EQ(page1, page1_again);
 }
 
-TEST_F(BufferPoolTest, CreatePageAllFramesFilledSuccessfully)
+TEST_F(BufferPoolTest, createNewPageAllFramesFilledSuccessfully)
 {
     for (size_t i = 0; i < BufferPool::MAX_FRAME_COUNT; ++i)
     {
-        uint16_t page_id = pool->createPage(true, *testFile);
+        uint16_t page_id = pool->createNewPage(true, *testFile);
         Page *page = pool->getPage(page_id, *testFile);
         ASSERT_NE(page, nullptr);
     }
 }
 
 // test eviction by filling more than max frames and verifying evicted pages can be reloaded correctly and also make sure reloaded through storage as well.
-TEST_F(BufferPoolTest, CreatePageWithEviction)
+TEST_F(BufferPoolTest, createNewPageWithEviction)
 {
     // Store copies of page contents for later comparison
     // 10 pages will be evicted.
@@ -65,7 +65,7 @@ TEST_F(BufferPoolTest, CreatePageWithEviction)
     // Fill all frames and write unique data to each page
     for (size_t i = 0; i < BufferPool::MAX_FRAME_COUNT + 10; ++i)
     {
-        uint16_t page_id = pool->createPage(true, *testFile);
+        uint16_t page_id = pool->createNewPage(true, *testFile);
         Page *page = pool->getPage(page_id, *testFile);
         ASSERT_NE(page, nullptr);
         

@@ -28,8 +28,11 @@ private:
     int obtainFreeFrame();
 public:
     static constexpr size_t MAX_FRAME_COUNT = 10;
+    static constexpr uint16_t HAS_NO_CHILD = -1;
     BufferPool();
     Page *getPage(int pageID, File &file);
-    u_int16_t createPage(bool is_leaf, File &file);
+    void unpin(Page* page, File& file);
+    // REFACTOR : spread code for Page and Leaf Page.
+    u_int16_t createNewPage(bool is_leaf, File &file, uint16_t rightMostChildPageId=HAS_NO_CHILD);
     ~BufferPool();
 };

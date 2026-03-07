@@ -33,7 +33,11 @@ public:
     
     void registerPage(int frameID, int pageID, const std::string& filePath, std::unique_ptr<Page> page);
     void unregisterPage(int frameID);
-    
+    /**
+     * We use explicit pin/unpin.
+     * I thought shared_ptr can be an option but, its lifetimes can accidentally grow (copies/captures/queues) and block eviction.
+     * Intuitively, for a buffer pool, eviction depends on "safe to reuse this frame now?" and not "someone still holds a reference to this frame".
+     */
     void pin(int frameID);
     void unpin(int frameID);
     bool isPinned(int frameID) const;

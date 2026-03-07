@@ -13,18 +13,17 @@ BufferPool::BufferPool()
 {
 };
 
-u_int16_t BufferPool::createPage(bool is_leaf, File &file)
+u_int16_t BufferPool::createNewPage(bool is_leaf, File &file, uint16_t rightMostChildPageId)
 {
     u_int16_t pageID = file.allocateNextPageId();
     int frame_id = obtainFreeFrame();
     char *frame_p = static_cast<char *>(buffer) + frame_id * BufferPool::FRAME_SIZE_BYTE;
 
-    // TODO: what i should set for the right most
-    auto page = std::make_unique<Page>(frame_p, is_leaf, 0, pageID);
+    auto page = std::make_unique<Page>(frame_p, is_leaf, rightMostChildPageId, pageID);
     Page* page_ptr = page.get();
     frameDirectory_.registerPage(frame_id, pageID, file.getFilePath(), std::move(page));
     LOG_INFO("Created new page ID {} as {} page in frame ID {}", 
-                 pageID, is_leaf ? "leaf" : "internal", frame_id);
+                 pageID, is_leaf ? "leaf" : "intermediate", frame_id);
     return pageID;
 }
 
@@ -48,10 +47,10 @@ int BufferPool::obtainFreeFrame(){
 Page *BufferPool::getPage(int pageID, File &file)
 {
     LOG_INFO("Requesting page ID {} from file {}", pageID, file.getFilePath());
-    auto key = std::make_pair(pageID, file.getFilePath());
     auto it = frameDirectory_.findFrameByPage(pageID, file.getFilePath());
     if (it.has_value()){
         int frame_id = it.value();
+        frameDirectory_.pin(frame_id);
         return frameDirectory_.getFrame(frame_id).page.get();
     }else{
         int frame_id = obtainFreeFrame();
@@ -66,10 +65,23 @@ Page *BufferPool::getPage(int pageID, File &file)
         auto page = std::make_unique<Page>(frame_p, pageID);
         Page* page_ptr = page.get();
         frameDirectory_.registerPage(frame_id, pageID, file.getFilePath(), std::move(page));
+        frameDirectory_.pin(frame_id);
         LOG_INFO("Loaded page ID {} into frame ID {}", pageID, frame_id);
         return page_ptr;
     }
 };
+
+void BufferPool::unpin(Page* page, File& file)
+{
+    if (!page) {
+        throw std::invalid_argument("BufferPool::unpin called with null page");
+    }
+    auto it = frameDirectory_.findFrameByPage(page->getPageID(), file.getFilePath());
+    if (!it.has_value()) {
+        throw std::logic_error(fmt::format("BufferPool::unpin: page ID {} in file {} is not registered in FrameDirectory", page->getPageID(), file.getFilePath()));
+    }
+    frameDirectory_.unpin(it.value());
+}
 
 void BufferPool::evictPage()
 {
@@ -92,10 +104,9 @@ void BufferPool::evictPage()
         victim_frame.page->clearDirty();
         File file(victim_frame.file_path);
         file.writePageOnFile(victim_frame.page_id, victim_frame.page->start_p_);
-        LOG_INFO("Evicted dirty page ID {} from file {} in frame ID {}", victim_frame.page_id, victim_frame.file_path, victim_frame_id);
     }
     frameDirectory_.unregisterPage(victim_frame_id);
-    LOG_INFO("Evicted page from frame ID {}, page ID {}", victim_frame_id, evicted_page_id);
+    LOG_INFO("Evicted page ID {} from frame ID {}", evicted_page_id, victim_frame_id);
 };
 
 
