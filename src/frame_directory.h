@@ -35,8 +35,7 @@ public:
     void unregisterPage(int frameID);
     /**
      * We use explicit pin/unpin.
-     * I thought shared_ptr can be an option but, its lifetimes can accidentally grow (copies/captures/queues) and block eviction.
-     * Intuitively, for a buffer pool, eviction depends on "safe to reuse this frame now?" and not "someone still holds a reference to this frame".
+     * Although Intuitively, for a buffer pool, eviction depends on "safe to reuse this frame now?" and not "someone still holds a reference to this frame" and it is assumed that we need more control then shared_ptr provides initially.
      */
     void pin(int frameID);
     void unpin(int frameID);
