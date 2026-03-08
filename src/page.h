@@ -28,9 +28,9 @@ private:
     IntermediateCell getIntermediateCellOnXthPointer(int x);
     LeafCell getLeafCellOnXthPointer(int x);
     uint16_t getCellOffsetOnXthPointer(int x);
-    uint8_t getSlotCount();
+    uint16_t getSlotCount();
     uint16_t getSlotDirectoryOffset();
-    void updateSlotCount(uint8_t new_count);
+    void updateSlotCount(uint16_t new_count);
     void updateSlotDirectoryOffset(uint16_t new_offset);
     void updateNodeTypeFlag(bool is_leaf);
     uint16_t rightMostChildPageId() const;

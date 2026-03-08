@@ -10,6 +10,7 @@
 #include <vector>
 #include <algorithm>
 #include <ostream>
+#include <limits>
 
 // Constructor for creating a new page
 Page::Page(char *start_p, bool is_leaf, uint16_t rightMostChildPageId, uint16_t page_id)
@@ -124,9 +125,9 @@ void Page::invalidateSlot(uint16_t slot_id)
     Cell::markInvalid(cell_data);
 }
 
-uint8_t Page::getSlotCount()
+uint16_t Page::getSlotCount()
 {
-    return readValue<uint8_t>(start_p_ + SLOT_COUNT_OFFSET);
+    return readValue<uint16_t>(start_p_ + SLOT_COUNT_OFFSET);
 }
 
 uint16_t Page::getSlotDirectoryOffset()
@@ -134,9 +135,9 @@ uint16_t Page::getSlotDirectoryOffset()
     return readValue<uint16_t>(start_p_ + SLOT_DIRECTORY_OFFSET);
 }
 
-void Page::updateSlotCount(uint8_t new_count)
+void Page::updateSlotCount(uint16_t new_count)
 {
-    std::memcpy(start_p_ + SLOT_COUNT_OFFSET, &new_count, sizeof(uint8_t));
+    std::memcpy(start_p_ + SLOT_COUNT_OFFSET, &new_count, sizeof(uint16_t));
 }
 
 void Page::updateSlotDirectoryOffset(uint16_t new_offset)
