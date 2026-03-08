@@ -21,6 +21,10 @@ private:
         BufferPool& pool, File& indexFile, int key, bool do_invalidate=false);
     static int findLeafPageID(BufferPool& pool, File& indexFile, int key);
     static void splitPage(BufferPool& pool, File& indexFile, Page* old_page);
+    static std::pair<uint16_t, uint16_t> insertIntoHeap(
+        BufferPool& pool, File& heapFile, int key, char* value, size_t value_size);
+    static void insertIntoIndex(
+        BufferPool& pool, File& indexFile, int key, uint16_t heap_page_id, uint16_t slot_id);
 public:
     static char* read(BufferPool& pool, File& indexFile, File& heapFile, int key);
     static void insert(BufferPool& pool, File& indexFile, File& heapFile, int key, char* value, size_t value_size);

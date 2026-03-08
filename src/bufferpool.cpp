@@ -46,7 +46,7 @@ int BufferPool::obtainFreeFrame(){
 
 Page *BufferPool::getPage(int pageID, File &file)
 {
-    LOG_INFO("Requesting page ID {} from file {}", pageID, file.getFilePath());
+    LOG_DEBUG("Requesting page ID {} from file {}", pageID, file.getFilePath());
     auto it = frameDirectory_.findFrameByPage(pageID, file.getFilePath());
     if (it.has_value()){
         int frame_id = it.value();
@@ -66,7 +66,7 @@ Page *BufferPool::getPage(int pageID, File &file)
         Page* page_ptr = page.get();
         frameDirectory_.registerPage(frame_id, pageID, file.getFilePath(), std::move(page));
         frameDirectory_.pin(frame_id);
-        LOG_INFO("Loaded page ID {} into frame ID {}", pageID, frame_id);
+        LOG_DEBUG("Loaded page ID {} into frame ID {}", pageID, frame_id);
         return page_ptr;
     }
 };
