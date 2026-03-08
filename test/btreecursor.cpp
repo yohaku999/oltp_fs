@@ -87,6 +87,36 @@ TEST_F(BTreeCursorTest, InsertDeleteThenFailToRead)
     EXPECT_THROW({ BTreeCursor::read(*pool_, *index_file_, *heap_file_, key); }, std::runtime_error);
 }
 
+TEST_F(BTreeCursorTest, UpdateReplacesExistingValue)
+{
+    const int key = 123;
+    std::string initial = "initial-value";
+    std::string updated = "updated-value";
+
+    char* initial_ptr = initial.data();
+    BTreeCursor::insert(*pool_, *index_file_, *heap_file_, key, initial_ptr, initial.size());
+
+    char* update_ptr = updated.data();
+    BTreeCursor::update(*pool_, *index_file_, *heap_file_, key, update_ptr, updated.size());
+
+    char* stored = BTreeCursor::read(*pool_, *index_file_, *heap_file_, key);
+    std::string restored(stored, updated.size());
+    EXPECT_EQ(updated, restored);
+}
+
+TEST_F(BTreeCursorTest, UpdateNonExistingKeyThrows)
+{
+    const int key = 777;
+    std::string payload = "does-not-exist";
+
+    char* value_ptr = payload.data();
+    EXPECT_THROW(
+        {
+            BTreeCursor::update(*pool_, *index_file_, *heap_file_, key, value_ptr, payload.size());
+        },
+        std::runtime_error);
+}
+
 TEST_F(BTreeCursorTest, InsertPageOverflow)
 {
     try
