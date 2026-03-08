@@ -6,6 +6,9 @@
 #include <utility>
 #include <optional>
 #include <ostream>
+
+class LeafIndexPage;
+class InternalIndexPage;
 /**
  * The structure of page is as follows:
  * | header (256 bytes) | cell pointer array (2 bytes per cell) | cells (variable size) |
@@ -35,7 +38,9 @@ private:
     bool is_dirty_ = false;
     int pageID_ = -1;
     int parentPageID_ = HAS_NO_PARENT;
-    void compact();
+
+    friend class LeafIndexPage;
+    friend class InternalIndexPage;
     
 
 public:
@@ -62,15 +67,11 @@ public:
     };
     bool isLeaf() const;
     char* getSeparateKey();
-    void transferCellsTo(Page* new_page, char* separate_key);
     // The value range of cell is 0~4095 for now, so we can use uint16_t to store them.
     static constexpr size_t PAGE_SIZE_BYTE = 4096;
     static constexpr size_t CELL_POINTER_SIZE = sizeof(uint16_t);
     char *start_p_;
-    std::optional<std::pair<uint16_t, uint16_t>> findLeafRef(int key, bool do_invalidate=false);
-    uint16_t findChildPage(int key);
     char *getXthSlotValue(int x);
-    bool hasKey(int key);
     std::optional<int> insertCell(const Cell &cell);
     void invalidateSlot(uint16_t slot_id);
     

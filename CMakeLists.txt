@@ -17,6 +17,7 @@ add_library(dbfs_src
     src/bufferpool.cpp
     src/file.cpp
     src/page.cpp
+    src/index_page.cpp
     src/intermediate_cell.cpp
     src/leaf_cell.cpp
     src/record_cell.cpp

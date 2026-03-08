@@ -1,4 +1,5 @@
 #include "../src/page.h"
+#include "../src/index_page.h"
 #include "../src/cell.h"
 #include "../src/record_cell.h"
 #include <array>
@@ -33,7 +34,8 @@ TEST(PageTest, InsertLeafPageAndFind)
         int slot_id = slot_id_opt.value();
         EXPECT_EQ(i, slot_id);
 
-        auto ref_opt = page->findLeafRef(entry.key);
+        LeafIndexPage leaf(*page);
+        auto ref_opt = leaf.findRef(entry.key, false);
         ASSERT_TRUE(ref_opt.has_value());
         auto [heap_page_id, slot_id_ref] = ref_opt.value();
         EXPECT_EQ(entry.heap_page_id, heap_page_id);
@@ -59,19 +61,21 @@ TEST(PageTest, TransferCellsToCompactsSourcePage)
     // Split with separate_key = 3: keys < 3 (1,2) should move to dst_page
     LeafCell separate_cell(3, 0, 0);
     std::vector<std::byte> separate_serialized = separate_cell.serialize();
-    src_page->transferCellsTo(dst_page.get(), reinterpret_cast<char*>(separate_serialized.data()));
+    LeafIndexPage src_leaf(*src_page);
+    LeafIndexPage dst_leaf(*dst_page);
+    src_leaf.transferAndCompactTo(dst_leaf, reinterpret_cast<char*>(separate_serialized.data()));
 
     // Destination page should have keys 1 and 2
-    EXPECT_TRUE(dst_page->hasKey(1));
-    EXPECT_TRUE(dst_page->hasKey(2));
-    EXPECT_FALSE(dst_page->hasKey(3));
-    EXPECT_FALSE(dst_page->hasKey(4));
+    EXPECT_TRUE(dst_leaf.hasKey(1));
+    EXPECT_TRUE(dst_leaf.hasKey(2));
+    EXPECT_FALSE(dst_leaf.hasKey(3));
+    EXPECT_FALSE(dst_leaf.hasKey(4));
 
     // Source page should keep keys 3 and 4 only, and be compacted
-    EXPECT_FALSE(src_page->hasKey(1));
-    EXPECT_FALSE(src_page->hasKey(2));
-    EXPECT_TRUE(src_page->hasKey(3));
-    EXPECT_TRUE(src_page->hasKey(4));
+    EXPECT_FALSE(src_leaf.hasKey(1));
+    EXPECT_FALSE(src_leaf.hasKey(2));
+    EXPECT_TRUE(src_leaf.hasKey(3));
+    EXPECT_TRUE(src_leaf.hasKey(4));
 
     // Slot count of source should be 2 after compaction.
     // Layout: byte 0 = node type, byte 1 = slot count.
@@ -137,19 +141,21 @@ TEST(PageTest, InsertIntermediatePageAndFind)
         EXPECT_TRUE(page->isDirty());
     }
 
+    InternalIndexPage internal(*page);
+
     for (const Entry &entry : entries)
     {
-        uint16_t child_page = page->findChildPage(entry.key);
+        uint16_t child_page = internal.findChildPage(entry.key);
         EXPECT_EQ(entry.page_id, child_page);
     }
 
-    uint16_t child_page_for_large_key = page->findChildPage(entries[2].key + 1);
+    uint16_t child_page_for_large_key = internal.findChildPage(entries[2].key + 1);
     EXPECT_EQ(entries[1].page_id, child_page_for_large_key);
 
-    uint16_t child_page_for_small_key = page->findChildPage(entries[2].key - 1);
+    uint16_t child_page_for_small_key = internal.findChildPage(entries[2].key - 1);
     EXPECT_EQ(entries[2].page_id, child_page_for_small_key);
 
-    uint16_t child_page_for_largest_key = page->findChildPage(entries[1].key + 1);
+    uint16_t child_page_for_largest_key = internal.findChildPage(entries[1].key + 1);
     EXPECT_EQ(right_most_child_page_id, child_page_for_largest_key);
 }
 
@@ -189,8 +195,9 @@ TEST(PageTest, LeafSearchSkipsInvalidEntries)
     auto slot_id_opt = page->insertCell(LeafCell(123, 1, 1));
     page->invalidateSlot(slot_id_opt.value());
 
-    EXPECT_FALSE(page->hasKey(123));
-    EXPECT_FALSE(page->findLeafRef(123).has_value());
+    LeafIndexPage leaf(*page);
+    EXPECT_FALSE(leaf.hasKey(123));
+    EXPECT_FALSE(leaf.findRef(123, false).has_value());
 }
 
 TEST(PageTest, LeafInsertInvalidateReuseSlot)
@@ -202,13 +209,14 @@ TEST(PageTest, LeafInsertInvalidateReuseSlot)
     auto first_slot = page->insertCell(LeafCell(1, 1, 1));
     ASSERT_TRUE(first_slot.has_value());
     page->invalidateSlot(first_slot.value());
-    EXPECT_FALSE(page->hasKey(1));
+    LeafIndexPage leaf(*page);
+    EXPECT_FALSE(leaf.hasKey(1));
 
     auto second_slot = page->insertCell(LeafCell(1, 1, 1));
     ASSERT_TRUE(second_slot.has_value());
-    EXPECT_TRUE(page->hasKey(1));
+    EXPECT_TRUE(leaf.hasKey(1));
 
-    auto ref = page->findLeafRef(1);
+    auto ref = leaf.findRef(1, false);
     ASSERT_TRUE(ref.has_value());
     EXPECT_EQ(ref->first, 1);
     EXPECT_EQ(ref->second, 1);

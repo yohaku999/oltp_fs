@@ -1,6 +1,7 @@
 #include "btreecursor.h"
 #include "bufferpool.h"
 #include "page.h"
+#include "index_page.h"
 #include "cell.h"
 #include <cstdint>
 #include <string>
@@ -28,7 +29,8 @@ int BTreeCursor::findLeafPageID(BufferPool& pool, File& indexFile, int key)
             pool.unpin(page, indexFile);
             break;
         }
-        int childPageID = page->findChildPage(key);
+        InternalIndexPage internal(*page);
+        int childPageID = internal.findChildPage(key);
         pool.unpin(page, indexFile);
         LOG_INFO("The child page ID of page ID {} for key {} is {}", pageID, key, childPageID);
         parentPageID = pageID;
@@ -43,7 +45,8 @@ std::optional<std::pair<uint16_t, uint16_t>> BTreeCursor::findRecordLocation(Buf
     // we will come back to this when we start to support concurrency.
     int pageID = findLeafPageID(pool, indexFile, key);
     Page* leafPage = pool.getPage(pageID, indexFile);
-    auto result = leafPage->findLeafRef(key, do_invalidate);
+    LeafIndexPage leaf(*leafPage);
+    auto result = leaf.findRef(key, do_invalidate);
     pool.unpin(leafPage, indexFile);
     return result;
 }
@@ -182,7 +185,9 @@ void BTreeCursor::splitPage(BufferPool& pool, File& index_file, Page* old_page)
     {
         int new_page_id = pool.createNewPage(true, index_file);
         Page* new_page = pool.getPage(new_page_id, index_file);
-        old_page->transferCellsTo(new_page, separate_key);
+        LeafIndexPage old_leaf(*old_page);
+        LeafIndexPage new_leaf(*new_page);
+        old_leaf.transferAndCompactTo(new_leaf, separate_key);
         parent_page->insertCell(IntermediateCell(new_page_id, LeafCell::getKey(separate_key)));
         pool.unpin(new_page, index_file);
     }
@@ -190,7 +195,9 @@ void BTreeCursor::splitPage(BufferPool& pool, File& index_file, Page* old_page)
     {
         int new_page_id = pool.createNewPage(false, index_file, old_page->getPageID());
         Page* new_page = pool.getPage(new_page_id, index_file);
-        old_page->transferCellsTo(new_page, separate_key);
+        InternalIndexPage old_internal(*old_page);
+        InternalIndexPage new_internal(*new_page);
+        old_internal.transferAndCompactTo(new_internal, separate_key);
         parent_page->insertCell(IntermediateCell(new_page_id, IntermediateCell::getKey(separate_key)));
         pool.unpin(new_page, index_file);
     }
