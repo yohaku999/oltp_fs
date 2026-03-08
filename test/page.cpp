@@ -68,25 +68,22 @@ TEST(PageTest, TransferCellsToCompactsSourcePage)
     // Destination page should have keys 1 and 2
     EXPECT_TRUE(dst_leaf.hasKey(1));
     EXPECT_TRUE(dst_leaf.hasKey(2));
-    EXPECT_FALSE(dst_leaf.hasKey(3));
+    EXPECT_TRUE(dst_leaf.hasKey(3));
     EXPECT_FALSE(dst_leaf.hasKey(4));
 
     // Source page should keep keys 3 and 4 only, and be compacted
     EXPECT_FALSE(src_leaf.hasKey(1));
     EXPECT_FALSE(src_leaf.hasKey(2));
-    EXPECT_TRUE(src_leaf.hasKey(3));
+    EXPECT_FALSE(src_leaf.hasKey(3));
     EXPECT_TRUE(src_leaf.hasKey(4));
 
-    // Slot count of source should be 2 after compaction.
     // Layout: byte 0 = node type, byte 1 = slot count.
     uint8_t src_slot_count = static_cast<uint8_t>(src_data[1]);
-    EXPECT_EQ(2, src_slot_count);
+    EXPECT_EQ(1, src_slot_count);
 
-    // Destination page should also have 2 slots (keys 1 and 2).
     uint8_t dst_slot_count = static_cast<uint8_t>(dst_data[1]);
-    EXPECT_EQ(2, dst_slot_count);
+    EXPECT_EQ(3, dst_slot_count);
 
-    // Both pages should be marked dirty after the split/compaction.
     EXPECT_TRUE(src_page->isDirty());
     EXPECT_TRUE(dst_page->isDirty());
 }

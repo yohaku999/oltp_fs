@@ -63,7 +63,7 @@ void LeafIndexPage::transferAndCompactTo(LeafIndexPage &dst, char *separate_key)
         }
 
         int cell_key = LeafCell::getKey(cell_data);
-        if (cell_key < separate_key_value)
+        if (cell_key <= separate_key_value)
         {
             dst.page_.insertCell(LeafCell::decodeCell(cell_data));
             page_.invalidateSlot(idx);
@@ -108,6 +108,8 @@ void LeafIndexPage::transferAndCompactTo(LeafIndexPage &dst, char *separate_key)
     page_.updateSlotCount(new_slot_count);
     page_.updateSlotDirectoryOffset(write_offset);
     page_.markDirty();
+
+    LOG_INFO("Completed transfer and compaction of LeafIndexPage. New slot count: {}, new slot directory offset: {}", new_slot_count, write_offset);
 }
 
 uint16_t InternalIndexPage::findChildPage(int key)
@@ -155,7 +157,7 @@ void InternalIndexPage::transferAndCompactTo(InternalIndexPage &dst, char *separ
         }
 
         int cell_key = IntermediateCell::getKey(cell_data);
-        if (cell_key < separate_key_value)
+        if (cell_key <= separate_key_value)
         {
             dst.page_.insertCell(IntermediateCell::decodeCell(cell_data));
             page_.invalidateSlot(idx);
@@ -200,4 +202,6 @@ void InternalIndexPage::transferAndCompactTo(InternalIndexPage &dst, char *separ
     page_.updateSlotCount(new_slot_count);
     page_.updateSlotDirectoryOffset(write_offset);
     page_.markDirty();
+
+    LOG_INFO("Completed transfer and compaction of InternalIndexPage. New slot count: {}, new slot directory offset: {}", new_slot_count, write_offset);
 }
