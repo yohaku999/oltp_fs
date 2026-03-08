@@ -183,22 +183,24 @@ void BTreeCursor::splitPage(BufferPool& pool, File& index_file, Page* old_page)
     // Pointer from parent to its old child does not change on split.
     if (old_page->isLeaf())
     {
+        int separate_key_value = LeafCell::getKey(separate_key);
         int new_page_id = pool.createNewPage(true, index_file);
         Page* new_page = pool.getPage(new_page_id, index_file);
         LeafIndexPage old_leaf(*old_page);
         LeafIndexPage new_leaf(*new_page);
         old_leaf.transferAndCompactTo(new_leaf, separate_key);
-        parent_page->insertCell(IntermediateCell(new_page_id, LeafCell::getKey(separate_key)));
+        parent_page->insertCell(IntermediateCell(new_page_id, separate_key_value));
         pool.unpin(new_page, index_file);
     }
     else
     {
+        int separate_key_value = IntermediateCell::getKey(separate_key);
         int new_page_id = pool.createNewPage(false, index_file, old_page->getPageID());
         Page* new_page = pool.getPage(new_page_id, index_file);
         InternalIndexPage old_internal(*old_page);
         InternalIndexPage new_internal(*new_page);
         old_internal.transferAndCompactTo(new_internal, separate_key);
-        parent_page->insertCell(IntermediateCell(new_page_id, IntermediateCell::getKey(separate_key)));
+        parent_page->insertCell(IntermediateCell(new_page_id, separate_key_value));
         pool.unpin(new_page, index_file);
     }
     pool.unpin(parent_page, index_file);
