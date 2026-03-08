@@ -143,6 +143,7 @@ uint16_t InternalIndexPage::findChildPage(int key)
     return page_.rightMostChildPageId();
 }
 
+// TODO: can we get separate_key from super method maybe?
 void InternalIndexPage::transferAndCompactTo(InternalIndexPage &dst, char *separate_key)
 {
     int separate_key_value = IntermediateCell::getKey(separate_key);
