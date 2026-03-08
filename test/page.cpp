@@ -41,6 +41,52 @@ TEST(PageTest, InsertLeafPageAndFind)
     }
 }
 
+TEST(PageTest, TransferCellsToCompactsSourcePage)
+{
+    std::array<char, Page::PAGE_SIZE_BYTE> src_data{};
+    std::array<char, Page::PAGE_SIZE_BYTE> dst_data{};
+
+    auto src_page = std::make_unique<Page>(src_data.data(), true, 0, 1);
+    auto dst_page = std::make_unique<Page>(dst_data.data(), true, 0, 2);
+
+    // Insert 4 keys: 1,2,3,4
+    for (int key = 1; key <= 4; ++key)
+    {
+        auto slot_id_opt = src_page->insertCell(LeafCell(key, 0, 0));
+        ASSERT_TRUE(slot_id_opt.has_value());
+    }
+
+    // Split with separate_key = 3: keys < 3 (1,2) should move to dst_page
+    LeafCell separate_cell(3, 0, 0);
+    std::vector<std::byte> separate_serialized = separate_cell.serialize();
+    src_page->transferCellsTo(dst_page.get(), reinterpret_cast<char*>(separate_serialized.data()));
+
+    // Destination page should have keys 1 and 2
+    EXPECT_TRUE(dst_page->hasKey(1));
+    EXPECT_TRUE(dst_page->hasKey(2));
+    EXPECT_FALSE(dst_page->hasKey(3));
+    EXPECT_FALSE(dst_page->hasKey(4));
+
+    // Source page should keep keys 3 and 4 only, and be compacted
+    EXPECT_FALSE(src_page->hasKey(1));
+    EXPECT_FALSE(src_page->hasKey(2));
+    EXPECT_TRUE(src_page->hasKey(3));
+    EXPECT_TRUE(src_page->hasKey(4));
+
+    // Slot count of source should be 2 after compaction.
+    // Layout: byte 0 = node type, byte 1 = slot count.
+    uint8_t src_slot_count = static_cast<uint8_t>(src_data[1]);
+    EXPECT_EQ(2, src_slot_count);
+
+    // Destination page should also have 2 slots (keys 1 and 2).
+    uint8_t dst_slot_count = static_cast<uint8_t>(dst_data[1]);
+    EXPECT_EQ(2, dst_slot_count);
+
+    // Both pages should be marked dirty after the split/compaction.
+    EXPECT_TRUE(src_page->isDirty());
+    EXPECT_TRUE(dst_page->isDirty());
+}
+
 // when page runs out of space, insertCell should return nullopt and not modify the page.
 TEST(PageTest, InsertLeafPageRunsOutOfSpace)
 {

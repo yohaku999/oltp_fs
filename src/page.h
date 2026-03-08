@@ -35,6 +35,7 @@ private:
     bool is_dirty_ = false;
     int pageID_ = -1;
     int parentPageID_ = HAS_NO_PARENT;
+    void compact();
     
 
 public:

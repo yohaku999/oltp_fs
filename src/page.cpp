@@ -133,7 +133,7 @@ uint16_t Page::findChildPage(int key)
  */
 std::optional<int> Page::insertCell(const Cell &cell)
 {
-    LOG_INFO("Attempting to insert cell with key {} into page", cell.key());
+    LOG_INFO("Attempting to insert cell with key {} into page ID {}", cell.key(), getPageID());
     // check if the page has enough space to insert the new cell.
     uint16_t new_cell_offset = getSlotDirectoryOffset() - cell.payloadSize();
     char *cell_data_p = start_p_ + new_cell_offset;
@@ -199,9 +199,11 @@ char* Page::getXthSlotValue(int x)
     return cursor;
 }
 
+/**
+ * This method transfers cells whose key is smaller than the separate key to the new page and invalidate the transferred cells in the original page. This method is used for splitting a leaf page, so it only considers leaf cells and should be called only for leaf pages.
+ */
 void Page::transferCellsTo(Page* new_page, char* separate_key)
 {
-    // transfer valid cells whose key is smaller than separate key to new_page.
     int separate_key_value = LeafCell::getKey(separate_key);
     
     for (int cell_pointer_index = 0; cell_pointer_index < getSlotCount(); cell_pointer_index++){
@@ -217,6 +219,91 @@ void Page::transferCellsTo(Page* new_page, char* separate_key)
             // TODO: delete physically.
             invalidateSlot(cell_pointer_index);
         }
+    }
+    compact();
+}
+
+void Page::compact()
+{
+    uint8_t old_slot_count = getSlotCount();
+
+    // Collect valid cells in original slot order.
+    if (isLeaf())
+    {
+        std::vector<LeafCell> cells;
+        cells.reserve(old_slot_count);
+        for (int i = 0; i < old_slot_count; ++i)
+        {
+            char* cell_data = start_p_ + getCellOffsetOnXthPointer(i);
+            if (!Cell::isValid(cell_data))
+            {
+                continue;
+            }
+            cells.push_back(getLeafCellOnXthPointer(i));
+        }
+
+        const uint8_t new_slot_count = static_cast<uint8_t>(cells.size());
+        if (new_slot_count == 0)
+        {
+            throw std::logic_error("Page::compact: new_slot_count == 0 (not implemented)");
+        }
+
+        // start writing from the end of the page buffer.
+        uint16_t write_offset = static_cast<uint16_t>(Page::PAGE_SIZE_BYTE);
+        for (uint8_t idx = 0; idx < new_slot_count; ++idx)
+        {
+            const LeafCell& cell = cells[idx];
+            const uint16_t payload_size = static_cast<uint16_t>(cell.payloadSize());
+            write_offset = static_cast<uint16_t>(write_offset - payload_size);
+            char* dest = start_p_ + write_offset;
+            std::vector<std::byte> serialized = cell.serialize();
+            std::memcpy(dest, serialized.data(), serialized.size());
+
+            char* slot_ptr_p = start_p_ + Page::HEADDER_SIZE_BYTE + Page::CELL_POINTER_SIZE * idx;
+            std::memcpy(slot_ptr_p, &write_offset, sizeof(uint16_t));
+        }
+
+        updateSlotCount(new_slot_count);
+        updateSlotDirectoryOffset(write_offset);
+        markDirty();
+    }
+    else
+    {
+        std::vector<IntermediateCell> cells;
+        cells.reserve(old_slot_count);
+        for (int i = 0; i < old_slot_count; ++i)
+        {
+            char* cell_data = start_p_ + getCellOffsetOnXthPointer(i);
+            if (!Cell::isValid(cell_data))
+            {
+                continue;
+            }
+            cells.push_back(getIntermediateCellOnXthPointer(i));
+        }
+
+        const uint8_t new_slot_count = static_cast<uint8_t>(cells.size());
+        if (new_slot_count == 0)
+        {
+            throw std::logic_error("Page::compact: new_slot_count == 0 (not implemented)");
+        }
+
+        uint16_t write_offset = static_cast<uint16_t>(Page::PAGE_SIZE_BYTE);
+        for (uint8_t idx = 0; idx < new_slot_count; ++idx)
+        {
+            const IntermediateCell& cell = cells[idx];
+            const uint16_t payload_size = static_cast<uint16_t>(cell.payloadSize());
+            write_offset = static_cast<uint16_t>(write_offset - payload_size);
+            char* dest = start_p_ + write_offset;
+            std::vector<std::byte> serialized = cell.serialize();
+            std::memcpy(dest, serialized.data(), serialized.size());
+
+            char* slot_ptr_p = start_p_ + Page::HEADDER_SIZE_BYTE + Page::CELL_POINTER_SIZE * idx;
+            std::memcpy(slot_ptr_p, &write_offset, sizeof(uint16_t));
+        }
+
+        updateSlotCount(new_slot_count);
+        updateSlotDirectoryOffset(write_offset);
+        markDirty();
     }
 }
 
