@@ -105,7 +105,9 @@ std::pair<uint16_t, uint16_t> BTreeCursor::insertIntoHeap(
     if (!insertedSlotID.has_value())
     {
         pool.unpin(heapPage, heapFile);
-        targetPageID = heapFile.allocateNextPageId();
+        // WARNING : currently how we deal with leafpage and heappage is the same.
+        // Thus it is correct to set is_leaf = true here but, it's confusing.
+        targetPageID = pool.createNewPage(true, heapFile);
         heapPage = pool.getPage(targetPageID, heapFile);
         insertedSlotID = heapPage->insertCell(cell);
         if (!insertedSlotID.has_value())
@@ -132,10 +134,13 @@ void BTreeCursor::insertIntoIndex(
     if (!leaf_slot_id.has_value())
     {
         splitPage(pool, indexFile, leafPage);
-        // after split, try to insert again. we can guarantee the second insert will succeed because splitPage will create a new page and transfer half of the cells to the new page.
-        leaf_slot_id = leafPage->insertCell(LeafCell(key, heap_page_id, slot_id));
+        pool.unpin(leafPage, indexFile);
+        insertIntoIndex(pool, indexFile, key, heap_page_id, slot_id);
     }
-    pool.unpin(leafPage, indexFile);
+    else
+    {
+        pool.unpin(leafPage, indexFile);
+    }
     LOG_INFO("Inserted index entry for key {} pointing to heap page ID {}, slot ID {}.",
              key, heap_page_id, slot_id);
 }
