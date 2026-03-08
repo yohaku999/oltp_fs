@@ -71,7 +71,7 @@ void LeafIndexPage::transferAndCompactTo(LeafIndexPage &dst, char *separate_key)
     }
 
     // Compact this page (leaf branch of Page::compact).
-    uint8_t old_slot_count = page_.getSlotCount();
+    uint16_t old_slot_count = page_.getSlotCount();
 
     std::vector<LeafCell> cells;
     cells.reserve(old_slot_count);
@@ -85,14 +85,14 @@ void LeafIndexPage::transferAndCompactTo(LeafIndexPage &dst, char *separate_key)
         cells.push_back(page_.getLeafCellOnXthPointer(i));
     }
 
-    const uint8_t new_slot_count = static_cast<uint8_t>(cells.size());
+    const uint16_t new_slot_count = static_cast<uint16_t>(cells.size());
     if (new_slot_count == 0)
     {
         throw std::logic_error("LeafIndexPage::transferAndCompactTo: new_slot_count == 0 (not implemented)");
     }
 
     uint16_t write_offset = static_cast<uint16_t>(Page::PAGE_SIZE_BYTE);
-    for (uint8_t idx = 0; idx < new_slot_count; ++idx)
+    for (uint16_t idx = 0; idx < new_slot_count; ++idx)
     {
         const LeafCell &cell = cells[idx];
         const uint16_t payload_size = static_cast<uint16_t>(cell.payloadSize());
@@ -166,7 +166,7 @@ void InternalIndexPage::transferAndCompactTo(InternalIndexPage &dst, char *separ
     }
 
     // Compact this page for intermediate cells (analogous to leaf compaction).
-    uint8_t old_slot_count = page_.getSlotCount();
+    uint16_t old_slot_count = page_.getSlotCount();
 
     std::vector<IntermediateCell> cells;
     cells.reserve(old_slot_count);
@@ -180,14 +180,14 @@ void InternalIndexPage::transferAndCompactTo(InternalIndexPage &dst, char *separ
         cells.push_back(page_.getIntermediateCellOnXthPointer(i));
     }
 
-    const uint8_t new_slot_count = static_cast<uint8_t>(cells.size());
+    const uint16_t new_slot_count = static_cast<uint16_t>(cells.size());
     if (new_slot_count == 0)
     {
         throw std::logic_error("InternalIndexPage::transferAndCompactTo: new_slot_count == 0 (not implemented)");
     }
 
     uint16_t write_offset = static_cast<uint16_t>(Page::PAGE_SIZE_BYTE);
-    for (uint8_t idx = 0; idx < new_slot_count; ++idx)
+    for (uint16_t idx = 0; idx < new_slot_count; ++idx)
     {
         const IntermediateCell &cell = cells[idx];
         const uint16_t payload_size = static_cast<uint16_t>(cell.payloadSize());
