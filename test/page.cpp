@@ -1,7 +1,7 @@
-#include "../src/page.h"
-#include "../src/index_page.h"
-#include "../src/cell.h"
-#include "../src/record_cell.h"
+#include "../src/storage/page.h"
+#include "../src/storage/index_page.h"
+#include "../src/storage/cell.h"
+#include "../src/storage/record_cell.h"
 #include <array>
 #include <optional>
 #include <cstring>

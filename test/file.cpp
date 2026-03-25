@@ -1,5 +1,5 @@
-#include "../src/file.h"
-#include "../src/page.h"
+#include "../src/storage/file.h"
+#include "../src/storage/page.h"
 #include <cstdio>
 #include <cstring>
 #include <fstream>

@@ -1,6 +1,6 @@
-#include "../src/cell.h"
-#include "../src/intermediate_cell.h"
-#include "../src/leaf_cell.h"
+#include "../src/storage/cell.h"
+#include "../src/storage/intermediate_cell.h"
+#include "../src/storage/leaf_cell.h"
 #include <vector>
 #include <gtest/gtest.h>
 

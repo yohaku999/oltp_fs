@@ -1,5 +1,5 @@
-#include "../src/frame_directory.h"
-#include "../src/page.h"
+#include "../src/storage/frame_directory.h"
+#include "../src/storage/page.h"
 #include <array>
 #include <memory>
 #include <gtest/gtest.h>

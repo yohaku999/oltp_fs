@@ -1,7 +1,7 @@
-#include "../src/bufferpool.h"
-#include "../src/page.h"
-#include "../src/file.h"
-#include "../src/record_cell.h"
+#include "../src/storage/bufferpool.h"
+#include "../src/storage/page.h"
+#include "../src/storage/file.h"
+#include "../src/storage/record_cell.h"
 #include <array>
 #include <cstdio>
 #include <cstring>

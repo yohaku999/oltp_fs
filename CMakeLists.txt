@@ -14,19 +14,19 @@ set(gtest_disable_pthreads ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
 add_library(dbfs_src
-    src/bufferpool.cpp
-    src/file.cpp
-    src/page.cpp
-    src/index_page.cpp
-    src/intermediate_cell.cpp
-    src/leaf_cell.cpp
-    src/record_cell.cpp
-    src/btreecursor.cpp
-    src/frame_directory.cpp
+    src/storage/bufferpool.cpp
+    src/storage/file.cpp
+    src/storage/page.cpp
+    src/storage/index_page.cpp
+    src/storage/intermediate_cell.cpp
+    src/storage/leaf_cell.cpp
+    src/storage/record_cell.cpp
+    src/storage/btreecursor.cpp
+    src/storage/frame_directory.cpp
     src/logging.cpp
 )
 
-target_include_directories(dbfs_src PUBLIC src)
+target_include_directories(dbfs_src PUBLIC src src/storage)
 target_link_libraries(dbfs_src PUBLIC spdlog::spdlog)
 
 add_executable(bufferpool_test test/bufferpool.cpp)

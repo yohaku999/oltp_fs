@@ -1,7 +1,7 @@
-#include "../src/btreecursor.h"
-#include "../src/bufferpool.h"
-#include "../src/file.h"
-#include "../src/page.h"
+#include "../src/storage/btreecursor.h"
+#include "../src/storage/bufferpool.h"
+#include "../src/storage/file.h"
+#include "../src/storage/page.h"
 #include <array>
 #include <cstdio>
 #include <cstring>
