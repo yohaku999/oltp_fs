@@ -52,6 +52,8 @@ add_library(dbfs_src
     src/storage/record_serializer.cpp
     src/storage/btreecursor.cpp
     src/storage/frame_directory.cpp
+    src/storage/wal_record.cpp
+    src/storage/wal/wal_body.cpp
     src/executor/heap_fetch.cpp
     src/executor/executor.cpp
     src/executor/index_scan.cpp
@@ -59,7 +61,7 @@ add_library(dbfs_src
     src/logging.cpp
 )
 
-target_include_directories(dbfs_src PUBLIC src src/storage)
+target_include_directories(dbfs_src PUBLIC src src/storage src/storage/wal)
 target_link_libraries(dbfs_src PUBLIC spdlog::spdlog nlohmann_json::nlohmann_json)
 
 add_executable(bufferpool_test test/bufferpool.cpp)
@@ -86,6 +88,12 @@ target_link_libraries(table_test dbfs_src GTest::gtest_main)
 add_executable(frame_directory_test test/frame_directory.cpp)
 target_link_libraries(frame_directory_test dbfs_src GTest::gtest_main)
 
+add_executable(wal_body_test test/wal_body.cpp)
+target_link_libraries(wal_body_test dbfs_src GTest::gtest_main)
+
+add_executable(wal_record_test test/wal_record.cpp)
+target_link_libraries(wal_record_test dbfs_src GTest::gtest_main)
+
 add_executable(e2e_test test/e2e.cpp)
 target_link_libraries(e2e_test dbfs_src GTest::gtest_main pg_query)
 
@@ -96,6 +104,8 @@ add_test(NAME PageTest COMMAND page_test)
 add_test(NAME FileTest COMMAND file_test)
 add_test(NAME BTreeCursorTest COMMAND btreecursor_test)
 add_test(NAME FrameDirectoryTest COMMAND frame_directory_test)
+add_test(NAME WALBodyTest COMMAND wal_body_test)
+add_test(NAME WALRecordTest COMMAND wal_record_test)
 add_test(NAME ExecutorTest COMMAND executor_test)
 add_test(NAME TableTest COMMAND table_test)
 add_test(NAME E2ESelectTest COMMAND e2e_test)
