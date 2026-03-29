@@ -26,8 +26,7 @@ std::vector<std::byte> WALRecord::serialize() const
 
 WALRecord WALRecord::deserialize(const std::vector<std::byte>& buffer)
 {
-    const std::size_t header_size = sizeof(uint64_t) + sizeof(RecordType) + sizeof(uint16_t) + sizeof(uint32_t);
-    if (buffer.size() < header_size) {
+    if (buffer.size() < header_size_bytes()) {
         throw std::runtime_error("WALRecord::deserialize: buffer too small");
     }
 
