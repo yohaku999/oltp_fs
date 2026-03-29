@@ -8,7 +8,6 @@
 
 TEST(WALRecordTest, SerializeDeserializeRoundTrip)
 {
-    uint64_t lsn = 987654321;
     uint16_t page_id = 321;
 
     // Make an INSERT body and encode it.
@@ -17,12 +16,13 @@ TEST(WALRecordTest, SerializeDeserializeRoundTrip)
     body.tuple = {std::byte{0x01}, std::byte{0x02}, std::byte{0x03}};
     std::vector<std::byte> encoded_body = body.encode();
 
-    WALRecord record(lsn, WALRecord::RecordType::INSERT, page_id, encoded_body);
+    LSNAllocator allocator(0);
+    WALRecord record = make_wal_record(allocator, WALRecord::RecordType::INSERT, page_id, encoded_body);
 
     std::vector<std::byte> serialized = record.serialize();
     WALRecord restored = WALRecord::deserialize(serialized);
 
-    EXPECT_EQ(lsn, restored.get_lsn());
+    EXPECT_EQ(record.get_lsn(), restored.get_lsn());
     EXPECT_EQ(WALRecord::RecordType::INSERT, restored.get_type());
     EXPECT_EQ(page_id, restored.get_page_id());
 
@@ -36,6 +36,8 @@ TEST(WALRecordTest, SerializeDeserializeRoundTrip)
 
 TEST(WALRecordTest, DecodeBodyDispatchesToCorrectType)
 {
+    LSNAllocator allocator(0);
+
     // Prepare three different bodies and make WALRecord for each, then use decode_body.
 
     // INSERT
@@ -43,7 +45,7 @@ TEST(WALRecordTest, DecodeBodyDispatchesToCorrectType)
     insert_body.offset = 10;
     insert_body.tuple = {std::byte{0x10}, std::byte{0x20}};
     auto insert_encoded = insert_body.encode();
-    WALRecord insert_record(1, WALRecord::RecordType::INSERT, 5, insert_encoded);
+    WALRecord insert_record = make_wal_record(allocator, WALRecord::RecordType::INSERT, 0, insert_encoded);
 
     WALBody insert_variant = decode_body(insert_record);
     ASSERT_TRUE(std::holds_alternative<InsertRedoBody>(insert_variant));
@@ -61,7 +63,7 @@ TEST(WALRecordTest, DecodeBodyDispatchesToCorrectType)
     update_body.before = {std::byte{0x01}};
     update_body.after  = {std::byte{0x02}, std::byte{0x03}};
     auto update_encoded = update_body.encode();
-    WALRecord update_record(2, WALRecord::RecordType::UPDATE, 6, update_encoded);
+    WALRecord update_record = make_wal_record(allocator, WALRecord::RecordType::UPDATE, 0, update_encoded);
 
     WALBody update_variant = decode_body(update_record);
     ASSERT_TRUE(std::holds_alternative<UpdateRedoBody>(update_variant));
@@ -83,7 +85,7 @@ TEST(WALRecordTest, DecodeBodyDispatchesToCorrectType)
     delete_body.offset = 30;
     delete_body.before = {std::byte{0xAA}, std::byte{0xBB}};
     auto delete_encoded = delete_body.encode();
-    WALRecord delete_record(3, WALRecord::RecordType::DELETE, 7, delete_encoded);
+    WALRecord delete_record = make_wal_record(allocator, WALRecord::RecordType::DELETE, 0, delete_encoded);
 
     WALBody delete_variant = decode_body(delete_record);
     ASSERT_TRUE(std::holds_alternative<DeleteRedoBody>(delete_variant));
