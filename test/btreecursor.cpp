@@ -2,9 +2,12 @@
 #include "../src/storage/bufferpool.h"
 #include "../src/storage/file.h"
 #include "../src/storage/page.h"
+#include "../src/storage/lsn_allocator.h"
+#include "../src/storage/wal/wal.h"
 #include <array>
 #include <cstdio>
 #include <cstring>
+#include <sys/stat.h>
 #include <memory>
 #include <random>
 #include <string>
@@ -19,16 +22,22 @@ protected:
     std::unique_ptr<BufferPool> pool_;
     std::unique_ptr<File> index_file_;
     std::unique_ptr<File> heap_file_;
+    std::unique_ptr<LSNAllocator> lsn_;
+    std::unique_ptr<WAL> wal_;
     const std::string index_path_ = "btreecursor_test.index";
     const std::string heap_path_ = "btreecursor_test.db";
+    const std::string wal_path_ = "btreecursor_test.wal";
 
     void SetUp() override
     {
         pool_ = std::make_unique<BufferPool>();
         std::remove(index_path_.c_str());
         std::remove(heap_path_.c_str());
+        std::remove(wal_path_.c_str());
         index_file_ = std::make_unique<File>(index_path_);
         heap_file_ = std::make_unique<File>(heap_path_);
+        lsn_ = std::make_unique<LSNAllocator>(0);
+        wal_ = std::make_unique<WAL>(wal_path_);
         initializeLeafPage(*index_file_);
         initializeLeafPage(*heap_file_);
     }
@@ -37,8 +46,21 @@ protected:
     {
         index_file_.reset();
         heap_file_.reset();
+        wal_.reset();
+        lsn_.reset();
         std::remove(index_path_.c_str());
         std::remove(heap_path_.c_str());
+        std::remove(wal_path_.c_str());
+    }
+
+    std::size_t walFileSize() const
+    {
+        struct stat st;
+        if (stat(wal_path_.c_str(), &st) != 0)
+        {
+            return 0;
+        }
+        return static_cast<std::size_t>(st.st_size);
     }
 
     static void initializeLeafPage(File &file)
@@ -61,7 +83,9 @@ TEST_F(BTreeCursorTest, InsertAndGetMultipleRecords)
     for (const auto &record : records)
     {
         char *value_ptr = const_cast<char *>(record.second.data());
-        BTreeCursor::insert(*pool_, *index_file_, *heap_file_, record.first, value_ptr, record.second.size());
+        BTreeCursor::insert(*pool_, *index_file_, *heap_file_,
+                           record.first, value_ptr, record.second.size(),
+                           *lsn_, *wal_);
     }
 
     // read
@@ -71,6 +95,10 @@ TEST_F(BTreeCursorTest, InsertAndGetMultipleRecords)
         std::string restored(stored, record.second.size());
         EXPECT_EQ(record.second, restored);
     }
+
+    // Just verify that INSERTs generated some WAL records on disk for now.
+    wal_->flush();
+    EXPECT_GT(walFileSize(), 0u);
 }
 
 TEST_F(BTreeCursorTest, InsertDeleteThenFailToRead)
@@ -79,9 +107,10 @@ TEST_F(BTreeCursorTest, InsertDeleteThenFailToRead)
     std::string payload = "transient";
 
     char *value_ptr = payload.data();
-    BTreeCursor::insert(*pool_, *index_file_, *heap_file_, key, value_ptr, payload.size());
+    BTreeCursor::insert(*pool_, *index_file_, *heap_file_, key, value_ptr, payload.size(),
+                       *lsn_, *wal_);
 
-    BTreeCursor::remove(*pool_, *index_file_, *heap_file_, key);
+    BTreeCursor::remove(*pool_, *index_file_, *heap_file_, key, *lsn_, *wal_);
 
     // reading should now fail because the slot has been invalidated
     EXPECT_THROW({ BTreeCursor::read(*pool_, *index_file_, *heap_file_, key); }, std::runtime_error);
@@ -94,10 +123,12 @@ TEST_F(BTreeCursorTest, UpdateReplacesExistingValue)
     std::string updated = "updated-value";
 
     char* initial_ptr = initial.data();
-    BTreeCursor::insert(*pool_, *index_file_, *heap_file_, key, initial_ptr, initial.size());
+    BTreeCursor::insert(*pool_, *index_file_, *heap_file_, key, initial_ptr, initial.size(),
+                       *lsn_, *wal_);
 
     char* update_ptr = updated.data();
-    BTreeCursor::update(*pool_, *index_file_, *heap_file_, key, update_ptr, updated.size());
+    BTreeCursor::update(*pool_, *index_file_, *heap_file_, key, update_ptr, updated.size(),
+                       *lsn_, *wal_);
 
     char* stored = BTreeCursor::read(*pool_, *index_file_, *heap_file_, key);
     std::string restored(stored, updated.size());
@@ -112,7 +143,8 @@ TEST_F(BTreeCursorTest, UpdateNonExistingKeyThrows)
     char* value_ptr = payload.data();
     EXPECT_THROW(
         {
-            BTreeCursor::update(*pool_, *index_file_, *heap_file_, key, value_ptr, payload.size());
+            BTreeCursor::update(*pool_, *index_file_, *heap_file_, key, value_ptr, payload.size(),
+                               *lsn_, *wal_);
         },
         std::runtime_error);
 }
@@ -144,7 +176,8 @@ TEST_F(BTreeCursorTest, InsertPageOverflow)
             {
                 ch = static_cast<char>('a' + (rng() % 26));
             }
-            BTreeCursor::insert(*pool_, *index_file_, *heap_file_, key, payload.data(), payload.size());
+            BTreeCursor::insert(*pool_, *index_file_, *heap_file_, key, payload.data(), payload.size(),
+                               *lsn_, *wal_);
             expected.emplace(key, payload);
         }
 

@@ -12,6 +12,8 @@
 #include <stdexcept>
 #include "logging.h"
 #include <ostream>
+#include "wal_record.h"
+#include "wal/wal_body.h"
 
 int BTreeCursor::findLeafPageID(BufferPool& pool, File& indexFile, int key)
 {
@@ -51,7 +53,9 @@ std::optional<std::pair<uint16_t, uint16_t>> BTreeCursor::findRecordLocation(Buf
     return result;
 }
 
-void BTreeCursor::update(BufferPool& pool, File& indexFile, File& heapFile, int key, char* value, size_t value_size)
+void BTreeCursor::update(BufferPool& pool, File& indexFile, File& heapFile,
+                         int key, char* value, size_t value_size,
+                         LSNAllocator& allocator, WAL& wal)
 {
     /**
      * We first design updates to be idempotent by modeling them as a remove followed by an insert.
@@ -59,8 +63,8 @@ void BTreeCursor::update(BufferPool& pool, File& indexFile, File& heapFile, int 
      * Also, this unlocks follow-on benefits (e.g., easier recovery/retry and fewer page-structure assumptions) without requiring 
      * in-place updates or special-case split handling.
      */
-    BTreeCursor::remove(pool, indexFile, heapFile, key);
-    BTreeCursor::insert(pool, indexFile, heapFile, key, value, value_size);
+    BTreeCursor::remove(pool, indexFile, heapFile, key, allocator, wal);
+    BTreeCursor::insert(pool, indexFile, heapFile, key, value, value_size, allocator, wal);
 }
 
 char* BTreeCursor::read(BufferPool& pool, File& indexFile, File& heapFile, int key)
@@ -79,7 +83,8 @@ char* BTreeCursor::read(BufferPool& pool, File& indexFile, File& heapFile, int k
     return value;
 }
 
-void BTreeCursor::remove(BufferPool& pool, File& indexFile, File& heapFile, int key)
+void BTreeCursor::remove(BufferPool& pool, File& indexFile, File& heapFile,
+                         int key, LSNAllocator& allocator, WAL& wal)
 {
     auto location = findRecordLocation(pool, indexFile, key, true);
     if (!location.has_value())
@@ -88,13 +93,25 @@ void BTreeCursor::remove(BufferPool& pool, File& indexFile, File& heapFile, int 
     }
     auto [pageID, slotID] = location.value();
     Page* page = pool.getPage(pageID, heapFile);
+
+    // Log a DELETE for the heap page slot.
+    // For now we omit the "before" image bytes; redo can still
+    // invalidate the slot using the offset alone.
+    wal.write(
+        make_wal_record(
+            allocator,
+            WALRecord::RecordType::DELETE,
+            static_cast<uint16_t>(pageID),
+            DeleteRedoBody(static_cast<uint16_t>(slotID)).encode()));
+
     page->invalidateSlot(slotID);
     pool.unpin(page, heapFile);
     LOG_INFO("Removed record with key {} successfully.", key);
 }
 
 std::pair<uint16_t, uint16_t> BTreeCursor::insertIntoHeap(
-    BufferPool& pool, File& heapFile, int key, char* value, size_t value_size)
+    BufferPool& pool, File& heapFile, int key, char* value, size_t value_size,
+    LSNAllocator& allocator, WAL& wal)
 {
     LOG_INFO("Inserting record with key {} into heap file {}.", key, heapFile.getFilePath());
     RecordCell cell(key, value, value_size);
@@ -115,6 +132,18 @@ std::pair<uint16_t, uint16_t> BTreeCursor::insertIntoHeap(
             throw std::runtime_error("Failed to insert record cell into a new heap page due to insufficient space.");
         }
     }
+    
+    // Log an INSERT for the heap page.
+    wal.write(
+        make_wal_record(
+            allocator,
+            WALRecord::RecordType::INSERT,
+            static_cast<uint16_t>(targetPageID),
+            InsertRedoBody(
+                static_cast<uint16_t>(insertedSlotID.value()),
+                cell.serialize())
+                .encode()));
+
     pool.unpin(heapPage, heapFile);
     LOG_INFO("Inserted record with key {} into heap page ID {} successfully.", key, targetPageID);
 
@@ -145,7 +174,9 @@ void BTreeCursor::insertIntoIndex(
              key, heap_page_id, slot_id);
 }
 
-void BTreeCursor::insert(BufferPool& pool, File& indexFile, File& heapFile, int key, char* value, size_t value_size)
+void BTreeCursor::insert(BufferPool& pool, File& indexFile, File& heapFile,
+                         int key, char* value, size_t value_size,
+                         LSNAllocator& allocator, WAL& wal)
 {
     LOG_INFO("Inserting record with key {} into index {}, heap {}", key, indexFile.getFilePath(), heapFile.getFilePath());
     // check if valid key already exists.
@@ -155,7 +186,8 @@ void BTreeCursor::insert(BufferPool& pool, File& indexFile, File& heapFile, int 
         throw std::runtime_error("Key " + std::to_string(key) + " already exists. Duplicate keys are not allowed.");
     }
 
-    auto [heap_page_id, slot_id] = insertIntoHeap(pool, heapFile, key, value, value_size);
+    auto [heap_page_id, slot_id] = insertIntoHeap(pool, heapFile, key, value, value_size,
+                                                  allocator, wal);
     insertIntoIndex(pool, indexFile, key, heap_page_id, slot_id);
 }
 

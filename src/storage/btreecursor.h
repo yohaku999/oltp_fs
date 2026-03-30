@@ -4,6 +4,8 @@
 #include <utility>
 #include <ostream>
 #include "bufferpool.h"
+#include "lsn_allocator.h"
+#include "wal/wal.h"
 
 /**
  * BTreeCursor is an arbitration layer that coordinates BufferPool and File to execute
@@ -22,7 +24,8 @@ private:
     static int findLeafPageID(BufferPool& pool, File& indexFile, int key);
     static void splitPage(BufferPool& pool, File& indexFile, Page* old_page);
     static std::pair<uint16_t, uint16_t> insertIntoHeap(
-        BufferPool& pool, File& heapFile, int key, char* value, size_t value_size);
+        BufferPool& pool, File& heapFile, int key, char* value, size_t value_size,
+        LSNAllocator& allocator, WAL& wal);
     static void insertIntoIndex(
         BufferPool& pool, File& indexFile, int key, uint16_t heap_page_id, uint16_t slot_id);
     static void splitLeafPage(BufferPool& pool, File& index_file, Page& old_page, Page& parent_page, char* separate_key);
@@ -30,9 +33,14 @@ private:
     static Page* ensureParentPage(BufferPool& pool, File& index_file, Page& old_page);
 public:
     static char* read(BufferPool& pool, File& indexFile, File& heapFile, int key);
-    static void insert(BufferPool& pool, File& indexFile, File& heapFile, int key, char* value, size_t value_size);
-    static void remove(BufferPool& pool, File& indexFile, File& heapFile, int key);
-    static void update(BufferPool& pool, File& indexFile, File& heapFile, int key, char* value, size_t value_size);
+    static void insert(BufferPool& pool, File& indexFile, File& heapFile,
+                       int key, char* value, size_t value_size,
+                       LSNAllocator& allocator, WAL& wal);
+    static void remove(BufferPool& pool, File& indexFile, File& heapFile,
+                       int key, LSNAllocator& allocator, WAL& wal);
+    static void update(BufferPool& pool, File& indexFile, File& heapFile,
+                       int key, char* value, size_t value_size,
+                       LSNAllocator& allocator, WAL& wal);
 
     static void dumpTree(BufferPool& pool, File& indexFile, std::ostream& os);
 };
