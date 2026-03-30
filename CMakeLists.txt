@@ -55,6 +55,7 @@ add_library(dbfs_src
     src/storage/lsn_allocator.cpp
     src/storage/wal_record.cpp
     src/storage/wal/wal_body.cpp
+    src/storage/wal/wal.cpp
     src/executor/heap_fetch.cpp
     src/executor/executor.cpp
     src/executor/index_scan.cpp

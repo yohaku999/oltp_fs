@@ -14,3 +14,8 @@
 - Before a data page is flushed, the implementation ensures that the corresponding update logs have already been persisted, thereby satisfying the basic WAL rule.
 - Full ARIES features such as restart recovery (analysis / redo / undo), checkpoints, and CLRs are currently out of scope.
 - We use a page-oriented WAL format with page IDs and byte/field-level deltas because it keeps the design simple while making the interaction between the buffer pool, page updates, and WAL durability more explicit by glanular logging.
+- For now, WAL records are only generated for heap (data) pages. B+tree index pages are treated as
+  derived state that can be rebuilt from the heap and are intentionally left out of the logging
+  surface to keep the prototype focused. Extending WAL coverage to index-structure changes
+  (e.g., split/merge, pointer rewiring) and implementing restart recovery for indexes is left as
+  future work.

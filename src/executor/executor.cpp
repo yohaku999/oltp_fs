@@ -2,14 +2,19 @@
 
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include "../logging.h"
+#include "../storage/lsn_allocator.h"
 #include "../storage/btreecursor.h"
 #include "../storage/bufferpool.h"
 #include "../storage/file.h"
 #include "../storage/page.h"
 #include "../storage/record_cell.h"
 #include "../storage/record_serializer.h"
+#include "../storage/wal/wal.h"
+#include "../storage/wal/wal_body.h"
+#include "../storage/wal_record.h"
 #include "../table/table.h"
 #include "heap_fetch.h"
 #include "index_scan.h"
@@ -17,27 +22,40 @@
 namespace {
 std::pair<uint16_t, uint16_t> insertIntoHeap(BufferPool& pool, File& heapFile,
                                              const Schema& schema,
-                                             const TypedRow& row, int key) {
+                                             const TypedRow& row, int key,
+                                             LSNAllocator* allocator = nullptr,
+                                             WAL* wal = nullptr) {
   LOG_INFO("Inserting record with key {} into heap file {}.", key,
            heapFile.getFilePath());
   RecordSerializer cell(schema, row);
+  const std::vector<std::byte>& serialized_cell = cell.serializedBytes();
 
   int targetPageID = heapFile.getMaxPageID();
   Page* heapPage = pool.getPage(targetPageID, heapFile);
-  auto insertedSlotID = heapPage->insertCell(cell.serializedBytes());
+  auto insertedSlotID = heapPage->insertCell(serialized_cell);
   if (!insertedSlotID.has_value()) {
     pool.unpin(heapPage, heapFile);
     // WARNING : currently how we deal with leafpage and heappage is the same.
     // Thus it is correct to set is_leaf = true here but, it's confusing.
     targetPageID = pool.createNewPage(true, heapFile);
     heapPage = pool.getPage(targetPageID, heapFile);
-    insertedSlotID = heapPage->insertCell(cell.serializedBytes());
+    insertedSlotID = heapPage->insertCell(serialized_cell);
     if (!insertedSlotID.has_value()) {
       throw std::runtime_error(
           "Failed to insert record cell into a new heap page due to "
           "insufficient space.");
     }
   }
+
+  if (allocator != nullptr && wal != nullptr) {
+    wal->write(make_wal_record(
+        *allocator, WALRecord::RecordType::INSERT,
+        static_cast<uint16_t>(targetPageID),
+        InsertRedoBody(static_cast<uint16_t>(insertedSlotID.value()),
+                       serialized_cell)
+            .encode()));
+  }
+
   pool.unpin(heapPage, heapFile);
   LOG_INFO("Inserted record with key {} into heap page ID {} successfully.",
            key, targetPageID);
@@ -63,6 +81,15 @@ TypedRow executor::read(BufferPool& pool, Table& table, int key) {
 
 void executor::insert(BufferPool& pool, Table& table, int key,
                       const TypedRow& row) {
+  auto [heap_page_id, slot_id] =
+      insertIntoHeap(pool, table.heapFile(), table.schema(), row, key);
+  BTreeCursor::insertIntoIndex(pool, table.indexFile(), key, heap_page_id,
+                               slot_id);
+}
+
+void executor::insert(BufferPool& pool, Table& table, int key,
+                      const TypedRow& row, LSNAllocator& allocator,
+                      WAL& wal) {
   LOG_INFO("Inserting record with key {} into table {}.", key, table.name());
   auto location = BTreeCursor::findRecordLocation(pool, table.indexFile(), key);
   if (location.has_value()) {
@@ -72,7 +99,8 @@ void executor::insert(BufferPool& pool, Table& table, int key,
   }
 
   auto [heap_page_id, slot_id] =
-      insertIntoHeap(pool, table.heapFile(), table.schema(), row, key);
+      insertIntoHeap(pool, table.heapFile(), table.schema(), row, key,
+                     &allocator, &wal);
   BTreeCursor::insertIntoIndex(pool, table.indexFile(), key, heap_page_id,
                                slot_id);
 }
@@ -91,6 +119,24 @@ void executor::remove(BufferPool& pool, Table& table, int key) {
   LOG_INFO("Removed record with key {} successfully.", key);
 }
 
+void executor::remove(BufferPool& pool, Table& table, int key,
+                      LSNAllocator& allocator, WAL& wal) {
+  auto location =
+      BTreeCursor::findRecordLocation(pool, table.indexFile(), key, true);
+  if (!location.has_value()) {
+    throw std::runtime_error("Key " + std::to_string(key) +
+                             " not found in leaf page.");
+  }
+  auto [page_id, slot_id] = location.value();
+  Page* page = pool.getPage(page_id, table.heapFile());
+  wal.write(make_wal_record(
+      allocator, WALRecord::RecordType::DELETE, static_cast<uint16_t>(page_id),
+      DeleteRedoBody(static_cast<uint16_t>(slot_id)).encode()));
+  page->invalidateSlot(slot_id);
+  pool.unpin(page, table.heapFile());
+  LOG_INFO("Removed record with key {} successfully.", key);
+}
+
 /**
  * We first design updates to be idempotent by modeling them as a remove
  * followed by an insert. This is not necessarily the most efficient strategy,
@@ -103,4 +149,11 @@ void executor::update(BufferPool& pool, Table& table, int key,
                       const TypedRow& row) {
   executor::remove(pool, table, key);
   executor::insert(pool, table, key, row);
+}
+
+void executor::update(BufferPool& pool, Table& table, int key,
+                      const TypedRow& row, LSNAllocator& allocator,
+                      WAL& wal) {
+  executor::remove(pool, table, key, allocator, wal);
+  executor::insert(pool, table, key, row, allocator, wal);
 }

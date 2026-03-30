@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <cstdio>
+#include <fstream>
 #include <memory>
 #include <random>
 #include <string>
@@ -12,20 +13,26 @@
 
 #include "../src/storage/btreecursor.h"
 #include "../src/storage/bufferpool.h"
+#include "../src/storage/lsn_allocator.h"
+#include "../src/storage/wal/wal.h"
+#include "../src/storage/wal_record.h"
 #include "../src/table/table.h"
 
 class ExecutorTest : public ::testing::Test {
  protected:
   static constexpr const char* kTableName = "executor_test_table";
+  static constexpr const char* kWalPath = "executor_test_table.wal";
   std::unique_ptr<BufferPool> pool_;
 
   void SetUp() override {
     pool_ = std::make_unique<BufferPool>();
     Table::removeFilesFor(kTableName);
+    std::remove(kWalPath);
   }
 
   void TearDown() override {
     Table::removeFilesFor(kTableName);
+    std::remove(kWalPath);
   }
 
   static Table createSingleColumnTable() {
@@ -41,6 +48,45 @@ class ExecutorTest : public ::testing::Test {
       throw std::runtime_error("Expected single varchar row.");
     }
     return std::get<Column::VarcharType>(row.values[0]);
+  }
+
+  static std::vector<WALRecord> readWalRecords(const std::string& wal_path) {
+    std::ifstream wal_file(wal_path, std::ios::binary);
+    if (!wal_file) {
+      return {};
+    }
+
+    std::vector<char> raw_bytes((std::istreambuf_iterator<char>(wal_file)),
+                                std::istreambuf_iterator<char>());
+    std::vector<WALRecord> records;
+    std::size_t offset = 0;
+
+    while (offset < raw_bytes.size()) {
+      const std::size_t header_size =
+          sizeof(uint64_t) + sizeof(WALRecord::RecordType) +
+          sizeof(uint16_t) + sizeof(uint32_t);
+      if (raw_bytes.size() - offset < header_size) {
+        throw std::runtime_error("Incomplete WAL header in test fixture.");
+      }
+
+      uint32_t body_size = 0;
+      std::memcpy(&body_size,
+                  raw_bytes.data() + offset + sizeof(uint64_t) +
+                      sizeof(WALRecord::RecordType) + sizeof(uint16_t),
+                  sizeof(uint32_t));
+
+      const std::size_t record_size = header_size + body_size;
+      if (raw_bytes.size() - offset < record_size) {
+        throw std::runtime_error("Incomplete WAL record body in test fixture.");
+      }
+
+      std::vector<std::byte> record_bytes(record_size);
+      std::memcpy(record_bytes.data(), raw_bytes.data() + offset, record_size);
+      records.push_back(WALRecord::deserialize(record_bytes));
+      offset += record_size;
+    }
+
+    return records;
   }
 };
 
@@ -155,4 +201,60 @@ TEST_F(ExecutorTest, InsertPageOverflow) {
     BTreeCursor::dumpTree(*pool_, table.indexFile(), std::cout);
     throw;
   }
+}
+
+TEST_F(ExecutorTest, InsertWithWalWritesInsertRecord) {
+  Table table = createSingleColumnTable();
+  LSNAllocator allocator(0);
+  WAL wal(kWalPath);
+
+  executor::insert(*pool_, table, 11, TypedRow{{Column::VarcharType("wal")}},
+                   allocator, wal);
+  wal.flush();
+
+  std::vector<WALRecord> records = readWalRecords(kWalPath);
+  ASSERT_EQ(records.size(), 1u);
+  EXPECT_EQ(records[0].get_type(), WALRecord::RecordType::INSERT);
+
+  WALBody body = decode_body(records[0]);
+  ASSERT_TRUE(std::holds_alternative<InsertRedoBody>(body));
+  const auto& insert_body = std::get<InsertRedoBody>(body);
+  EXPECT_EQ(insert_body.offset, 0);
+  EXPECT_FALSE(insert_body.tuple.empty());
+}
+
+TEST_F(ExecutorTest, RemoveWithWalWritesDeleteRecord) {
+  Table table = createSingleColumnTable();
+  executor::insert(*pool_, table, 22, TypedRow{{Column::VarcharType("gone")}});
+
+  LSNAllocator allocator(0);
+  WAL wal(kWalPath);
+  executor::remove(*pool_, table, 22, allocator, wal);
+  wal.flush();
+
+  std::vector<WALRecord> records = readWalRecords(kWalPath);
+  ASSERT_EQ(records.size(), 1u);
+  EXPECT_EQ(records[0].get_type(), WALRecord::RecordType::DELETE);
+
+  WALBody body = decode_body(records[0]);
+  ASSERT_TRUE(std::holds_alternative<DeleteRedoBody>(body));
+  const auto& delete_body = std::get<DeleteRedoBody>(body);
+  EXPECT_EQ(delete_body.offset, 0);
+}
+
+TEST_F(ExecutorTest, UpdateWithWalWritesDeleteThenInsert) {
+  Table table = createSingleColumnTable();
+  executor::insert(*pool_, table, 33,
+                   TypedRow{{Column::VarcharType("before")}});
+
+  LSNAllocator allocator(0);
+  WAL wal(kWalPath);
+  executor::update(*pool_, table, 33,
+                   TypedRow{{Column::VarcharType("after")}}, allocator, wal);
+  wal.flush();
+
+  std::vector<WALRecord> records = readWalRecords(kWalPath);
+  ASSERT_EQ(records.size(), 2u);
+  EXPECT_EQ(records[0].get_type(), WALRecord::RecordType::DELETE);
+  EXPECT_EQ(records[1].get_type(), WALRecord::RecordType::INSERT);
 }

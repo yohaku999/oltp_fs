@@ -4,11 +4,16 @@
 #include <cstddef>
 #include <vector>
 #include <variant>
+#include <utility>
 
 // Logical bodies for different kinds of WAL records.
 struct InsertRedoBody {
     uint16_t offset;
     std::vector<std::byte> tuple;
+
+    InsertRedoBody() = default;
+    InsertRedoBody(uint16_t offset_, std::vector<std::byte> tuple_)
+        : offset(offset_), tuple(std::move(tuple_)) {}
 
     std::vector<std::byte> encode() const;
     static InsertRedoBody decode(const std::vector<std::byte>& buffer);
@@ -26,6 +31,10 @@ struct UpdateRedoBody {
 struct DeleteRedoBody {
     uint16_t offset;
     std::vector<std::byte> before;
+
+    DeleteRedoBody() = default;
+    DeleteRedoBody(uint16_t offset_, std::vector<std::byte> before_ = {})
+        : offset(offset_), before(std::move(before_)) {}
 
     std::vector<std::byte> encode() const;
     static DeleteRedoBody decode(const std::vector<std::byte>& buffer);
