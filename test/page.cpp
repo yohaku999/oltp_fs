@@ -270,3 +270,27 @@ TEST(PageTest, HeapInsertInvalidateReuseSlot) {
   ASSERT_TRUE(std::holds_alternative<Column::VarcharType>(row.values[0]));
   EXPECT_EQ(std::get<Column::VarcharType>(row.values[0]), payload);
 }
+
+TEST(PageTest, SetPageLSNUpdatesHeaderAndMarksDirty)
+{
+    std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
+    auto page = std::make_unique<Page>(page_data.data(), true, 0, 1);
+
+    page->clearDirty();
+    EXPECT_FALSE(page->isDirty());
+
+    const std::uint64_t lsn = 42;
+    page->setPageLSN(lsn);
+
+    EXPECT_EQ(page->getPageLSN(), lsn);
+    EXPECT_TRUE(page->isDirty());
+}
+
+TEST(PageTest, NewPageInitializesPageLSNToZero)
+{
+    std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
+    auto page = std::make_unique<Page>(page_data.data(), true, 0, 1);
+
+    EXPECT_EQ(page->getPageLSN(), 0u);
+    EXPECT_TRUE(page->isDirty());
+}

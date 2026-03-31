@@ -17,14 +17,15 @@
 #include "record_cell.h"
 
 // Constructor for creating a new page
-Page::Page(char* start_p, bool is_leaf, uint16_t rightMostChildPageId,
-           uint16_t page_id)
-    : start_p_(start_p), pageID_(page_id), parentPageID_(-1), is_dirty_(false) {
-  updateNodeTypeFlag(is_leaf);
-  updateSlotCount(0);
-  updateSlotDirectoryOffset(Page::PAGE_SIZE_BYTE);
-  setRightMostChildPageId(rightMostChildPageId);
-  markDirty();
+Page::Page(char *start_p, bool is_leaf, uint16_t rightMostChildPageId, uint16_t page_id)
+    : start_p_(start_p), pageID_(page_id), parentPageID_(-1), is_dirty_(false)
+{
+    updateNodeTypeFlag(is_leaf);
+    updateSlotCount(0);
+    updateSlotDirectoryOffset(Page::PAGE_SIZE_BYTE);
+    setRightMostChildPageId(rightMostChildPageId);
+    updatePageLSN(0);
+    markDirty();
 }
 
 // Constructor for wrapping existing page data
@@ -161,6 +162,16 @@ uint16_t Page::rightMostChildPageId() const {
 void Page::setRightMostChildPageId(uint16_t page_id) {
   std::memcpy(start_p_ + RIGHT_MOST_CHILD_POINTER_OFFSET, &page_id,
               sizeof(uint16_t));
+}
+
+std::uint64_t Page::getPageLSN() const
+{
+    return readValue<std::uint64_t>(start_p_ + PAGE_LSN_OFFSET);
+}
+
+void Page::updatePageLSN(std::uint64_t lsn)
+{
+    std::memcpy(start_p_ + PAGE_LSN_OFFSET, &lsn, sizeof(std::uint64_t));
 }
 
 void Page::dump(std::ostream& os) {
