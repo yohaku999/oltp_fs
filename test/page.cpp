@@ -236,3 +236,27 @@ TEST(PageTest, HeapInsertInvalidateReuseSlot)
     char *value_ptr = page->getXthSlotValue(second_slot.value());
     EXPECT_EQ(std::string(value_ptr, payload.size()), payload);
 }
+
+TEST(PageTest, NewPageInitializesPageLSNToZero)
+{
+    std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
+    auto page = std::make_unique<Page>(page_data.data(), true, 0, 1);
+
+    EXPECT_EQ(page->getPageLSN(), 0u);
+    EXPECT_TRUE(page->isDirty());
+}
+
+TEST(PageTest, SetPageLSNUpdatesHeaderAndMarksDirty)
+{
+    std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
+    auto page = std::make_unique<Page>(page_data.data(), true, 0, 1);
+
+    page->clearDirty();
+    EXPECT_FALSE(page->isDirty());
+
+    const std::uint64_t lsn = 42;
+    page->setPageLSN(lsn);
+
+    EXPECT_EQ(page->getPageLSN(), lsn);
+    EXPECT_TRUE(page->isDirty());
+}
