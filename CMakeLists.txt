@@ -60,6 +60,8 @@ target_link_libraries(wal_record_test dbfs_src GTest::gtest_main)
 
 add_executable(lsn_allocator_test test/lsn_allocator.cpp)
 target_link_libraries(lsn_allocator_test dbfs_src GTest::gtest_main)
+add_executable(wal_test test/wal.cpp)
+target_link_libraries(wal_test dbfs_src GTest::gtest_main)
 
 enable_testing()
 add_test(NAME BufferPoolTest COMMAND bufferpool_test)
@@ -71,3 +73,4 @@ add_test(NAME FrameDirectoryTest COMMAND frame_directory_test)
 add_test(NAME WALBodyTest COMMAND wal_body_test)
 add_test(NAME WALRecordTest COMMAND wal_record_test)
 add_test(NAME LSNAllocatorTest COMMAND lsn_allocator_test)
+add_test(NAME WALTest COMMAND wal_test)
