@@ -97,12 +97,13 @@ void BTreeCursor::remove(BufferPool& pool, File& indexFile, File& heapFile,
     // Log a DELETE for the heap page slot.
     // For now we omit the "before" image bytes; redo can still
     // invalidate the slot using the offset alone.
-    wal.write(
-        make_wal_record(
-            allocator,
-            WALRecord::RecordType::DELETE,
-            static_cast<uint16_t>(pageID),
-            DeleteRedoBody(static_cast<uint16_t>(slotID)).encode()));
+    auto delete_record = make_wal_record(
+        allocator,
+        WALRecord::RecordType::DELETE,
+        static_cast<uint16_t>(pageID),
+        DeleteRedoBody(static_cast<uint16_t>(slotID)).encode());
+    wal.write(delete_record);
+    page->setPageLSN(delete_record.get_lsn());
 
     page->invalidateSlot(slotID);
     pool.unpin(page, heapFile);
@@ -134,15 +135,16 @@ std::pair<uint16_t, uint16_t> BTreeCursor::insertIntoHeap(
     }
     
     // Log an INSERT for the heap page.
-    wal.write(
-        make_wal_record(
-            allocator,
-            WALRecord::RecordType::INSERT,
-            static_cast<uint16_t>(targetPageID),
-            InsertRedoBody(
-                static_cast<uint16_t>(insertedSlotID.value()),
-                cell.serialize())
-                .encode()));
+    auto insert_record = make_wal_record(
+        allocator,
+        WALRecord::RecordType::INSERT,
+        static_cast<uint16_t>(targetPageID),
+        InsertRedoBody(
+            static_cast<uint16_t>(insertedSlotID.value()),
+            cell.serialize())
+            .encode());
+    wal.write(insert_record);
+    heapPage->setPageLSN(insert_record.get_lsn());
 
     pool.unpin(heapPage, heapFile);
     LOG_INFO("Inserted record with key {} into heap page ID {} successfully.", key, targetPageID);

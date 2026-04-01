@@ -1,6 +1,7 @@
 #include "bufferpool.h"
 #include "page.h"
 #include "file.h"
+#include "wal/wal.h"
 #include <spdlog/spdlog.h>
 #include "logging.h"
 #include <string>
@@ -8,8 +9,8 @@
 
 // public methods
 // TODO: get rid of filePath parameter since the file path can be determined by the file name and a fixed directory path.
-BufferPool::BufferPool()
-    : buffer(operator new(BUFFER_SIZE_BYTE))
+BufferPool::BufferPool(WAL& wal)
+    : buffer(operator new(BUFFER_SIZE_BYTE)), wal_(wal)
 {
 };
 
@@ -99,6 +100,14 @@ void BufferPool::evictPage()
     int evicted_page_id = victim_frame.page_id;
     std::string evicted_file_path = victim_frame.file_path;
     if (victim_frame.page->isDirty()){
+        if (!isPageLSNFlushed(*victim_frame.page)) {
+                wal_.flush();
+                // Guard for concurrency mistake just in case.
+                if (!isPageLSNFlushed(*victim_frame.page)) {
+                    throw std::runtime_error("BufferPool::evictPage: WAL flush did not advance flushedLSN sufficiently for pageLSN");
+                }
+        }
+
         // this clearDirty() call is not necessary, since it will be cleared when loading the page again with Page constructor.
         // However, it can help to avoid confusion and potential bugs in the future.
         victim_frame.page->clearDirty();
@@ -121,4 +130,11 @@ void BufferPool::zeroOutFrame(int frameID)
 BufferPool::~BufferPool()
 {
     operator delete(buffer);
+}
+
+bool BufferPool::isPageLSNFlushed(const Page& page) const
+{
+    std::uint64_t page_lsn = page.getPageLSN();
+    std::uint64_t flushed_lsn = wal_.getFlushedLSN();
+    return page_lsn <= flushed_lsn;
 }

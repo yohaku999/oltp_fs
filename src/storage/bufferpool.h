@@ -7,6 +7,8 @@
 #include "file.h"
 #include "frame_directory.h"
 
+class WAL;
+
 class BufferPool
 {
 private:
@@ -15,6 +17,7 @@ private:
     static constexpr size_t MAX_PAGE_COUNT = 10;
     std::string fileName;
     void *buffer;
+    WAL& wal_;
     void evictPage();
     void loadPage(int pageID);
     void zeroOutFrame(int frameID);
@@ -26,10 +29,11 @@ private:
     // Future: Eviction strategies (FIFO/LRU/Clock) will be injected into FrameDirectory via Strategy pattern
     FrameDirectory frameDirectory_;
     int obtainFreeFrame();
+    bool isPageLSNFlushed(const Page& page) const;
 public:
     static constexpr size_t MAX_FRAME_COUNT = 10;
     static constexpr uint16_t HAS_NO_CHILD = -1;
-    BufferPool();
+    explicit BufferPool(WAL& wal);
     Page *getPage(int pageID, File &file);
     void unpin(Page* page, File& file);
     // REFACTOR : spread code for Page and Leaf Page.

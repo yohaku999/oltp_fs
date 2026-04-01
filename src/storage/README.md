@@ -19,3 +19,27 @@
   surface to keep the prototype focused. Extending WAL coverage to index-structure changes
   (e.g., split/merge, pointer rewiring) and implementing restart recovery for indexes is left as
   future work.
+
+### Coordination between WAL flush and page flush
+Correctness requirement
+ - A page must not be flushed until the WAL records describing the changes contained in that page have been made durable.
+ - In practice, a page is flushable when its pageLSN is less than or equal to the WAL flushedLSN.
+
+Consequence for hot pages
+ - Since page updates continue asynchronously, there can be access patterns where WAL durability and page flushing do not keep up with ongoing writes.
+ - As a result, the latest in-memory version of a hot page may remain unflushable for an extended period.
+ - This is not necessarily a correctness problem, but it can increase restart recovery time.
+ - It is also not always undesirable from a buffer pool perspective, since frequently accessed pages are often worth keeping resident in memory.
+
+Design trade-off
+ - One option is to flush only the latest in-memory page state.
+ - Another option is to flush a stable snapshot taken at some earlier point in time.
+ - The latter can improve concurrency by decoupling page write-back from ongoing updates, but introduces overhead such as extra memory usage, memcpy cost, and cache pollution.
+
+Design implication
+ - The main issue is therefore not correctness itself, but the trade-off among recovery time, concurrency, and memory/CPU overhead.
+ - The system should clearly separate mandatory correctness rules from performance policy:
+ - WAL durability before page flush is mandatory.
+ - How aggressively dirty pages are written back is a design and tuning choice.
+
+For now, page flushing is best-effort: correctness is enforced by the WAL rule, while aggressive coordination for hot pages and recovery-time optimization is left for future work.
