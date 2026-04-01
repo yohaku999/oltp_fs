@@ -37,6 +37,18 @@ class BTreeCursorTest : public ::testing::Test {
   }
 };
 
+// NOTE: Missing WAL/pageLSN invariants tests
+//
+// At this stage we intentionally do not test that the WAL record's payload
+// (RecordType, page_id, slot_id, body bytes) matches the logical operation.
+//
+// Reason: the current WAL API does not expose a stable way to inspect the
+// last written WALRecord from tests without coupling BTreeCursorTest tightly
+// to WAL's internal serialization format. For now we rely on higher-level
+// tests (functional correctness + WAL file growth) and will add more precise
+// pageLSN/WAL invariants once the recovery path and WAL inspection helpers
+// are in place.
+
 TEST_F(BTreeCursorTest, InsertIntoIndexAndFindRecordLocation) {
   const uint16_t heap_page_id = 5;
   const uint16_t slot_id = 3;

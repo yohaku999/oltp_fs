@@ -1,5 +1,7 @@
 #include "bufferpool.h"
-
+#include "page.h"
+#include "file.h"
+#include "wal/wal.h"
 #include <spdlog/spdlog.h>
 
 #include <fstream>
@@ -10,9 +12,11 @@
 #include "page.h"
 
 // public methods
-// TODO: get rid of filePath parameter since the file path can be determined by
-// the file name and a fixed directory path.
-BufferPool::BufferPool() : buffer(operator new(BUFFER_SIZE_BYTE)) {};
+// TODO: get rid of filePath parameter since the file path can be determined by the file name and a fixed directory path.
+BufferPool::BufferPool(WAL& wal)
+    : buffer(operator new(BUFFER_SIZE_BYTE)), wal_(wal)
+{
+};
 
 // Create new page with incremental pageID.
 u_int16_t BufferPool::createNewPage(bool is_leaf, File& file,
@@ -94,32 +98,38 @@ void BufferPool::unpin(Page* page, File& file) {
   frameDirectory_.unpin(it.value());
 }
 
-void BufferPool::evictPage() {
-  // decide which unused page to evict.
-  auto victim_opt = frameDirectory_.findVictimFrame();
-  if (!victim_opt.has_value()) {
-    // TODO: we should sleep or kill queries.
-    throw std::runtime_error(
-        "No victim frame found for eviction. All frames are pinned.");
-  }
-  // write the page back to the file if it's dirty.
-  int victim_frame_id = victim_opt.value();
-  auto& victim_frame = frameDirectory_.getFrame(victim_frame_id);
-  // REFACTOR: Have to cache these values before unregistering the page since
-  // the frame will be cleared in unregisterPage().
-  int evicted_page_id = victim_frame.page_id;
-  std::string evicted_file_path = victim_frame.file_path;
-  if (victim_frame.page->isDirty()) {
-    // this clearDirty() call is not necessary, since it will be cleared when
-    // loading the page again with Page constructor. However, it can help to
-    // avoid confusion and potential bugs in the future.
-    victim_frame.page->clearDirty();
-    File file(victim_frame.file_path);
-    file.writePageOnFile(victim_frame.page_id, victim_frame.page->start_p_);
-  }
-  frameDirectory_.unregisterPage(victim_frame_id);
-  LOG_INFO("Evicted page ID {} from frame ID {}", evicted_page_id,
-           victim_frame_id);
+void BufferPool::evictPage()
+{
+    // decide which unused page to evict.
+    auto victim_opt = frameDirectory_.findVictimFrame();
+    if (!victim_opt.has_value())
+    {
+        // TODO: we should sleep or kill queries.
+        throw std::runtime_error("No victim frame found for eviction. All frames are pinned.");
+    }
+    // write the page back to the file if it's dirty.
+    int victim_frame_id = victim_opt.value();
+    auto &victim_frame = frameDirectory_.getFrame(victim_frame_id);
+    // REFACTOR: Have to cache these values before unregistering the page since the frame will be cleared in unregisterPage().
+    int evicted_page_id = victim_frame.page_id;
+    std::string evicted_file_path = victim_frame.file_path;
+    if (victim_frame.page->isDirty()){
+        if (!isPageLSNFlushed(*victim_frame.page)) {
+                wal_.flush();
+                // Guard for concurrency mistake just in case.
+                if (!isPageLSNFlushed(*victim_frame.page)) {
+                    throw std::runtime_error("BufferPool::evictPage: WAL flush did not advance flushedLSN sufficiently for pageLSN");
+                }
+        }
+
+        // this clearDirty() call is not necessary, since it will be cleared when loading the page again with Page constructor.
+        // However, it can help to avoid confusion and potential bugs in the future.
+        victim_frame.page->clearDirty();
+        File file(victim_frame.file_path);
+        file.writePageOnFile(victim_frame.page_id, victim_frame.page->start_p_);
+    }
+    frameDirectory_.unregisterPage(victim_frame_id);
+    LOG_INFO("Evicted page ID {} from frame ID {}", evicted_page_id, victim_frame_id);
 };
 
 // private methods
@@ -130,4 +140,14 @@ void BufferPool::zeroOutFrame(int frameID) {
   std::memset(frame_p, 0, BufferPool::FRAME_SIZE_BYTE);
 };
 
-BufferPool::~BufferPool() { operator delete(buffer); }
+BufferPool::~BufferPool()
+{
+    operator delete(buffer);
+}
+
+bool BufferPool::isPageLSNFlushed(const Page& page) const
+{
+    std::uint64_t page_lsn = page.getPageLSN();
+    std::uint64_t flushed_lsn = wal_.getFlushedLSN();
+    return page_lsn <= flushed_lsn;
+}
