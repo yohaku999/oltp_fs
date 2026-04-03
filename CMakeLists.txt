@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD 17)
 find_package(spdlog REQUIRED)
 
 include(FetchContent)
+include(ExternalProject)
 FetchContent_Declare(
     googletest
     URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
@@ -23,7 +24,9 @@ add_library(dbfs_src
     src/storage/record_cell.cpp
     src/storage/btreecursor.cpp
     src/storage/frame_directory.cpp
+    src/executor/heap_fetch.cpp
     src/executor/executor.cpp
+    src/executor/index_scan.cpp
     src/logging.cpp
 )
 
@@ -50,6 +53,9 @@ target_link_libraries(executor_test dbfs_src GTest::gtest_main)
 
 add_executable(frame_directory_test test/frame_directory.cpp)
 target_link_libraries(frame_directory_test dbfs_src GTest::gtest_main)
+
+add_executable(pg_query_sample src/sql/pg_query_sample.cpp)
+target_link_libraries(pg_query_sample PRIVATE dbfs_src pg_query)
 
 enable_testing()
 add_test(NAME BufferPoolTest COMMAND bufferpool_test)

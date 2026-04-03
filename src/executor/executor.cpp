@@ -1,5 +1,8 @@
 #include "executor.h"
 
+#include "index_scan.h"
+#include "heap_fetch.h"
+
 #include "../storage/btreecursor.h"
 #include "../storage/bufferpool.h"
 #include "../storage/file.h"
@@ -45,18 +48,16 @@ std::pair<uint16_t, uint16_t> insertIntoHeap(
 
 char *executor::read(BufferPool &pool, File &indexFile, File &heapFile, int key)
 {
-	auto location = BTreeCursor::findRecordLocation(pool, indexFile, key);
-	if (!location.has_value())
+	// find the record location from the index file.
+	auto lookup = IndexLookup::fromKey(pool, indexFile, key);
+	auto rid = lookup.next();
+	if (!rid.has_value())
 	{
-		throw std::runtime_error("Key " + std::to_string(key) + " not found in leaf page.");
+		throw std::runtime_error("Key " + std::to_string(key) + " not found in index file.");
 	}
-	auto [pageID, slotID] = location.value();
-	Page *page = pool.getPage(pageID, heapFile);
-	// NOTE: we intentionally do not unpin here because the caller
-	// receives a pointer into the page buffer.
-	char *value = page->getXthSlotValue(slotID);
-	pool.unpin(page, heapFile);
-	return value;
+
+	HeapFetch fetcher(pool, heapFile);
+	return fetcher.fetch(rid->heap_page_id, rid->slot_id);
 }
 
 void executor::remove(BufferPool &pool, File &indexFile, File &heapFile, int key)
