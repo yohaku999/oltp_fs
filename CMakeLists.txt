@@ -23,6 +23,7 @@ add_library(dbfs_src
     src/storage/record_cell.cpp
     src/storage/btreecursor.cpp
     src/storage/frame_directory.cpp
+    src/executor/executor.cpp
     src/logging.cpp
 )
 
@@ -44,6 +45,9 @@ target_link_libraries(file_test dbfs_src GTest::gtest_main)
 add_executable(btreecursor_test test/btreecursor.cpp)
 target_link_libraries(btreecursor_test dbfs_src GTest::gtest_main)
 
+add_executable(executor_test test/executor.cpp)
+target_link_libraries(executor_test dbfs_src GTest::gtest_main)
+
 add_executable(frame_directory_test test/frame_directory.cpp)
 target_link_libraries(frame_directory_test dbfs_src GTest::gtest_main)
 
@@ -54,3 +58,4 @@ add_test(NAME PageTest COMMAND page_test)
 add_test(NAME FileTest COMMAND file_test)
 add_test(NAME BTreeCursorTest COMMAND btreecursor_test)
 add_test(NAME FrameDirectoryTest COMMAND frame_directory_test)
+add_test(NAME ExecutorTest COMMAND executor_test)

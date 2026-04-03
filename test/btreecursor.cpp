@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include <gtest/gtest.h>
 
@@ -55,6 +56,31 @@ TEST_F(BTreeCursorTest, InsertIntoIndexAndFindRecordLocation)
     {
         auto location = BTreeCursor::findRecordLocation(*pool_, *index_file_, key);
         ASSERT_TRUE(location.has_value());
+        EXPECT_EQ(location->first, heap_page_id);
+        EXPECT_EQ(location->second, slot_id);
+    }
+}
+
+TEST_F(BTreeCursorTest, InsertManyKeysTriggersSplitAndIsSearchable)
+{
+    const uint16_t heap_page_id = 7;
+    const uint16_t slot_id = 9;
+
+    const int initial_max_page = index_file_->getMaxPageID();
+
+    const int num_keys = 500;
+    for (int key = 0; key < num_keys; ++key)
+    {
+        BTreeCursor::insertIntoIndex(*pool_, *index_file_, key, heap_page_id, slot_id);
+    }
+
+    const int max_page_after = index_file_->getMaxPageID();
+    EXPECT_GT(max_page_after, initial_max_page) << "index did not allocate any new pages";
+
+    for (int key = 0; key < num_keys; ++key)
+    {
+        auto location = BTreeCursor::findRecordLocation(*pool_, *index_file_, key);
+        ASSERT_TRUE(location.has_value()) << "missing index entry for key=" << key;
         EXPECT_EQ(location->first, heap_page_id);
         EXPECT_EQ(location->second, slot_id);
     }
