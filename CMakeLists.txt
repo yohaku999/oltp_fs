@@ -14,6 +14,29 @@ FetchContent_Declare(
 set(gtest_disable_pthreads ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
+# External libpg_query (PostgreSQL parser as a C library)
+ExternalProject_Add(libpg_query_proj
+    GIT_REPOSITORY https://github.com/pganalyze/libpg_query.git
+    GIT_TAG v4.2.0
+    PREFIX ${CMAKE_BINARY_DIR}/libpg_query
+    CONFIGURE_COMMAND ""
+    BUILD_COMMAND make
+    INSTALL_COMMAND ""
+    BUILD_IN_SOURCE 1
+    UPDATE_DISCONNECTED 1
+)
+
+set(LIBPG_QUERY_INCLUDE_DIR ${CMAKE_BINARY_DIR}/libpg_query/src/libpg_query_proj)
+set(LIBPG_QUERY_LIBRARY ${CMAKE_BINARY_DIR}/libpg_query/src/libpg_query_proj/libpg_query.a)
+
+add_library(pg_query STATIC IMPORTED GLOBAL)
+set_target_properties(pg_query PROPERTIES
+    IMPORTED_LOCATION ${LIBPG_QUERY_LIBRARY}
+    INTERFACE_INCLUDE_DIRECTORIES ${LIBPG_QUERY_INCLUDE_DIR}
+)
+
+add_dependencies(pg_query libpg_query_proj)
+
 add_library(dbfs_src
     src/storage/bufferpool.cpp
     src/storage/file.cpp
@@ -54,8 +77,11 @@ target_link_libraries(executor_test dbfs_src GTest::gtest_main)
 add_executable(frame_directory_test test/frame_directory.cpp)
 target_link_libraries(frame_directory_test dbfs_src GTest::gtest_main)
 
-add_executable(pg_query_sample src/sql/pg_query_sample.cpp)
-target_link_libraries(pg_query_sample PRIVATE dbfs_src pg_query)
+add_executable(sql_select_sample src/sql/select_sample.cpp)
+target_link_libraries(sql_select_sample PRIVATE dbfs_src pg_query)
+
+add_executable(e2e_test test/e2e.cpp)
+target_link_libraries(e2e_test dbfs_src GTest::gtest_main pg_query)
 
 enable_testing()
 add_test(NAME BufferPoolTest COMMAND bufferpool_test)
@@ -65,3 +91,4 @@ add_test(NAME FileTest COMMAND file_test)
 add_test(NAME BTreeCursorTest COMMAND btreecursor_test)
 add_test(NAME FrameDirectoryTest COMMAND frame_directory_test)
 add_test(NAME ExecutorTest COMMAND executor_test)
+add_test(NAME E2ESelectTest COMMAND e2e_test)
