@@ -51,76 +51,6 @@ std::optional<std::pair<uint16_t, uint16_t>> BTreeCursor::findRecordLocation(Buf
     return result;
 }
 
-void BTreeCursor::update(BufferPool& pool, File& indexFile, File& heapFile, int key, char* value, size_t value_size)
-{
-    /**
-     * We first design updates to be idempotent by modeling them as a remove followed by an insert.
-     * This is not necessarily the most efficient strategy, but it keeps the update path simple and robust and fasten the development.
-     * Also, this unlocks follow-on benefits (e.g., easier recovery/retry and fewer page-structure assumptions) without requiring 
-     * in-place updates or special-case split handling.
-     */
-    BTreeCursor::remove(pool, indexFile, heapFile, key);
-    BTreeCursor::insert(pool, indexFile, heapFile, key, value, value_size);
-}
-
-char* BTreeCursor::read(BufferPool& pool, File& indexFile, File& heapFile, int key)
-{
-    auto location = findRecordLocation(pool, indexFile, key);
-    if (!location.has_value())
-    {
-        throw std::runtime_error("Key " + std::to_string(key) + " not found in leaf page.");
-    }
-    auto [pageID, slotID] = location.value();
-    Page* page = pool.getPage(pageID, heapFile);
-    // NOTE: we intentionally do not unpin here because the caller
-    // receives a pointer into the page buffer.
-    char* value = page->getXthSlotValue(slotID);
-    pool.unpin(page, heapFile);
-    return value;
-}
-
-void BTreeCursor::remove(BufferPool& pool, File& indexFile, File& heapFile, int key)
-{
-    auto location = findRecordLocation(pool, indexFile, key, true);
-    if (!location.has_value())
-    {
-        throw std::runtime_error("Key " + std::to_string(key) + " not found in leaf page.");
-    }
-    auto [pageID, slotID] = location.value();
-    Page* page = pool.getPage(pageID, heapFile);
-    page->invalidateSlot(slotID);
-    pool.unpin(page, heapFile);
-    LOG_INFO("Removed record with key {} successfully.", key);
-}
-
-std::pair<uint16_t, uint16_t> BTreeCursor::insertIntoHeap(
-    BufferPool& pool, File& heapFile, int key, char* value, size_t value_size)
-{
-    LOG_INFO("Inserting record with key {} into heap file {}.", key, heapFile.getFilePath());
-    RecordCell cell(key, value, value_size);
-
-    int targetPageID = heapFile.getMaxPageID();
-    Page* heapPage = pool.getPage(targetPageID, heapFile);
-    auto insertedSlotID = heapPage->insertCell(cell);
-    if (!insertedSlotID.has_value())
-    {
-        pool.unpin(heapPage, heapFile);
-        // WARNING : currently how we deal with leafpage and heappage is the same.
-        // Thus it is correct to set is_leaf = true here but, it's confusing.
-        targetPageID = pool.createNewPage(true, heapFile);
-        heapPage = pool.getPage(targetPageID, heapFile);
-        insertedSlotID = heapPage->insertCell(cell);
-        if (!insertedSlotID.has_value())
-        {
-            throw std::runtime_error("Failed to insert record cell into a new heap page due to insufficient space.");
-        }
-    }
-    pool.unpin(heapPage, heapFile);
-    LOG_INFO("Inserted record with key {} into heap page ID {} successfully.", key, targetPageID);
-
-    return {static_cast<uint16_t>(targetPageID), static_cast<uint16_t>(insertedSlotID.value())};
-}
-
 void BTreeCursor::insertIntoIndex(
     BufferPool& pool, File& indexFile, int key, uint16_t heap_page_id, uint16_t slot_id)
 {
@@ -143,20 +73,6 @@ void BTreeCursor::insertIntoIndex(
     }
     LOG_INFO("Inserted index entry for key {} pointing to heap page ID {}, slot ID {}.",
              key, heap_page_id, slot_id);
-}
-
-void BTreeCursor::insert(BufferPool& pool, File& indexFile, File& heapFile, int key, char* value, size_t value_size)
-{
-    LOG_INFO("Inserting record with key {} into index {}, heap {}", key, indexFile.getFilePath(), heapFile.getFilePath());
-    // check if valid key already exists.
-    auto location = findRecordLocation(pool, indexFile, key);
-    if (location.has_value())
-    {
-        throw std::runtime_error("Key " + std::to_string(key) + " already exists. Duplicate keys are not allowed.");
-    }
-
-    auto [heap_page_id, slot_id] = insertIntoHeap(pool, heapFile, key, value, value_size);
-    insertIntoIndex(pool, indexFile, key, heap_page_id, slot_id);
 }
 
 Page* BTreeCursor::ensureParentPage(BufferPool& pool, File& index_file, Page& old_page)
