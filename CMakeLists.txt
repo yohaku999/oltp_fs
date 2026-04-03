@@ -77,9 +77,6 @@ target_link_libraries(executor_test dbfs_src GTest::gtest_main)
 add_executable(frame_directory_test test/frame_directory.cpp)
 target_link_libraries(frame_directory_test dbfs_src GTest::gtest_main)
 
-add_executable(sql_select_sample src/sql/select_sample.cpp)
-target_link_libraries(sql_select_sample PRIVATE dbfs_src pg_query)
-
 add_executable(e2e_test test/e2e.cpp)
 target_link_libraries(e2e_test dbfs_src GTest::gtest_main pg_query)
 
