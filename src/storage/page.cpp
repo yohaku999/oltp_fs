@@ -1,6 +1,7 @@
 #include "page.h"
 #include "leaf_cell.h"
 #include "intermediate_cell.h"
+#include "record_cell.h"
 #include <cstdint>
 #include <stdexcept>
 #include <spdlog/spdlog.h>
@@ -92,14 +93,7 @@ char* Page::getXthSlotValue(int x)
     {
         throw std::runtime_error("This slot has been invalidated.");
     }
-    char *cursor = cell_data + Cell::FLAG_FIELD_SIZE;
-    // forward the pointer to the value part of the cell.
-    int stored_key = readValue<int>(cursor);
-    cursor += sizeof(int);
-    size_t value_size = readValue<size_t>(cursor);
-    (void)value_size;
-    cursor += sizeof(size_t);
-    return cursor;
+    return RecordCell::getValue(cell_data);
 }
 
 char* Page::getSeparateKey(){

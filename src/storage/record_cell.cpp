@@ -23,3 +23,11 @@ std::vector<std::byte> RecordCell::serialize() const
 
     return buffer;
 }
+
+char* RecordCell::getValue(char *cell_start)
+{
+    char *cursor = cell_start + Cell::FLAG_FIELD_SIZE;
+    cursor += sizeof(int);
+    cursor += sizeof(size_t);
+    return cursor;
+}
