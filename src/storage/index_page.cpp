@@ -138,8 +138,8 @@ uint16_t InternalIndexPage::findChildPage(int key)
             return cell.page_id();
         }
     }
-    LOG_INFO("InternalIndexPage::findChildPage: all keys in this page are smaller than key {}. Going to right most child {}.",
-             key, page_.rightMostChildPageId());
+    LOG_INFO("InternalIndexPage::findChildPage: Going to right most child {}.",
+            page_.rightMostChildPageId());
     return page_.rightMostChildPageId();
 }
 

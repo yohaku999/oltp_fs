@@ -34,7 +34,7 @@ private:
     void updateSlotDirectoryOffset(uint16_t new_offset);
     void updateNodeTypeFlag(bool is_leaf);
     uint16_t rightMostChildPageId() const;
-    void setRightMostChildPageId(uint16_t page_id);
+    
     bool is_dirty_ = false;
     int pageID_ = -1;
     int parentPageID_ = HAS_NO_PARENT;
@@ -46,6 +46,7 @@ private:
 public:
     static constexpr int HAS_NO_PARENT = -1;
     static constexpr size_t HEADDER_SIZE_BYTE = 256;
+    void setRightMostChildPageId(uint16_t page_id);
     void markDirty(){
         is_dirty_ = true;
     };

@@ -20,6 +20,7 @@ int BTreeCursor::findLeafPageID(BufferPool& pool, File& indexFile, int key)
     int parentPageID = Page::HAS_NO_PARENT;
     while (true)
     {
+        LOG_INFO("Traversing to find leaf page for key {}: currently at page ID {} in index file {}.", key, pageID, indexFile.getFilePath());
         Page *page = pool.getPage(pageID, indexFile);
         // if the page has parent page id of -1, the page is the root page or just not memoed yet. 
         page->setParentPageID(parentPageID);
@@ -29,7 +30,16 @@ int BTreeCursor::findLeafPageID(BufferPool& pool, File& indexFile, int key)
             pool.unpin(page, indexFile);
             break;
         }
+        // zero outしているので、はじめは必ずintermediate扱いになる
         InternalIndexPage internal(*page);
+        // 実装を簡単にするため、B木の初期化時点でPageID 0のintermediate pageのrightmostpageIDがPageID 1のLeaf pageを指すようにしている。
+        // ここでrightmostpageIDの初期値が0なので困っている。
+        // rightmostの下にleafまでpage0,1,2で初期化するか
+        // rightmostを1にするなら、その先を辿っていくことになり、ページ1として、leafを初期化すればいい。
+        // 
+        // leafを0ノードとしてつくるか、みたいなところで悩んでいる。
+        // そもそもrightmostpageIDのsplitってちゃんとできるんだっけ
+        // 現在のsplitの実装がうまく走るように初期化を構築したい。
         int childPageID = internal.findChildPage(key);
         pool.unpin(page, indexFile);
         LOG_INFO("The child page ID of page ID {} for key {} is {}", pageID, key, childPageID);
@@ -41,6 +51,7 @@ int BTreeCursor::findLeafPageID(BufferPool& pool, File& indexFile, int key)
 
 std::optional<std::pair<uint16_t, uint16_t>> BTreeCursor::findRecordLocation(BufferPool& pool, File& indexFile, int key, bool do_invalidate)
 {
+    LOG_INFO("Finding record location for key {} in index file {}.", key, indexFile.getFilePath());
     // NOTE: we decided not to invalidate intermediate nodes during traversal for now.
     // we will come back to this when we start to support concurrency.
     int pageID = findLeafPageID(pool, indexFile, key);
@@ -48,6 +59,13 @@ std::optional<std::pair<uint16_t, uint16_t>> BTreeCursor::findRecordLocation(Buf
     LeafIndexPage leaf(*leafPage);
     auto result = leaf.findRef(key, do_invalidate);
     pool.unpin(leafPage, indexFile);
+    if (!result.has_value())
+    {
+        LOG_INFO("Key {} not found in leaf page ID {} of index file {}.", key, pageID, indexFile.getFilePath());
+    }else{
+        LOG_INFO("Found record location for key {} in leaf page ID {} of index file {}: heap page ID {}, slot ID {}.", 
+                 key, pageID, indexFile.getFilePath(), result->first, result->second);
+    }
     return result;
 }
 

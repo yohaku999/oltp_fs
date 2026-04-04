@@ -1,5 +1,5 @@
 #include "index_scan.h"
-
+#include "logging.h"
 #include "../storage/btreecursor.h"
 
 IndexLookup::IndexLookup(BufferPool &pool, File &indexFile, std::vector<int> keys)
@@ -21,6 +21,7 @@ IndexLookup IndexLookup::fromKeys(BufferPool &pool, File &indexFile, std::vector
 
 IndexLookup IndexLookup::fromKeyRange(BufferPool &pool, File &indexFile, int low_key, int high_key)
 {
+    LOG_INFO("Starting index scan for keys in range [{}, {}]", low_key, high_key);
     IndexLookup lookup(pool, indexFile, std::vector<int>{});
     lookup.mode_ = Mode::Range;
 
@@ -37,7 +38,7 @@ IndexLookup IndexLookup::fromKeyRange(BufferPool &pool, File &indexFile, int low
         lookup.high_key_ = high_key;
         lookup.current_key_ = high_key + 1;
     }
-
+    LOG_INFO("Finished index scan for keys in range [{}, {}]", low_key, high_key);
     return lookup;
 }
 

@@ -13,6 +13,7 @@ BufferPool::BufferPool()
 {
 };
 
+// Create new page with incremental pageID.
 u_int16_t BufferPool::createNewPage(bool is_leaf, File &file, uint16_t rightMostChildPageId)
 {
     u_int16_t pageID = file.allocateNextPageId();

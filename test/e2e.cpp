@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <string>
+#include <filesystem>
 
 extern "C" {
 #include <pg_query.h>
@@ -10,20 +11,58 @@ extern "C" {
 #include "executor/executor.h"
 #include "executor/index_scan.h"
 #include "executor/heap_fetch.h"
+#include "logging.h"
 
-// Very small end-to-end style test that exercises:
-// - libpg_query parsing of a simple SELECT
-// - executor::insert to populate heap + index
-// - IndexLookup range scan + HeapFetch to read back rows
-//
-// This is essentially the same flow as src/sql/select_sample.cpp,
-// but expressed as a test so it can be run in CI/TDD style.
+class E2ETest : public ::testing::Test
+{
+protected:
+    static constexpr const char* kIndexPath = "x.index";
+    static constexpr const char* kHeapPath  = "x.db";
 
-TEST(E2E, SelectBGreaterEqual4)
+    std::unique_ptr<BufferPool> pool;
+    std::unique_ptr<File> testFile;
+    std::unique_ptr<File> heapFile;
+
+    PgQueryParseResult result;
+
+    void SetUp() override
+    {
+        // delete garbage
+        std::error_code ec;
+        std::filesystem::remove(kIndexPath, ec);
+        std::filesystem::remove(kHeapPath, ec);
+
+        // initialize
+        pool = std::make_unique<BufferPool>();
+        // Initialize B+ tree structure for the index file.
+        testFile = std::make_unique<File>(kIndexPath);
+        heapFile = std::make_unique<File>(kHeapPath);
+        uint16_t leaf_page_id = pool->createNewPage(true, *testFile);
+        LOG_INFO("Initialized leaf page id {} for index {}", leaf_page_id, kIndexPath);
+        ASSERT_EQ(leaf_page_id, 1);
+        pool->getPage(0, *testFile)->setRightMostChildPageId(1);
+    }
+
+    void TearDown() override
+    {
+        // Destroy in-memory resources before deleting backing files
+        pool.reset();
+        testFile.reset();
+        heapFile.reset();
+
+        std::error_code ec;
+        std::filesystem::remove(kIndexPath, ec);
+        std::filesystem::remove(kHeapPath, ec);
+
+        pg_query_free_parse_result(result);
+    }
+};
+
+TEST_F(E2ETest, SelectBGreaterEqual4)
 {
     const std::string sql = "SELECT * FROM x where b >= 4";
 
-    PgQueryParseResult result = pg_query_parse(sql.c_str());
+    result = pg_query_parse(sql.c_str());
     ASSERT_EQ(result.error, nullptr) << "parse error: "
                                      << (result.error ? result.error->message : "");
 
@@ -31,43 +70,38 @@ TEST(E2E, SelectBGreaterEqual4)
     ASSERT_NE(result.parse_tree, nullptr);
     ASSERT_GT(std::strlen(result.parse_tree), 0u);
 
-    BufferPool pool;
-    File indexFile("x.index");
-    File heapFile("x.db");
-
     // Insert a few rows with different b values
     const char *v1 = "row_b_1";
-    executor::insert(pool, indexFile, heapFile, 1,
+    executor::insert(*pool, *testFile, *heapFile, 1,
                      const_cast<char *>(v1), std::strlen(v1) + 1);
-
     const char *v2 = "row_b_3";
-    executor::insert(pool, indexFile, heapFile, 3,
+    executor::insert(*pool, *testFile, *heapFile, 3,
                      const_cast<char *>(v2), std::strlen(v2) + 1);
 
     const char *v3 = "row_b_4";
-    executor::insert(pool, indexFile, heapFile, 4,
+    executor::insert(*pool, *testFile, *heapFile, 4,
                      const_cast<char *>(v3), std::strlen(v3) + 1);
 
     const char *v4 = "row_b_7";
-    executor::insert(pool, indexFile, heapFile, 7,
+    executor::insert(*pool, *testFile, *heapFile, 7,
                      const_cast<char *>(v4), std::strlen(v4) + 1);
 
     const int LOW_KEY = 4;
-    const int HIGH_KEY = 1'000'000;
+    const int HIGH_KEY = 10000;
 
-    IndexLookup lookup = IndexLookup::fromKeyRange(pool, indexFile, LOW_KEY, HIGH_KEY);
-    HeapFetch fetcher(pool, heapFile);
+    
+    IndexLookup lookup = IndexLookup::fromKeyRange(*pool, *testFile, LOW_KEY, HIGH_KEY);
+    HeapFetch fetcher(*pool, *heapFile);
 
     // We expect to see keys 4 and 7, in that order, with the
     // corresponding payload strings we inserted above.
     std::vector<std::string> seen;
 
     while (auto rid = lookup.next()) {
+        if(!rid) break;
         char *value = fetcher.fetch(rid->heap_page_id, rid->slot_id);
         seen.emplace_back(value);
     }
-
-    pg_query_free_parse_result(result);
 
     ASSERT_EQ(seen.size(), 2u);
     EXPECT_EQ(seen[0], std::string("row_b_4"));
