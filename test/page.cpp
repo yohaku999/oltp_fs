@@ -181,7 +181,7 @@ TEST(PageTest, InvalidateSlotSetsFlag)
 
     assertInvalidation(true, []() { return LeafCell(42, 100, 7); });
     std::string payload = "page-record";
-    assertInvalidation(true, [&payload]() { return RecordCell(99, payload.data(), payload.size()); });
+    assertInvalidation(true, [&payload]() { return RecordCell(payload.data(), payload.size()); });
 }
 
 TEST(PageTest, LeafSearchSkipsInvalidEntries)
@@ -225,11 +225,11 @@ TEST(PageTest, HeapInsertInvalidateReuseSlot)
     auto page = std::make_unique<Page>(page_data.data(), true, 0, 1);
 
     std::string payload = "heap-value";
-    auto first_slot = page->insertCell(RecordCell(10, payload.data(), payload.size()));
+    auto first_slot = page->insertCell(RecordCell(payload.data(), payload.size()));
     ASSERT_TRUE(first_slot.has_value());
     page->invalidateSlot(first_slot.value());
 
-    auto second_slot = page->insertCell(RecordCell(10, payload.data(), payload.size()));
+    auto second_slot = page->insertCell(RecordCell(payload.data(), payload.size()));
     ASSERT_TRUE(second_slot.has_value());
     EXPECT_NE(first_slot.value(), second_slot.value());
 

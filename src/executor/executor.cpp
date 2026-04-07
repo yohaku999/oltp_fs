@@ -20,7 +20,7 @@ std::pair<uint16_t, uint16_t> insertIntoHeap(
 	BufferPool &pool, File &heapFile, int key, char *value, std::size_t value_size)
 {
 	LOG_INFO("Inserting record with key {} into heap file {}.", key, heapFile.getFilePath());
-	RecordCell cell(key, value, value_size);
+	RecordCell cell(value, value_size);
 
 	int targetPageID = heapFile.getMaxPageID();
 	Page *heapPage = pool.getPage(targetPageID, heapFile);

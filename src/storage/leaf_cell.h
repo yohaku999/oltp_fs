@@ -20,7 +20,7 @@ public:
     LeafCell(int key, uint16_t heap_page_id, uint16_t slot_id)
         : key_size_(KEY_SIZE_BYTE), heap_page_id_(heap_page_id), slot_id_(slot_id), key_(key) {}
 
-    int key() const override { return key_; }
+    int key() const { return key_; }
     uint16_t heap_page_id() const { return heap_page_id_; }
     uint16_t slot_id() const { return slot_id_; }
     size_t payloadSize() const override { return PAYLOAD_SIZE_BYTE; }

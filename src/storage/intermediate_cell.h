@@ -17,7 +17,7 @@ public:
     
     static IntermediateCell decodeCell(char *data_p);
     static int getKey(const char *data_p);
-    int key() const override { return key_; }
+    int key() const { return key_; }
     uint16_t page_id() const { return page_id_; }
     uint16_t key_size() const { return key_size_; }
     size_t payloadSize() const override { return PAYLOAD_SIZE; }

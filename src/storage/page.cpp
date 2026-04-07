@@ -37,7 +37,7 @@ Page::Page(char *start_p, uint16_t page_id)
  */
 std::optional<int> Page::insertCell(const Cell &cell)
 {
-    LOG_INFO("Attempting to insert cell with key {} into page ID {}", cell.key(), getPageID());
+    LOG_INFO("Attempting to insert {} cell into page ID {}", static_cast<int>(cell.kind()), getPageID());
     // check if the page has enough space to insert the new cell.
     uint16_t new_cell_offset = getSlotDirectoryOffset() - cell.payloadSize();
     char *cell_data_p = start_p_ + new_cell_offset;
@@ -63,7 +63,7 @@ std::optional<int> Page::insertCell(const Cell &cell)
 
     this->markDirty();
 
-    LOG_INFO("Inserted a new cell with key {} into page. New slot count: {}, new slot directory offset: {}", cell.key(), getSlotCount(), getSlotDirectoryOffset());
+    LOG_INFO("Inserted a new cell into page. New slot count: {}, new slot directory offset: {}", getSlotCount(), getSlotDirectoryOffset());
     return getSlotCount() - 1;
 }
 

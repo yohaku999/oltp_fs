@@ -78,7 +78,7 @@ TEST_F(BufferPoolTest, createNewPageWithEviction)
         // Write unique data to each page
         char test_data[50];
         std::snprintf(test_data, sizeof(test_data), "test_data_page_%zu", i);
-        RecordCell cell(static_cast<uint16_t>(i * 10), test_data, std::strlen(test_data) + 1);
+        RecordCell cell(test_data, std::strlen(test_data) + 1);
         page->insertCell(cell);
         
         // Copy the page content

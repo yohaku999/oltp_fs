@@ -1,12 +1,6 @@
 #include "record_cell.h"
 #include <vector>
 
-int RecordCell::getKey(const char *data_p)
-{
-    // Skip: FLAG (1 byte)
-    return readValue<int>(data_p + Cell::FLAG_FIELD_SIZE);
-}
-
 std::vector<std::byte> RecordCell::serialize() const
 {
     std::vector<std::byte> buffer(payloadSize());
@@ -15,8 +9,6 @@ std::vector<std::byte> RecordCell::serialize() const
     std::memcpy(dst, &flags, Cell::FLAG_FIELD_SIZE);
     dst += Cell::FLAG_FIELD_SIZE;
 
-    std::memcpy(dst, &key_, sizeof(int));
-    dst += sizeof(int);
     std::memcpy(dst, &value_size_, sizeof(size_t));
     dst += sizeof(size_t);
     std::memcpy(dst, value_, value_size_);
@@ -27,7 +19,6 @@ std::vector<std::byte> RecordCell::serialize() const
 char* RecordCell::getValue(char *cell_start)
 {
     char *cursor = cell_start + Cell::FLAG_FIELD_SIZE;
-    cursor += sizeof(int);
     cursor += sizeof(size_t);
     return cursor;
 }
