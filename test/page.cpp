@@ -1,6 +1,7 @@
 #include "../src/storage/page.h"
 #include "../src/storage/index_page.h"
 #include "../src/storage/cell.h"
+#include "../src/storage/record_builder.h"
 #include "../src/storage/record_cell.h"
 #include <array>
 #include <optional>
@@ -181,7 +182,7 @@ TEST(PageTest, InvalidateSlotSetsFlag)
 
     assertInvalidation(true, []() { return LeafCell(42, 100, 7); });
     std::string payload = "page-record";
-    assertInvalidation(true, [&payload]() { return RecordCell(payload.data(), payload.size()); });
+    assertInvalidation(true, [&payload]() { return RecordBuilder(payload.data(), payload.size()); });
 }
 
 TEST(PageTest, LeafSearchSkipsInvalidEntries)
@@ -225,14 +226,15 @@ TEST(PageTest, HeapInsertInvalidateReuseSlot)
     auto page = std::make_unique<Page>(page_data.data(), true, 0, 1);
 
     std::string payload = "heap-value";
-    auto first_slot = page->insertCell(RecordCell(payload.data(), payload.size()));
+    auto first_slot = page->insertCell(RecordBuilder(payload.data(), payload.size()));
     ASSERT_TRUE(first_slot.has_value());
     page->invalidateSlot(first_slot.value());
 
-    auto second_slot = page->insertCell(RecordCell(payload.data(), payload.size()));
+    auto second_slot = page->insertCell(RecordBuilder(payload.data(), payload.size()));
     ASSERT_TRUE(second_slot.has_value());
     EXPECT_NE(first_slot.value(), second_slot.value());
 
-    char *value_ptr = page->getXthSlotValue(second_slot.value());
+    char *cell_start = page->getXthSlotCellStart(second_slot.value());
+    char *value_ptr = const_cast<char *>(RecordCellView(cell_start).getValue().first);
     EXPECT_EQ(std::string(value_ptr, payload.size()), payload);
 }

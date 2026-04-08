@@ -13,6 +13,9 @@ extern "C" {
 #include "executor/heap_fetch.h"
 #include "logging.h"
 
+#include "schema/schema.h"
+#include "schema/tuple.h"
+
 class E2ETest : public ::testing::Test
 {
 protected:
@@ -71,23 +74,26 @@ TEST_F(E2ETest, SelectBGreaterEqual4)
     ASSERT_GT(std::strlen(result.parse_tree), 0u);
 
     // Insert a few rows with different b values
+    Column col_b("b", Column::Type::Varchar);
+    Schema schema("x", {col_b});
+
     const char *v1 = "row_b_1";
     executor::insert(*pool, *testFile, *heapFile, 1,
-                     const_cast<char *>(v1), std::strlen(v1) + 1);
+                     const_cast<char *>(v1), std::strlen(v1));
     const char *v2 = "row_b_3";
     executor::insert(*pool, *testFile, *heapFile, 3,
-                     const_cast<char *>(v2), std::strlen(v2) + 1);
+                     const_cast<char *>(v2), std::strlen(v2));
 
     const char *v3 = "row_b_4";
     executor::insert(*pool, *testFile, *heapFile, 4,
-                     const_cast<char *>(v3), std::strlen(v3) + 1);
+                     const_cast<char *>(v3), std::strlen(v3));
 
     const char *v4 = "row_b_7";
     executor::insert(*pool, *testFile, *heapFile, 7,
-                     const_cast<char *>(v4), std::strlen(v4) + 1);
+                     const_cast<char *>(v4), std::strlen(v4));
 
     const int LOW_KEY = 4;
-    const int HIGH_KEY = 10000;
+    const int HIGH_KEY = 10;
 
     
     IndexLookup lookup = IndexLookup::fromKeyRange(*pool, *testFile, LOW_KEY, HIGH_KEY);
@@ -100,8 +106,10 @@ TEST_F(E2ETest, SelectBGreaterEqual4)
     while (auto rid = lookup.next()) {
         if(!rid) break;
         char *value = fetcher.fetch(rid->heap_page_id, rid->slot_id);
-        seen.emplace_back(value);
+        std::string value_str = Tuple::getValuesAsString(value, schema, "b");
+        seen.push_back(value_str);
     }
+    
 
     ASSERT_EQ(seen.size(), 2u);
     EXPECT_EQ(seen[0], std::string("row_b_4"));

@@ -72,7 +72,7 @@ public:
     static constexpr size_t PAGE_SIZE_BYTE = 4096;
     static constexpr size_t CELL_POINTER_SIZE = sizeof(uint16_t);
     char *start_p_;
-    char *getXthSlotValue(int x);
+    char *getXthSlotCellStart(int x);
     std::optional<int> insertCell(const Cell &cell);
     void invalidateSlot(uint16_t slot_id);
     

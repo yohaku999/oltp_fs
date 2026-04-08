@@ -86,14 +86,14 @@ LeafCell Page::getLeafCellOnXthPointer(int x)
     return LeafCell::decodeCell(data_p);
 }
 
-char* Page::getXthSlotValue(int x)
+char* Page::getXthSlotCellStart(int x)
 {
     char* cell_data = start_p_ + getCellOffsetOnXthPointer(x);
     if (!Cell::isValid(cell_data))
     {
         throw std::runtime_error("This slot has been invalidated.");
     }
-    return RecordCell::getValue(cell_data);
+    return cell_data;
 }
 
 char* Page::getSeparateKey(){

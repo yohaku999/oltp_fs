@@ -7,6 +7,7 @@
 #include "../storage/bufferpool.h"
 #include "../storage/file.h"
 #include "../storage/page.h"
+#include "../storage/record_builder.h"
 #include "../storage/record_cell.h"
 #include "../logging.h"
 
@@ -20,7 +21,8 @@ std::pair<uint16_t, uint16_t> insertIntoHeap(
 	BufferPool &pool, File &heapFile, int key, char *value, std::size_t value_size)
 {
 	LOG_INFO("Inserting record with key {} into heap file {}.", key, heapFile.getFilePath());
-	RecordCell cell(value, value_size);
+	// TODO: 本来はスキーマに準じたcppの型つき値のリストを入力とする。
+	RecordBuilder cell(value, value_size);
 
 	int targetPageID = heapFile.getMaxPageID();
 	Page *heapPage = pool.getPage(targetPageID, heapFile);
@@ -57,7 +59,9 @@ char *executor::read(BufferPool &pool, File &indexFile, File &heapFile, int key)
 	}
 
 	HeapFetch fetcher(pool, heapFile);
-	return fetcher.fetch(rid->heap_page_id, rid->slot_id);
+	char *cell_start = fetcher.fetch(rid->heap_page_id, rid->slot_id);
+	// TODO: fix
+	return const_cast<char *>(RecordCellView(cell_start).getValue().first);
 }
 
 void executor::remove(BufferPool &pool, File &indexFile, File &heapFile, int key)

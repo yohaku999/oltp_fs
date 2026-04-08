@@ -11,14 +11,18 @@ enum class CellKind
 };
 
 /**
- * Base class for page-resident cells.
+ * Base class for page-resident binary units.
  *
  * Serialization:
  *  - byte[0]: per-cell flags (bit0 = invalid)
  *  - byte[1..]: type-specific payload
  *
- * Note: Cell does not own memory; it only provides helpers for (de)serialization and
- * flag manipulation.
+ * Note:
+ * - LeafCell and IntermediateCell are modeled as small value objects that can be
+ *   decoded from bytes and re-serialized.
+ * - Heap records are split across RecordCellView for read-side interpretation and
+ *   RecordBuilder for write-side serialization.
+ * - Schema-dependent field interpretation must stay outside the storage layer.
  */
 class Cell
 {

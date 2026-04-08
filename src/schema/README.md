@@ -1,0 +1,2 @@
+- obviously, we want to convert raw bytes on page to cpp objects
+- This package will provide way to manage schema defenition and proper conversion (maybe?)

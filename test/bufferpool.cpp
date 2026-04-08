@@ -1,6 +1,7 @@
 #include "../src/storage/bufferpool.h"
 #include "../src/storage/page.h"
 #include "../src/storage/file.h"
+#include "../src/storage/record_builder.h"
 #include "../src/storage/record_cell.h"
 #include <array>
 #include <cstdio>
@@ -78,7 +79,7 @@ TEST_F(BufferPoolTest, createNewPageWithEviction)
         // Write unique data to each page
         char test_data[50];
         std::snprintf(test_data, sizeof(test_data), "test_data_page_%zu", i);
-        RecordCell cell(test_data, std::strlen(test_data) + 1);
+        RecordBuilder cell(test_data, std::strlen(test_data) + 1);
         page->insertCell(cell);
         
         // Copy the page content
