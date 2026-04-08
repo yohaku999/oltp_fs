@@ -1,4 +1,7 @@
 #pragma once
+
+#include <cstdint>
+#include <stdexcept>
 #include <string>
 
 class Column {
@@ -21,6 +24,8 @@ class Column {
   }
 
   const std::string& getName() const { return name_; }
+
+  Type getType() const { return type_; }
 
   bool isFixedLength() const { return type_ == Type::Integer; }
 
