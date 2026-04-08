@@ -3,12 +3,7 @@
 #include <cstdint>
 #include <cstring>
 #include <vector>
-enum class CellKind
-{
-    Leaf,
-    Intermediate,
-    Record
-};
+enum class CellKind { Leaf, Intermediate, Record };
 
 /**
  * Base class for page-resident binary units.
@@ -18,40 +13,37 @@ enum class CellKind
  *  - byte[1..]: type-specific payload
  *
  * Note:
- * - LeafCell and IntermediateCell are modeled as small value objects that can be
- *   decoded from bytes and re-serialized.
- * - Heap records are split across RecordCellView for read-side interpretation and
- *   RecordBuilder for write-side serialization.
+ * - LeafCell and IntermediateCell are modeled as small value objects that can
+ * be decoded from bytes and re-serialized.
+ * - Heap records are split across RecordCellView for read-side interpretation
+ * and RecordBuilder for write-side serialization.
  * - Schema-dependent field interpretation must stay outside the storage layer.
  */
-class Cell
-{
-public:
-    // NOTE: byte[0] currently packs an invalid flag; extend this byte (or move to a bitmap) if more per-cell flags are required.
-    static constexpr size_t FLAG_FIELD_SIZE = sizeof(uint8_t);
-    static constexpr uint8_t FLAG_INVALID_MASK = 0x1;
+class Cell {
+ public:
+  // NOTE: byte[0] currently packs an invalid flag; extend this byte (or move to
+  // a bitmap) if more per-cell flags are required.
+  static constexpr size_t FLAG_FIELD_SIZE = sizeof(uint8_t);
+  static constexpr uint8_t FLAG_INVALID_MASK = 0x1;
 
-    static void markInvalid(char *cell_start)
-    {
-        cell_start[0] |= FLAG_INVALID_MASK;
-    }
+  static void markInvalid(char* cell_start) {
+    cell_start[0] |= FLAG_INVALID_MASK;
+  }
 
-    static bool isValid(const char *cell_start)
-    {
-        return (static_cast<uint8_t>(cell_start[0]) & FLAG_INVALID_MASK) == 0;
-    }
+  static bool isValid(const char* cell_start) {
+    return (static_cast<uint8_t>(cell_start[0]) & FLAG_INVALID_MASK) == 0;
+  }
 
-    virtual ~Cell() = default;
-    virtual size_t payloadSize() const = 0;
-    virtual std::vector<std::byte> serialize() const = 0;
-    virtual CellKind kind() const = 0;
+  virtual ~Cell() = default;
+  virtual size_t payloadSize() const = 0;
+  virtual std::vector<std::byte> serialize() const = 0;
+  virtual CellKind kind() const = 0;
 };
 
 // Little-endian is used for storing data.
 template <typename T>
-inline T readValue(const char *ptr)
-{
-    T value;
-    std::memcpy(&value, ptr, sizeof(T));
-    return value;
+inline T readValue(const char* ptr) {
+  T value;
+  std::memcpy(&value, ptr, sizeof(T));
+  return value;
 }

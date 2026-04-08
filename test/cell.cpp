@@ -1,48 +1,49 @@
 #include "../src/storage/cell.h"
-#include "../src/storage/intermediate_cell.h"
-#include "../src/storage/leaf_cell.h"
-#include <vector>
+
 #include <gtest/gtest.h>
 
-TEST(CellTest, IntermediateCellRoundTrip)
-{
-    IntermediateCell original(500, 77777);
-    std::vector<std::byte> serialized = original.serialize();
+#include <vector>
 
-    IntermediateCell decoded = IntermediateCell::decodeCell(reinterpret_cast<char *>(serialized.data()));
+#include "../src/storage/intermediate_cell.h"
+#include "../src/storage/leaf_cell.h"
 
-    EXPECT_EQ(decoded.key_size(), original.key_size());
-    EXPECT_EQ(decoded.page_id(), original.page_id());
-    EXPECT_EQ(decoded.key(), original.key());
+TEST(CellTest, IntermediateCellRoundTrip) {
+  IntermediateCell original(500, 77777);
+  std::vector<std::byte> serialized = original.serialize();
+
+  IntermediateCell decoded =
+      IntermediateCell::decodeCell(reinterpret_cast<char*>(serialized.data()));
+
+  EXPECT_EQ(decoded.key_size(), original.key_size());
+  EXPECT_EQ(decoded.page_id(), original.page_id());
+  EXPECT_EQ(decoded.key(), original.key());
 }
 
-TEST(CellTest, LeafCellRoundTrip)
-{
-    LeafCell original(11111, 999, 15);
-    std::vector<std::byte> serialized = original.serialize();
-    LeafCell decoded = LeafCell::decodeCell(reinterpret_cast<char *>(serialized.data()));
+TEST(CellTest, LeafCellRoundTrip) {
+  LeafCell original(11111, 999, 15);
+  std::vector<std::byte> serialized = original.serialize();
+  LeafCell decoded =
+      LeafCell::decodeCell(reinterpret_cast<char*>(serialized.data()));
 
-    EXPECT_EQ(decoded.heap_page_id(), original.heap_page_id());
-    EXPECT_EQ(decoded.slot_id(), original.slot_id());
-    EXPECT_EQ(decoded.key(), original.key());
+  EXPECT_EQ(decoded.heap_page_id(), original.heap_page_id());
+  EXPECT_EQ(decoded.slot_id(), original.slot_id());
+  EXPECT_EQ(decoded.key(), original.key());
 }
 
-TEST(CellTest, IntermediateCellInvalidFlag)
-{
-    IntermediateCell cell(500, 77777);
-    std::vector<std::byte> serialized = cell.serialize();
-    char *cell_bytes = reinterpret_cast<char *>(serialized.data());
-    EXPECT_TRUE(Cell::isValid(cell_bytes));
-    Cell::markInvalid(cell_bytes);
-    EXPECT_FALSE(Cell::isValid(cell_bytes));
+TEST(CellTest, IntermediateCellInvalidFlag) {
+  IntermediateCell cell(500, 77777);
+  std::vector<std::byte> serialized = cell.serialize();
+  char* cell_bytes = reinterpret_cast<char*>(serialized.data());
+  EXPECT_TRUE(Cell::isValid(cell_bytes));
+  Cell::markInvalid(cell_bytes);
+  EXPECT_FALSE(Cell::isValid(cell_bytes));
 }
 
-TEST(CellTest, LeafCellInvalidFlag)
-{
-    LeafCell cell(11111, 999, 15);
-    std::vector<std::byte> serialized = cell.serialize();
-    char *cell_bytes = reinterpret_cast<char *>(serialized.data());
-    EXPECT_TRUE(Cell::isValid(cell_bytes));
-    Cell::markInvalid(cell_bytes);
-    EXPECT_FALSE(Cell::isValid(cell_bytes));
+TEST(CellTest, LeafCellInvalidFlag) {
+  LeafCell cell(11111, 999, 15);
+  std::vector<std::byte> serialized = cell.serialize();
+  char* cell_bytes = reinterpret_cast<char*>(serialized.data());
+  EXPECT_TRUE(Cell::isValid(cell_bytes));
+  Cell::markInvalid(cell_bytes);
+  EXPECT_FALSE(Cell::isValid(cell_bytes));
 }

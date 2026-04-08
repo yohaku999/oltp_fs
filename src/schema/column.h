@@ -2,37 +2,29 @@
 #include <string>
 
 class Column {
+ public:
+  enum class Type { Integer, Varchar };
 
-public:
-    enum class Type {
-        Integer,
-        Varchar
-    };
+  using IntegerType = std::int32_t;
+  using VarcharType = std::string;
 
-    using IntegerType = std::int32_t;
-    using VarcharType = std::string;
-    
-    Column(std::string name, Type type) : name_(std::move(name)), type_(type) {}
+  Column(std::string name, Type type) : name_(std::move(name)), type_(type) {}
 
-    std::size_t size() const {
-        switch (type_) {
-            case Type::Integer:
-                return sizeof(IntegerType);
-            case Type::Varchar:
-               return sizeof(VarcharType);
-        }
-        throw std::runtime_error("Unknown column type");
+  std::size_t size() const {
+    switch (type_) {
+      case Type::Integer:
+        return sizeof(IntegerType);
+      case Type::Varchar:
+        return sizeof(VarcharType);
     }
+    throw std::runtime_error("Unknown column type");
+  }
 
-    const std::string& getName() const {
-        return name_;
-    }
+  const std::string& getName() const { return name_; }
 
-    bool isFixedLength() const {
-        return type_ == Type::Integer;
-    } 
+  bool isFixedLength() const { return type_ == Type::Integer; }
 
-private:
-    std::string name_;
-    Type type_;
+ private:
+  std::string name_;
+  Type type_;
 };

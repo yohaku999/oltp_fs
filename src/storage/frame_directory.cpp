@@ -1,118 +1,117 @@
 #include "frame_directory.h"
-#include "logging.h"
+
 #include <optional>
+#include <random>
 #include <utility>
 #include <vector>
-#include <random>
-FrameDirectory::FrameDirectory()
-{
-    for (int i = 0; i < MAX_FRAME_COUNT; ++i) {
-        free_frames_.insert(i);
-    }
+
+#include "logging.h"
+FrameDirectory::FrameDirectory() {
+  for (int i = 0; i < MAX_FRAME_COUNT; ++i) {
+    free_frames_.insert(i);
+  }
 }
 
-std::optional<int> FrameDirectory::claimFreeFrame()
-{
-    if (free_frames_.empty()) {
-        return std::nullopt;
-    }
-    
-    int frame_id = *free_frames_.begin();
-    free_frames_.erase(free_frames_.begin());
-    LOG_DEBUG("Found free frame {}", frame_id);
-    return frame_id;
-}
-
-std::optional<int> FrameDirectory::findFrameByPage(int pageID, const std::string& filePath)
-{
-    auto key = std::make_pair(pageID, filePath);
-    auto it = page_to_frame_.find(key);
-    if (it != page_to_frame_.end()) {
-        return it->second;
-    }
+std::optional<int> FrameDirectory::claimFreeFrame() {
+  if (free_frames_.empty()) {
     return std::nullopt;
+  }
+
+  int frame_id = *free_frames_.begin();
+  free_frames_.erase(free_frames_.begin());
+  LOG_DEBUG("Found free frame {}", frame_id);
+  return frame_id;
 }
 
-void FrameDirectory::registerPage(int frameID, int pageID, const std::string& filePath, std::unique_ptr<Page> page)
-{
-    frames_[frameID].page = std::move(page);
-    frames_[frameID].page_id = pageID;
-    frames_[frameID].file_path = filePath;
-    frames_[frameID].pin_count = 0;
-    
-    auto key = std::make_pair(pageID, filePath);
-    page_to_frame_[key] = frameID;
-    
-    LOG_DEBUG("Registered page {} from {} in frame {}", pageID, filePath, frameID);
+std::optional<int> FrameDirectory::findFrameByPage(
+    int pageID, const std::string& filePath) {
+  auto key = std::make_pair(pageID, filePath);
+  auto it = page_to_frame_.find(key);
+  if (it != page_to_frame_.end()) {
+    return it->second;
+  }
+  return std::nullopt;
 }
 
-void FrameDirectory::unregisterPage(int frameID)
-{
-    auto key = std::make_pair(frames_[frameID].page_id, frames_[frameID].file_path);
-    page_to_frame_.erase(key);
-    
-    frames_[frameID].clear();
-    
-    free_frames_.insert(frameID);
-    
-    LOG_DEBUG("Unregistered and deleted page from frame {}", frameID);
+void FrameDirectory::registerPage(int frameID, int pageID,
+                                  const std::string& filePath,
+                                  std::unique_ptr<Page> page) {
+  frames_[frameID].page = std::move(page);
+  frames_[frameID].page_id = pageID;
+  frames_[frameID].file_path = filePath;
+  frames_[frameID].pin_count = 0;
+
+  auto key = std::make_pair(pageID, filePath);
+  page_to_frame_[key] = frameID;
+
+  LOG_DEBUG("Registered page {} from {} in frame {}", pageID, filePath,
+            frameID);
 }
 
-void FrameDirectory::pin(int frameID)
-{
-    frames_[frameID].pin_count++;
-    LOG_DEBUG("Marked frame {} as pinned, count = {}", frameID, frames_[frameID].pin_count);
+void FrameDirectory::unregisterPage(int frameID) {
+  auto key =
+      std::make_pair(frames_[frameID].page_id, frames_[frameID].file_path);
+  page_to_frame_.erase(key);
+
+  frames_[frameID].clear();
+
+  free_frames_.insert(frameID);
+
+  LOG_DEBUG("Unregistered and deleted page from frame {}", frameID);
 }
 
-void FrameDirectory::unpin(int frameID)
-{
-    if (frames_[frameID].pin_count > 0) {
-        frames_[frameID].pin_count--;
-        LOG_DEBUG("Marked frame {} as unpinned, count = {}", frameID, frames_[frameID].pin_count);
+void FrameDirectory::pin(int frameID) {
+  frames_[frameID].pin_count++;
+  LOG_DEBUG("Marked frame {} as pinned, count = {}", frameID,
+            frames_[frameID].pin_count);
+}
+
+void FrameDirectory::unpin(int frameID) {
+  if (frames_[frameID].pin_count > 0) {
+    frames_[frameID].pin_count--;
+    LOG_DEBUG("Marked frame {} as unpinned, count = {}", frameID,
+              frames_[frameID].pin_count);
+  }
+}
+
+bool FrameDirectory::isPinned(int frameID) const {
+  return frames_[frameID].pin_count > 0;
+}
+
+std::optional<int> FrameDirectory::findVictimFrame() {
+  std::vector<int> candidates;
+  for (int i = 0; i < MAX_FRAME_COUNT; ++i) {
+    if (frames_[i].pin_count == 0 && frames_[i].page != nullptr) {
+      candidates.push_back(i);
     }
-}
+  }
 
-bool FrameDirectory::isPinned(int frameID) const
-{
-    return frames_[frameID].pin_count > 0;
-}
-
-std::optional<int> FrameDirectory::findVictimFrame()
-{
-    std::vector<int> candidates;
+  if (candidates.empty()) {
+    // Dump frame directory state to help debugging why no victim exists
+    std::string dump = "FrameDirectory dump: ";
     for (int i = 0; i < MAX_FRAME_COUNT; ++i) {
-        if (frames_[i].pin_count == 0 && frames_[i].page != nullptr) {
-            candidates.push_back(i);
-        }
+      dump += fmt::format("[id={} pin={} has_page={}] ", i,
+                          frames_[i].pin_count, frames_[i].page != nullptr);
     }
-    
-    if (candidates.empty()) {
-        // Dump frame directory state to help debugging why no victim exists
-        std::string dump = "FrameDirectory dump: ";
-        for (int i = 0; i < MAX_FRAME_COUNT; ++i) {
-            dump += fmt::format("[id={} pin={} has_page={}] ", i, frames_[i].pin_count, frames_[i].page != nullptr);
-        }
-        LOG_WARN("No evictable frames found (all pinned or empty). {}", dump);
-        return std::nullopt;
-    }
-    
-    // Random selection from candidates
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_int_distribution<> dis(0, candidates.size() - 1);
-    int victim = candidates[dis(gen)];
-    
-    LOG_DEBUG("Found victim frame {} (randomly selected from {} candidates)", victim, candidates.size());
-    return victim;
+    LOG_WARN("No evictable frames found (all pinned or empty). {}", dump);
+    return std::nullopt;
+  }
+
+  // Random selection from candidates
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  std::uniform_int_distribution<> dis(0, candidates.size() - 1);
+  int victim = candidates[dis(gen)];
+
+  LOG_DEBUG("Found victim frame {} (randomly selected from {} candidates)",
+            victim, candidates.size());
+  return victim;
 }
 
-
-const FrameDirectory::Frame& FrameDirectory::getFrame(int frameID) const
-{
-    return frames_[frameID];
+const FrameDirectory::Frame& FrameDirectory::getFrame(int frameID) const {
+  return frames_[frameID];
 }
 
-FrameDirectory::Frame& FrameDirectory::getFrame(int frameID)
-{
-    return frames_[frameID];
+FrameDirectory::Frame& FrameDirectory::getFrame(int frameID) {
+  return frames_[frameID];
 }
