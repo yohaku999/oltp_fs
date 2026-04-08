@@ -36,11 +36,11 @@ Page::Page(char* start_p, uint16_t page_id)
 /**
  * returns the slot ID of the inserted cell.
  */
-std::optional<int> Page::insertCell(const Cell& cell) {
-  LOG_INFO("Attempting to insert {} cell into page ID {}",
-           static_cast<int>(cell.kind()), getPageID());
+std::optional<int> Page::insertCell(
+    const std::vector<std::byte>& serialized_cell) {
+  LOG_INFO("Attempting to insert serialized cell into page ID {}", getPageID());
   // check if the page has enough space to insert the new cell.
-  uint16_t new_cell_offset = getSlotDirectoryOffset() - cell.payloadSize();
+  uint16_t new_cell_offset = getSlotDirectoryOffset() - serialized_cell.size();
   char* cell_data_p = start_p_ + new_cell_offset;
   char* cell_ptr_end_p = start_p_ + Page::HEADDER_SIZE_BYTE +
                          Page::CELL_POINTER_SIZE * (getSlotCount() + 1);
@@ -50,9 +50,8 @@ std::optional<int> Page::insertCell(const Cell& cell) {
     return std::nullopt;
   }
 
-  // serialize cell and copy to the page.
-  std::vector<std::byte> serialized_data = cell.serialize();
-  std::memcpy(cell_data_p, serialized_data.data(), serialized_data.size());
+  // copy serialized cell bytes into the page payload area.
+  std::memcpy(cell_data_p, serialized_cell.data(), serialized_cell.size());
 
   // update cell pointer.
   // cell pointers should be sored by key in ascending order? For now, we just
@@ -74,6 +73,13 @@ std::optional<int> Page::insertCell(const Cell& cell) {
       "offset: {}",
       getSlotCount(), getSlotDirectoryOffset());
   return getSlotCount() - 1;
+}
+
+std::optional<int> Page::insertCell(const Cell& cell) {
+  LOG_INFO("Attempting to insert {} cell into page ID {}",
+           static_cast<int>(cell.kind()), getPageID());
+  std::vector<std::byte> serialized_data = cell.serialize();
+  return insertCell(serialized_data);
 }
 
 // private methods

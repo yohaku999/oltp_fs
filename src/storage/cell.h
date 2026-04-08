@@ -16,7 +16,7 @@ enum class CellKind { Leaf, Intermediate, Record };
  * - LeafCell and IntermediateCell are modeled as small value objects that can
  * be decoded from bytes and re-serialized.
  * - Heap records are split across RecordCellView for read-side interpretation
- * and RecordBuilder for write-side serialization.
+ * and RecordSerializer for write-side serialization.
  * - Schema-dependent field interpretation must stay outside the storage layer.
  */
 class Cell {

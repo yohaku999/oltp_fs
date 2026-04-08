@@ -8,31 +8,39 @@
 #include "../storage/bufferpool.h"
 #include "../storage/file.h"
 #include "../storage/page.h"
-#include "../storage/record_builder.h"
 #include "../storage/record_cell.h"
+#include "../storage/record_serializer.h"
 #include "heap_fetch.h"
 #include "index_scan.h"
 
 namespace {
+// TODO: introduce "table" notion
+RecordSerializer serializeSingleVarcharRecord(char* value,
+                                              std::size_t value_size) {
+  static const Schema schema{
+      "single_varchar_record",
+      std::vector<Column>{Column("value", Column::Type::Varchar)}};
+  TypedRow row{{Column::VarcharType(value, value_size)}};
+  return RecordSerializer(schema, row);
+}
 
 std::pair<uint16_t, uint16_t> insertIntoHeap(BufferPool& pool, File& heapFile,
                                              int key, char* value,
                                              std::size_t value_size) {
   LOG_INFO("Inserting record with key {} into heap file {}.", key,
            heapFile.getFilePath());
-  // TODO: 本来はスキーマに準じたcppの型つき値のリストを入力とする。
-  RecordBuilder cell(value, value_size);
+  RecordSerializer cell = serializeSingleVarcharRecord(value, value_size);
 
   int targetPageID = heapFile.getMaxPageID();
   Page* heapPage = pool.getPage(targetPageID, heapFile);
-  auto insertedSlotID = heapPage->insertCell(cell);
+  auto insertedSlotID = heapPage->insertCell(cell.serializedBytes());
   if (!insertedSlotID.has_value()) {
     pool.unpin(heapPage, heapFile);
     // WARNING : currently how we deal with leafpage and heappage is the same.
     // Thus it is correct to set is_leaf = true here but, it's confusing.
     targetPageID = pool.createNewPage(true, heapFile);
     heapPage = pool.getPage(targetPageID, heapFile);
-    insertedSlotID = heapPage->insertCell(cell);
+    insertedSlotID = heapPage->insertCell(cell.serializedBytes());
     if (!insertedSlotID.has_value()) {
       throw std::runtime_error(
           "Failed to insert record cell into a new heap page due to "
@@ -61,8 +69,19 @@ char* executor::read(BufferPool& pool, File& indexFile, File& heapFile,
 
   HeapFetch fetcher(pool, heapFile);
   char* cell_start = fetcher.fetch(rid->heap_page_id, rid->slot_id);
-  // TODO: fix
-  return const_cast<char*>(RecordCellView(cell_start).getValue().first);
+  static const Schema schema{
+      "single_varchar_record",
+      std::vector<Column>{Column("value", Column::Type::Varchar)}};
+  static thread_local std::string value_buffer;
+
+  TypedRow row = RecordCellView(cell_start).getTypedRow(schema);
+  if (row.values.empty() ||
+      !std::holds_alternative<Column::VarcharType>(row.values[0])) {
+    throw std::runtime_error("Expected single varchar record.");
+  }
+
+  value_buffer = std::get<Column::VarcharType>(row.values[0]);
+  return value_buffer.data();
 }
 
 void executor::remove(BufferPool& pool, File& indexFile, File& heapFile,

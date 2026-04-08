@@ -44,7 +44,7 @@ add_library(dbfs_src
     src/storage/index_page.cpp
     src/storage/intermediate_cell.cpp
     src/storage/leaf_cell.cpp
-    src/storage/record_builder.cpp
+    src/storage/record_serializer.cpp
     src/storage/btreecursor.cpp
     src/storage/frame_directory.cpp
     src/executor/heap_fetch.cpp

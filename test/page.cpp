@@ -10,8 +10,20 @@
 
 #include "../src/storage/cell.h"
 #include "../src/storage/index_page.h"
-#include "../src/storage/record_builder.h"
 #include "../src/storage/record_cell.h"
+#include "../src/storage/record_serializer.h"
+
+namespace {
+
+RecordSerializer serializeSingleVarcharRecord(const std::string& value) {
+  static const Schema schema{
+      "single_varchar_record",
+      std::vector<Column>{Column("value", Column::Type::Varchar)}};
+  TypedRow row{{value}};
+  return RecordSerializer(schema, row);
+}
+
+}  // namespace
 
 TEST(PageTest, InsertLeafPageAndFind) {
   std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
@@ -152,10 +164,10 @@ TEST(PageTest, InsertIntermediatePageAndFind) {
 
 // TODO: invalidation should be done via page API. we will implement later.
 TEST(PageTest, InvalidateSlotSetsFlag) {
-  auto assertInvalidation = [](bool is_leaf, auto make_cell) {
+  auto assertInvalidation = [](bool is_leaf, const Cell& cell) {
     std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
     auto page = std::make_unique<Page>(page_data.data(), is_leaf, 0, 1);
-    auto slot_id_opt = page->insertCell(make_cell());
+    auto slot_id_opt = page->insertCell(cell);
     ASSERT_TRUE(slot_id_opt.has_value());
     uint16_t slot_id = slot_id_opt.value();
 
@@ -173,11 +185,32 @@ TEST(PageTest, InvalidateSlotSetsFlag) {
     EXPECT_FALSE(Cell::isValid(cell_data));
   };
 
-  assertInvalidation(true, []() { return LeafCell(42, 100, 7); });
+  auto assertSerializedInvalidation = [](bool is_leaf,
+                                         const std::vector<std::byte>& bytes) {
+    std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
+    auto page = std::make_unique<Page>(page_data.data(), is_leaf, 0, 1);
+    auto slot_id_opt = page->insertCell(bytes);
+    ASSERT_TRUE(slot_id_opt.has_value());
+    uint16_t slot_id = slot_id_opt.value();
+
+    uint16_t cell_offset = 0;
+    std::memcpy(&cell_offset,
+                page_data.data() + Page::HEADDER_SIZE_BYTE +
+                    Page::CELL_POINTER_SIZE * slot_id,
+                sizeof(uint16_t));
+    char* cell_data = page_data.data() + cell_offset;
+    ASSERT_TRUE(Cell::isValid(cell_data));
+
+    page->invalidateSlot(slot_id);
+    EXPECT_TRUE(page->isDirty());
+
+    EXPECT_FALSE(Cell::isValid(cell_data));
+  };
+
+  assertInvalidation(true, LeafCell(42, 100, 7));
   std::string payload = "page-record";
-  assertInvalidation(true, [&payload]() {
-    return RecordBuilder(payload.data(), payload.size());
-  });
+  RecordSerializer record = serializeSingleVarcharRecord(payload);
+  assertSerializedInvalidation(true, record.serializedBytes());
 }
 
 TEST(PageTest, LeafSearchSkipsInvalidEntries) {
@@ -218,18 +251,22 @@ TEST(PageTest, HeapInsertInvalidateReuseSlot) {
   auto page = std::make_unique<Page>(page_data.data(), true, 0, 1);
 
   std::string payload = "heap-value";
-  auto first_slot =
-      page->insertCell(RecordBuilder(payload.data(), payload.size()));
+  RecordSerializer first_record = serializeSingleVarcharRecord(payload);
+  auto first_slot = page->insertCell(first_record.serializedBytes());
   ASSERT_TRUE(first_slot.has_value());
   page->invalidateSlot(first_slot.value());
 
-  auto second_slot =
-      page->insertCell(RecordBuilder(payload.data(), payload.size()));
+  RecordSerializer second_record = serializeSingleVarcharRecord(payload);
+  auto second_slot = page->insertCell(second_record.serializedBytes());
   ASSERT_TRUE(second_slot.has_value());
   EXPECT_NE(first_slot.value(), second_slot.value());
 
   char* cell_start = page->getXthSlotCellStart(second_slot.value());
-  char* value_ptr =
-      const_cast<char*>(RecordCellView(cell_start).getValue().first);
-  EXPECT_EQ(std::string(value_ptr, payload.size()), payload);
+  static const Schema schema{
+      "single_varchar_record",
+      std::vector<Column>{Column("value", Column::Type::Varchar)}};
+  TypedRow row = RecordCellView(cell_start).getTypedRow(schema);
+  ASSERT_EQ(row.values.size(), 1u);
+  ASSERT_TRUE(std::holds_alternative<Column::VarcharType>(row.values[0]));
+  EXPECT_EQ(std::get<Column::VarcharType>(row.values[0]), payload);
 }

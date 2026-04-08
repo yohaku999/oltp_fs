@@ -1,8 +1,8 @@
 #pragma once
 #include <optional>
 #include <ostream>
-#include <span>
 #include <utility>
+#include <vector>
 
 #include "cell.h"
 #include "intermediate_cell.h"
@@ -66,6 +66,7 @@ class Page {
   static constexpr size_t CELL_POINTER_SIZE = sizeof(uint16_t);
   char* start_p_;
   char* getXthSlotCellStart(int x);
+  std::optional<int> insertCell(const std::vector<std::byte>& serialized_cell);
   std::optional<int> insertCell(const Cell& cell);
   void invalidateSlot(uint16_t slot_id);
 

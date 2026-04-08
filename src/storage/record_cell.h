@@ -1,9 +1,13 @@
 #pragma once
 #include <cstdint>
 #include <cstring>
+#include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "../schema/schema.h"
+#include "../schema/typed_row.h"
 #include "cell.h"
 
 /**
@@ -23,7 +27,7 @@
  * Read/write responsibilities are intentionally split:
  * - RecordCellView is a non-owning view over heap-record bytes already stored
  * in a page
- * - RecordBuilder owns temporary bytes while constructing a record for
+ * - RecordSerializer owns temporary bytes while serializing a record for
  * insertion
  * - column-level interpretation belongs to Tuple/Schema, not this file
  */
@@ -74,9 +78,54 @@ class RecordCellView {
             static_cast<uint16_t>(column_end_offset - column_begin_offset)};
   }
 
-  // Convenience helper for the current single-variable-column call sites.
-  std::pair<const char*, uint16_t> getValue() const {
-    return getXthVariableColumnbegin(0, 1);
+  TypedRow getTypedRow(const Schema& schema) const {
+    TypedRow row;
+    row.values.reserve(schema.columns_.size());
+
+    const char* fixed_payload_ptr = getFixedPayloadBegin();
+    int variable_column_index = 0;
+
+    for (std::size_t column_index = 0; column_index < schema.columns_.size();
+         ++column_index) {
+      const auto& column = schema.columns_[column_index];
+      if (isNull(static_cast<int>(column_index))) {
+        row.values.emplace_back(std::monostate{});
+        if (column.isFixedLength()) {
+          fixed_payload_ptr += column.size();
+        } else {
+          ++variable_column_index;
+        }
+        continue;
+      }
+
+      if (column.isFixedLength()) {
+        switch (column.getType()) {
+          case Column::Type::Integer: {
+            row.values.emplace_back(
+                readValue<Column::IntegerType>(fixed_payload_ptr));
+            fixed_payload_ptr += column.size();
+            break;
+          }
+          case Column::Type::Varchar:
+            throw std::runtime_error(
+                "Unsupported fixed-length column type in RecordCellView.");
+        }
+      } else {
+        const auto [value_ptr, value_size] = getXthVariableColumnbegin(
+            variable_column_index, schema.getVariableColumnCount());
+        switch (column.getType()) {
+          case Column::Type::Varchar:
+            row.values.emplace_back(std::string(value_ptr, value_size));
+            ++variable_column_index;
+            break;
+          case Column::Type::Integer:
+            throw std::runtime_error(
+                "Unsupported variable-length column type in RecordCellView.");
+        }
+      }
+    }
+
+    return row;
   }
 
  private:

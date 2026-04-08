@@ -12,8 +12,20 @@
 
 #include "../src/storage/file.h"
 #include "../src/storage/page.h"
-#include "../src/storage/record_builder.h"
 #include "../src/storage/record_cell.h"
+#include "../src/storage/record_serializer.h"
+
+namespace {
+// TODO: introduce "table" notion
+RecordSerializer serializeSingleVarcharRecord(const std::string& value) {
+  static const Schema schema{
+      "single_varchar_record",
+      std::vector<Column>{Column("value", Column::Type::Varchar)}};
+  TypedRow row{{value}};
+  return RecordSerializer(schema, row);
+}
+
+}  // namespace
 
 class BufferPoolTest : public ::testing::Test {
  protected:
@@ -77,8 +89,8 @@ TEST_F(BufferPoolTest, createNewPageWithEviction) {
     // Write unique data to each page
     char test_data[50];
     std::snprintf(test_data, sizeof(test_data), "test_data_page_%zu", i);
-    RecordBuilder cell(test_data, std::strlen(test_data) + 1);
-    page->insertCell(cell);
+    RecordSerializer cell = serializeSingleVarcharRecord(test_data);
+    page->insertCell(cell.serializedBytes());
 
     // Copy the page content
     std::memcpy(page_copies[i].data(), page->start_p_, Page::PAGE_SIZE_BYTE);

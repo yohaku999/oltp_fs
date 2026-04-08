@@ -11,7 +11,10 @@ class Column {
   using IntegerType = std::int32_t;
   using VarcharType = std::string;
 
-  Column(std::string name, Type type) : name_(std::move(name)), type_(type) {}
+  Column(std::string name, Type type)
+      : name_(std::move(name)),
+        type_(type),
+        is_variable_length_(inferVariableLength(type)) {}
 
   std::size_t size() const {
     switch (type_) {
@@ -27,9 +30,20 @@ class Column {
 
   Type getType() const { return type_; }
 
-  bool isFixedLength() const { return type_ == Type::Integer; }
+  bool isFixedLength() const { return !is_variable_length_; }
 
  private:
+  static bool inferVariableLength(Type type) {
+    switch (type) {
+      case Type::Integer:
+        return false;
+      case Type::Varchar:
+        return true;
+    }
+    throw std::runtime_error("Unknown column type");
+  }
+
   std::string name_;
   Type type_;
+  bool is_variable_length_;
 };
