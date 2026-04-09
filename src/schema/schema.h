@@ -11,6 +11,10 @@ class Schema {
       : name_(std::move(name)), columns_(std::move(columns)) {}
   std::vector<Column> columns_;
 
+  const std::string& name() const { return name_; }
+
+  const std::vector<Column>& columns() const { return columns_; }
+
   int getFixedColumnIndex(const std::string& column_name) const {
     int fixed_index = 0;
     for (const auto& column : columns_) {

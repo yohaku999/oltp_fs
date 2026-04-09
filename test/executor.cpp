@@ -2,9 +2,7 @@
 
 #include <gtest/gtest.h>
 
-#include <array>
 #include <cstdio>
-#include <cstring>
 #include <memory>
 #include <random>
 #include <string>
@@ -14,110 +12,103 @@
 
 #include "../src/storage/btreecursor.h"
 #include "../src/storage/bufferpool.h"
-#include "../src/storage/file.h"
-#include "../src/storage/page.h"
+#include "../src/table/table.h"
 
 class ExecutorTest : public ::testing::Test {
  protected:
+  static constexpr const char* kTableName = "executor_test_table";
   std::unique_ptr<BufferPool> pool_;
-  std::unique_ptr<File> index_file_;
-  std::unique_ptr<File> heap_file_;
-  const std::string index_path_ = "executor_test.index";
-  const std::string heap_path_ = "executor_test.db";
 
   void SetUp() override {
     pool_ = std::make_unique<BufferPool>();
-    std::remove(index_path_.c_str());
-    std::remove(heap_path_.c_str());
-    index_file_ = std::make_unique<File>(index_path_);
-    heap_file_ = std::make_unique<File>(heap_path_);
-    initializeLeafPage(*index_file_);
-    initializeLeafPage(*heap_file_);
+    Table::removeFilesFor(kTableName);
   }
 
   void TearDown() override {
-    index_file_.reset();
-    heap_file_.reset();
-    std::remove(index_path_.c_str());
-    std::remove(heap_path_.c_str());
+    Table::removeFilesFor(kTableName);
   }
 
-  static void initializeLeafPage(File& file) {
-    std::array<char, Page::PAGE_SIZE_BYTE> buffer{};
-    auto page = std::make_unique<Page>(buffer.data(), true, 0, 0);
-    file.writePageOnFile(0, buffer.data());
+  static Table createSingleColumnTable() {
+    return Table::initialize(
+        kTableName,
+        Schema(kTableName,
+               std::vector<Column>{Column("value", Column::Type::Varchar)}));
+  }
+
+  static std::string singleVarcharValue(const TypedRow& row) {
+    if (row.values.size() != 1 ||
+        !std::holds_alternative<Column::VarcharType>(row.values[0])) {
+      throw std::runtime_error("Expected single varchar row.");
+    }
+    return std::get<Column::VarcharType>(row.values[0]);
   }
 };
 
 TEST_F(ExecutorTest, InsertAndGetMultipleRecords) {
+  Table table = createSingleColumnTable();
   std::vector<std::pair<int, std::string>> records = {
       {1, "value1"}, {2, "value-two"}, {10, "value-003"}};
 
   // insert
   for (const auto& record : records) {
-    char* value_ptr = const_cast<char*>(record.second.data());
-    executor::insert(*pool_, *index_file_, *heap_file_, record.first, value_ptr,
-                     record.second.size());
+    executor::insert(*pool_, table, record.first,
+                     TypedRow{{Column::VarcharType(record.second)}});
   }
 
   // read
   for (const auto& record : records) {
-    char* stored =
-        executor::read(*pool_, *index_file_, *heap_file_, record.first);
-    std::string restored(stored, record.second.size());
+    std::string restored = singleVarcharValue(executor::read(*pool_, table, record.first));
     EXPECT_EQ(record.second, restored);
   }
 }
 
+TEST_F(ExecutorTest, InsertAndReadTypedRow) {
+  Table table = createSingleColumnTable();
+  TypedRow inserted{{Column::VarcharType("typed-value")}};
+  executor::insert(*pool_, table, 11, inserted);
+
+  TypedRow restored = executor::read(*pool_, table, 11);
+  ASSERT_EQ(restored.values.size(), 1u);
+  ASSERT_TRUE(std::holds_alternative<Column::VarcharType>(restored.values[0]));
+  EXPECT_EQ(std::get<Column::VarcharType>(restored.values[0]), "typed-value");
+}
+
 TEST_F(ExecutorTest, InsertDeleteThenFailToRead) {
+  Table table = createSingleColumnTable();
   const int key = 99;
-  std::string payload = "transient";
+  executor::insert(*pool_, table, key,
+                   TypedRow{{Column::VarcharType("transient")}});
 
-  char* value_ptr = payload.data();
-  executor::insert(*pool_, *index_file_, *heap_file_, key, value_ptr,
-                   payload.size());
-
-  executor::remove(*pool_, *index_file_, *heap_file_, key);
+  executor::remove(*pool_, table, key);
 
   // reading should now fail because the slot has been invalidated
-  EXPECT_THROW(
-      { executor::read(*pool_, *index_file_, *heap_file_, key); },
-      std::runtime_error);
+  EXPECT_THROW({ executor::read(*pool_, table, key); }, std::runtime_error);
 }
 
 TEST_F(ExecutorTest, UpdateReplacesExistingValue) {
+  Table table = createSingleColumnTable();
   const int key = 123;
-  std::string initial = "initial-value";
-  std::string updated = "updated-value";
+  executor::insert(*pool_, table, key,
+                   TypedRow{{Column::VarcharType("initial-value")}});
 
-  char* initial_ptr = initial.data();
-  executor::insert(*pool_, *index_file_, *heap_file_, key, initial_ptr,
-                   initial.size());
+  executor::update(*pool_, table, key,
+                   TypedRow{{Column::VarcharType("updated-value")}});
 
-  char* update_ptr = updated.data();
-  executor::update(*pool_, *index_file_, *heap_file_, key, update_ptr,
-                   updated.size());
-
-  char* stored = executor::read(*pool_, *index_file_, *heap_file_, key);
-  std::string restored(stored, updated.size());
-  EXPECT_EQ(updated, restored);
+  EXPECT_EQ("updated-value", singleVarcharValue(executor::read(*pool_, table, key)));
 }
 
 TEST_F(ExecutorTest, UpdateNonExistingKeyThrows) {
+  Table table = createSingleColumnTable();
   const int key = 777;
-  std::string payload = "does-not-exist";
-
-  char* value_ptr = payload.data();
-  EXPECT_THROW(
-      {
-        executor::update(*pool_, *index_file_, *heap_file_, key, value_ptr,
-                         payload.size());
-      },
-      std::runtime_error);
+  EXPECT_THROW({
+    executor::update(*pool_, table, key,
+                     TypedRow{{Column::VarcharType("does-not-exist")}});
+  }, std::runtime_error);
 }
 
 TEST_F(ExecutorTest, InsertPageOverflow) {
   try {
+    Table table = createSingleColumnTable();
     std::mt19937 rng(0xC0FFEE);
     std::uniform_int_distribution<int> key_dist(1, 1'000'000);
     std::uniform_int_distribution<int> len_dist(16, 96);
@@ -139,20 +130,19 @@ TEST_F(ExecutorTest, InsertPageOverflow) {
       for (char& ch : payload) {
         ch = static_cast<char>('a' + (rng() % 26));
       }
-      executor::insert(*pool_, *index_file_, *heap_file_, key, payload.data(),
-                       payload.size());
+      executor::insert(*pool_, table, key,
+                       TypedRow{{Column::VarcharType(payload)}});
       expected.emplace(key, payload);
     }
 
     std::cout << "Start Verifying inserted records..." << std::endl;
     // Verify that all inserted records can be read back correctly.
     for (const auto& [key, value] : expected) {
-      char* stored = executor::read(*pool_, *index_file_, *heap_file_, key);
-      std::string restored(stored, value.size());
+      std::string restored = singleVarcharValue(executor::read(*pool_, table, key));
       if (restored != value) {
         std::cout << "Mismatch detected for key=" << key
                   << ". Dumping B+tree index state..." << std::endl;
-        BTreeCursor::dumpTree(*pool_, *index_file_, std::cout);
+        BTreeCursor::dumpTree(*pool_, table.indexFile(), std::cout);
       }
       EXPECT_EQ(value, restored) << "mismatch for key=" << key;
     }
@@ -161,7 +151,8 @@ TEST_F(ExecutorTest, InsertPageOverflow) {
               << ex.what() << std::endl;
     std::cout << "Dumping B+tree index state after test failure..."
               << std::endl;
-    BTreeCursor::dumpTree(*pool_, *index_file_, std::cout);
+    Table table = Table::getTable(kTableName);
+    BTreeCursor::dumpTree(*pool_, table.indexFile(), std::cout);
     throw;
   }
 }

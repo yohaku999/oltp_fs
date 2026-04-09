@@ -1,20 +1,18 @@
 #pragma once
 
-#include <cstddef>
+#include "../schema/typed_row.h"
 
 class BufferPool;
-class File;
+class Table;
 
 namespace executor {
 
-char* read(BufferPool& pool, File& indexFile, File& heapFile, int key);
+TypedRow read(BufferPool& pool, Table& table, int key);
 
-void insert(BufferPool& pool, File& indexFile, File& heapFile, int key,
-            char* value, std::size_t value_size);
+void insert(BufferPool& pool, Table& table, int key, const TypedRow& row);
 
-void remove(BufferPool& pool, File& indexFile, File& heapFile, int key);
+void remove(BufferPool& pool, Table& table, int key);
 
-void update(BufferPool& pool, File& indexFile, File& heapFile, int key,
-            char* value, std::size_t value_size);
+void update(BufferPool& pool, Table& table, int key, const TypedRow& row);
 
 }  // namespace executor

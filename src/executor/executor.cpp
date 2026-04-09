@@ -10,26 +10,17 @@
 #include "../storage/page.h"
 #include "../storage/record_cell.h"
 #include "../storage/record_serializer.h"
+#include "../table/table.h"
 #include "heap_fetch.h"
 #include "index_scan.h"
 
 namespace {
-// TODO: introduce "table" notion
-RecordSerializer serializeSingleVarcharRecord(char* value,
-                                              std::size_t value_size) {
-  static const Schema schema{
-      "single_varchar_record",
-      std::vector<Column>{Column("value", Column::Type::Varchar)}};
-  TypedRow row{{Column::VarcharType(value, value_size)}};
-  return RecordSerializer(schema, row);
-}
-
 std::pair<uint16_t, uint16_t> insertIntoHeap(BufferPool& pool, File& heapFile,
-                                             int key, char* value,
-                                             std::size_t value_size) {
+                                             const Schema& schema,
+                                             const TypedRow& row, int key) {
   LOG_INFO("Inserting record with key {} into heap file {}.", key,
            heapFile.getFilePath());
-  RecordSerializer cell = serializeSingleVarcharRecord(value, value_size);
+  RecordSerializer cell(schema, row);
 
   int targetPageID = heapFile.getMaxPageID();
   Page* heapPage = pool.getPage(targetPageID, heapFile);
@@ -55,55 +46,25 @@ std::pair<uint16_t, uint16_t> insertIntoHeap(BufferPool& pool, File& heapFile,
           static_cast<uint16_t>(insertedSlotID.value())};
 }
 
-}  // namespace
+}
 
-char* executor::read(BufferPool& pool, File& indexFile, File& heapFile,
-                     int key) {
-  // find the record location from the index file.
-  auto lookup = IndexLookup::fromKey(pool, indexFile, key);
+TypedRow executor::read(BufferPool& pool, Table& table, int key) {
+  auto lookup = IndexLookup::fromKey(pool, table.indexFile(), key);
   auto rid = lookup.next();
   if (!rid.has_value()) {
     throw std::runtime_error("Key " + std::to_string(key) +
                              " not found in index file.");
   }
 
-  HeapFetch fetcher(pool, heapFile);
+  HeapFetch fetcher(pool, table.heapFile());
   char* cell_start = fetcher.fetch(rid->heap_page_id, rid->slot_id);
-  static const Schema schema{
-      "single_varchar_record",
-      std::vector<Column>{Column("value", Column::Type::Varchar)}};
-  static thread_local std::string value_buffer;
-
-  TypedRow row = RecordCellView(cell_start).getTypedRow(schema);
-  if (row.values.empty() ||
-      !std::holds_alternative<Column::VarcharType>(row.values[0])) {
-    throw std::runtime_error("Expected single varchar record.");
-  }
-
-  value_buffer = std::get<Column::VarcharType>(row.values[0]);
-  return value_buffer.data();
+  return RecordCellView(cell_start).getTypedRow(table.schema());
 }
 
-void executor::remove(BufferPool& pool, File& indexFile, File& heapFile,
-                      int key) {
-  auto location = BTreeCursor::findRecordLocation(pool, indexFile, key, true);
-  if (!location.has_value()) {
-    throw std::runtime_error("Key " + std::to_string(key) +
-                             " not found in leaf page.");
-  }
-  auto [pageID, slotID] = location.value();
-  Page* page = pool.getPage(pageID, heapFile);
-  page->invalidateSlot(slotID);
-  pool.unpin(page, heapFile);
-  LOG_INFO("Removed record with key {} successfully.", key);
-}
-
-void executor::insert(BufferPool& pool, File& indexFile, File& heapFile,
-                      int key, char* value, std::size_t value_size) {
-  LOG_INFO("Inserting record with key {} into index {}, heap {}", key,
-           indexFile.getFilePath(), heapFile.getFilePath());
-  // check if valid key already exists.
-  auto location = BTreeCursor::findRecordLocation(pool, indexFile, key);
+void executor::insert(BufferPool& pool, Table& table, int key,
+                      const TypedRow& row) {
+  LOG_INFO("Inserting record with key {} into table {}.", key, table.name());
+  auto location = BTreeCursor::findRecordLocation(pool, table.indexFile(), key);
   if (location.has_value()) {
     throw std::runtime_error(
         "Key " + std::to_string(key) +
@@ -111,20 +72,35 @@ void executor::insert(BufferPool& pool, File& indexFile, File& heapFile,
   }
 
   auto [heap_page_id, slot_id] =
-      insertIntoHeap(pool, heapFile, key, value, value_size);
-  BTreeCursor::insertIntoIndex(pool, indexFile, key, heap_page_id, slot_id);
+      insertIntoHeap(pool, table.heapFile(), table.schema(), row, key);
+  BTreeCursor::insertIntoIndex(pool, table.indexFile(), key, heap_page_id,
+                               slot_id);
 }
 
-void executor::update(BufferPool& pool, File& indexFile, File& heapFile,
-                      int key, char* value, std::size_t value_size) {
-  /**
-   * We first design updates to be idempotent by modeling them as a remove
-   * followed by an insert. This is not necessarily the most efficient strategy,
-   * but it keeps the update path simple and robust and fasten the development.
-   * Also, this unlocks follow-on benefits (e.g., easier recovery/retry and
-   * fewer page-structure assumptions) without requiring in-place updates or
-   * special-case split handling.
-   */
-  executor::remove(pool, indexFile, heapFile, key);
-  executor::insert(pool, indexFile, heapFile, key, value, value_size);
+void executor::remove(BufferPool& pool, Table& table, int key) {
+  auto location =
+      BTreeCursor::findRecordLocation(pool, table.indexFile(), key, true);
+  if (!location.has_value()) {
+    throw std::runtime_error("Key " + std::to_string(key) +
+                             " not found in leaf page.");
+  }
+  auto [page_id, slot_id] = location.value();
+  Page* page = pool.getPage(page_id, table.heapFile());
+  page->invalidateSlot(slot_id);
+  pool.unpin(page, table.heapFile());
+  LOG_INFO("Removed record with key {} successfully.", key);
+}
+
+/**
+ * We first design updates to be idempotent by modeling them as a remove
+ * followed by an insert. This is not necessarily the most efficient strategy,
+ * but it keeps the update path simple and robust and fasten the development.
+ * Also, this unlocks follow-on benefits (e.g., easier recovery/retry and
+ * fewer page-structure assumptions) without requiring in-place updates or
+ * special-case split handling.
+ */
+void executor::update(BufferPool& pool, Table& table, int key,
+                      const TypedRow& row) {
+  executor::remove(pool, table, key);
+  executor::insert(pool, table, key, row);
 }
