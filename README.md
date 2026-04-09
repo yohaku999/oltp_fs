@@ -5,59 +5,65 @@ Current design sketch for the storage, record, and execution layers.
 ## High-level Architecture
 
 ```text
-+-------------------+
-| executor          |
-| - insert          |
-| - read            |
-| - update/remove   |
-+---------+---------+
-          |
-          v
-+-------------------+        +-------------------+
-| BTreeCursor       |        | HeapFetch         |
-| - index traversal |        | - fetch heap slot |
-| - index insert    |        +---------+---------+
-+---------+---------+                  |
-          |                            v
-          |                  +-------------------+
-          |                  | Page              |
-          |                  | slotted page      |
-          |                  | - header          |
-          |                  | - slot pointers   |
-          |                  | - cell bytes      |
-          |                  +---------+---------+
-          |                            ^
-          v                            |
-+-------------------+                  |
-| LeafCell          |                  |
-| IntermediateCell  |                  |
-| index cells       |                  |
-+-------------------+                  |
-                                       |
-                     write path        |        read path
-                     ----------        |        ---------
-+-------------------+                  |   +-------------------+
-| RecordSerializer  |------------------+   | RecordCellView    |
-| Schema + TypedRow | serialized bytes     | bytes -> TypedRow |
-+---------+---------+                      +---------+---------+
-          |                                          |
-          v                                          v
-+-------------------+                      +-------------------+
-| TypedRow          |                      | caller-specific   |
-| FieldValue[]      |                      | conversion        |
-+---------+---------+                      +-------------------+
-          ^
-          |
-+-------------------+
-| Schema / Column   |
-| - type metadata   |
-| - fixed/variable  |
-+-------------------+
+         metadata path
+         -------------
+       +----------------------+
+       | Table                |
+       | - name               |
+       | - schema             |
+       | - index file         |
+       | - heap file          |
+       | - meta.json          |
+       +----+------------+----+
+         |            |
+         |            +--------------------------+
+         |                                       |
+         v                                       v
+      +-------------------+                  +-------------------+
+      | executor          |                  | Schema / Column   |
+      | - insert(key,row) |                  | - type metadata   |
+      | - read(key)       |                  | - fixed/variable  |
+      | - update(key,row) |                  +---------+---------+
+      | - remove(key)     |                            |
+      +---------+---------+                            v
+          |                            +-------------------+
+          |                            | TypedRow          |
+          |                            | FieldValue[]      |
+          |                            +---------+---------+
+          |                                      |
+          | write path                           | read path
+          | ----------                           | ---------
+    +-----------+-----------+                          |
+    |                       |                          |
+    v                       v                          v
+ +-------------------+   +-------------------+    +-------------------+
+ | BTreeCursor       |   | RecordSerializer  |    | RecordCellView    |
+ | - index traversal |   | Schema + TypedRow |    | bytes -> TypedRow |
+ | - index insert    |   | -> bytes          |    +---------+---------+
+ +---------+---------+   +---------+---------+              |
+     |                           |                    v
+     |                           v          +-------------------+
+     |                  +-------------------+ HeapFetch         |
+     |                  | Page              | - fetch heap slot |
+     |                  | slotted page      +---------+---------+
+     |                  | - header                    |
+     v                  | - slot pointers             |
+ +-------------------+        | - cell bytes                |
+ | LeafCell          |        +-----------------------------+
+ | IntermediateCell  |
+ | index cells       |
+ +-------------------+
 ```
 
 ## Storage Responsibilities
 
 ```text
+Table
+  table-level aggregate
+  - owns schema and the two backing files
+  - persists schema metadata in data/<table>.meta.json
+  - centralizes data/<table>.{index,db,meta.json} naming
+
 Page
   owns physical slotted-page layout only
   - header
@@ -102,10 +108,15 @@ record bytes inside one slot
 ## Write Path
 
 ```text
-TypedRow
-  -> RecordSerializer(schema, row)
+Table::initialize(name, schema)
+  -> create data/<table>.index
+  -> create data/<table>.db
+  -> write data/<table>.meta.json
+
+executor::insert(pool, table, key, row)
+  -> RecordSerializer(table.schema(), row)
   -> serialized bytes
-  -> Page::insertCell(bytes)
+  -> Page::insertCell(bytes) on table.heapFile()
   -> slot id
   -> BTreeCursor::insertIntoIndex(key, heap_page_id, slot_id)
 ```
@@ -113,14 +124,17 @@ TypedRow
 ## Read Path
 
 ```text
-key
-  -> BTreeCursor / IndexLookup
+Table::getTable(name)
+  -> read data/<table>.meta.json
+  -> restore Schema
+
+executor::read(pool, table, key)
+  -> BTreeCursor / IndexLookup on table.indexFile()
   -> RID(heap_page_id, slot_id)
-  -> HeapFetch
+  -> HeapFetch on table.heapFile()
   -> Page::getXthSlotCellStart(slot_id)
-  -> RecordCellView(cell_start).getTypedRow(schema)
+  -> RecordCellView(cell_start).getTypedRow(table.schema())
   -> TypedRow
-  -> caller-specific conversion
 ```
 
 ## Current Direction
@@ -137,14 +151,20 @@ logical index layer
 logical heap-record layer
   RecordSerializer / RecordCellView / Schema / TypedRow
     handle record encoding and decoding
+
+table layer
+  Table
+    binds schema metadata and backing files together
+    provides the unit executor operates on
 ```
 
 ## Current Constraints
 
 ```text
-- executor::insert/read/update still expose a single-value API
-- executor::read still returns char* for compatibility
+- executor now operates on Table + TypedRow rather than raw File pairs
+- schema metadata is persisted in data/<table>.meta.json
 - multi-column records are supported by RecordSerializer and RecordCellView
-- E2E now exercises multi-column TypedRow parsing
-- fixed/variable handling is schema-driven, not single-column-specific anymore
+- E2E uses Table-backed fixtures
+- key is still passed separately from TypedRow in executor::insert/update
+- range scan still drops below executor into IndexLookup + HeapFetch directly
 ```
