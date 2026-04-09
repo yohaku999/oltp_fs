@@ -29,7 +29,8 @@
  * in a page
  * - RecordSerializer owns temporary bytes while serializing a record for
  * insertion
- * - column-level interpretation belongs to Tuple/Schema, not this file
+ * - column-level interpretation belongs to TypedRow/Schema-aware callers, not
+ * this file
  */
 
 struct RecordCellLayout {

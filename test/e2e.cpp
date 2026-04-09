@@ -12,7 +12,6 @@ extern "C" {
 #include "executor/index_scan.h"
 #include "logging.h"
 #include "schema/schema.h"
-#include "schema/tuple.h"
 #include "schema/typed_row.h"
 #include "storage/btreecursor.h"
 #include "storage/bufferpool.h"
@@ -140,9 +139,11 @@ TEST_F(E2ETest, SelectBGreaterEqual4) {
 
   while (auto rid = lookup.next()) {
     if (!rid) break;
-    char* value = fetcher.fetch(rid->heap_page_id, rid->slot_id);
-    std::string value_str = Tuple::getValuesAsString(value, schema, "b");
-    seen.push_back(value_str);
+    char* cell_start = fetcher.fetch(rid->heap_page_id, rid->slot_id);
+    TypedRow row = RecordCellView(cell_start).getTypedRow(schema);
+    ASSERT_EQ(row.values.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<Column::VarcharType>(row.values[0]));
+    seen.push_back(std::get<Column::VarcharType>(row.values[0]));
   }
 
   ASSERT_EQ(seen.size(), 2u);
