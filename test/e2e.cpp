@@ -80,7 +80,7 @@ TEST_F(E2ETest, SelectBGreaterEqual4) {
   while (auto rid = lookup.next()) {
     if (!rid) break;
     char* cell_start = fetcher.fetch(rid->heap_page_id, rid->slot_id);
-    TypedRow row = RecordCellView(cell_start).getTypedRow(schema);
+    TypedRow row = RecordCellView(cell_start).getTypedRow(table.schema());
     ASSERT_EQ(row.values.size(), 1u);
     ASSERT_TRUE(std::holds_alternative<Column::VarcharType>(row.values[0]));
     seen.push_back(std::get<Column::VarcharType>(row.values[0]));
@@ -129,7 +129,7 @@ TEST_F(E2ETest, SelectRangeWithMultiColumnRows) {
       break;
     }
     char* cell_start = fetcher.fetch(rid->heap_page_id, rid->slot_id);
-    seen_rows.push_back(RecordCellView(cell_start).getTypedRow(schema));
+    seen_rows.push_back(RecordCellView(cell_start).getTypedRow(table.schema()));
   }
 
   ASSERT_EQ(seen_rows.size(), 2u);
