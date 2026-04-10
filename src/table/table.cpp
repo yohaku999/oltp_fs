@@ -159,7 +159,7 @@ Schema Table::readSchemaMetadata(const std::string& table_name,
 void Table::initializeFirstPage(File& file) {
   std::array<char, Page::PAGE_SIZE_BYTE> buffer{};
   Page page(buffer.data(), true, 0, 0);
-  file.writePageOnFile(0, buffer.data());
+  file.writePageFromBuffer(0, buffer.data());
 }
 
 bool Table::anyBackingFileExists(const std::string& table_name) {

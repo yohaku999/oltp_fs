@@ -27,26 +27,26 @@ class FrameDirectoryTest : public ::testing::Test {
 TEST_F(FrameDirectoryTest, TestClaimFreeFrame) {
   // use all frames
   for (int i = 0; i < FrameDirectory::MAX_FRAME_COUNT; ++i) {
-    auto frame_opt = directory.claimFreeFrame();
+    auto frame_opt = directory.reserveFreeFrame();
     ASSERT_TRUE(frame_opt.has_value());
     EXPECT_GE(frame_opt.value(), 0);
     EXPECT_LT(frame_opt.value(), FrameDirectory::MAX_FRAME_COUNT);
   }
 
   // check api returns nullopt when no free frames
-  auto no_frame = directory.claimFreeFrame();
+  auto no_frame = directory.reserveFreeFrame();
   EXPECT_FALSE(no_frame.has_value());
 }
 
 TEST_F(FrameDirectoryTest, RegisterAndFindPageByID) {
-  auto frame_opt = directory.claimFreeFrame();
+  auto frame_opt = directory.reserveFreeFrame();
   ASSERT_TRUE(frame_opt.has_value());
   int frame_id = frame_opt.value();
 
-  directory.registerPage(frame_id, 100, "test.db", std::move(page1));
+  directory.registerResidentPage(frame_id, 100, "test.db", std::move(page1));
 
   // search frame by pageID
-  auto found_frame = directory.findFrameByPage(100, "test.db");
+  auto found_frame = directory.findResidentFrame(100, "test.db");
   ASSERT_TRUE(found_frame.has_value());
   EXPECT_EQ(frame_id, found_frame.value());
 
@@ -58,31 +58,34 @@ TEST_F(FrameDirectoryTest, RegisterAndFindPageByID) {
   EXPECT_EQ(0, frame.pin_count);
 
   // Clean up
-  directory.unregisterPage(frame_id);
+  directory.unregisterResidentPage(frame_id);
 }
 
 TEST_F(FrameDirectoryTest, FindNonExistentPageReturnsNullopt) {
-  auto result = directory.findFrameByPage(999, "nonexistent.db");
+  auto result = directory.findResidentFrame(999, "nonexistent.db");
   EXPECT_FALSE(result.has_value());
 }
 
 TEST_F(FrameDirectoryTest, RegisterMultiplePagesInDifferentFrames) {
-  auto frame1 = directory.claimFreeFrame();
-  auto frame2 = directory.claimFreeFrame();
-  auto frame3 = directory.claimFreeFrame();
+  auto frame1 = directory.reserveFreeFrame();
+  auto frame2 = directory.reserveFreeFrame();
+  auto frame3 = directory.reserveFreeFrame();
 
   ASSERT_TRUE(frame1.has_value());
   ASSERT_TRUE(frame2.has_value());
   ASSERT_TRUE(frame3.has_value());
 
-  directory.registerPage(frame1.value(), 10, "file1.db", std::move(page1));
-  directory.registerPage(frame2.value(), 20, "file2.db", std::move(page2));
-  directory.registerPage(frame3.value(), 30, "file1.db", std::move(page3));
+  directory.registerResidentPage(frame1.value(), 10, "file1.db",
+                                 std::move(page1));
+  directory.registerResidentPage(frame2.value(), 20, "file2.db",
+                                 std::move(page2));
+  directory.registerResidentPage(frame3.value(), 30, "file1.db",
+                                 std::move(page3));
 
   // each page can be found by its pageID and filePath
-  auto found1 = directory.findFrameByPage(10, "file1.db");
-  auto found2 = directory.findFrameByPage(20, "file2.db");
-  auto found3 = directory.findFrameByPage(30, "file1.db");
+  auto found1 = directory.findResidentFrame(10, "file1.db");
+  auto found2 = directory.findResidentFrame(20, "file2.db");
+  auto found3 = directory.findResidentFrame(30, "file1.db");
 
   // ensure reading from the correct frame
   EXPECT_EQ(frame1.value(), found1.value());
@@ -90,27 +93,27 @@ TEST_F(FrameDirectoryTest, RegisterMultiplePagesInDifferentFrames) {
   EXPECT_EQ(frame3.value(), found3.value());
 
   // Clean up
-  directory.unregisterPage(frame1.value());
-  directory.unregisterPage(frame2.value());
-  directory.unregisterPage(frame3.value());
+  directory.unregisterResidentPage(frame1.value());
+  directory.unregisterResidentPage(frame2.value());
+  directory.unregisterResidentPage(frame3.value());
 }
 
 TEST_F(FrameDirectoryTest, UnregisterPageFreesFrame) {
-  auto frame_opt = directory.claimFreeFrame();
+  auto frame_opt = directory.reserveFreeFrame();
   ASSERT_TRUE(frame_opt.has_value());
   int frame_id = frame_opt.value();
 
-  directory.registerPage(frame_id, 100, "test.db", std::move(page1));
+  directory.registerResidentPage(frame_id, 100, "test.db", std::move(page1));
 
   // check registerd
-  auto found = directory.findFrameByPage(100, "test.db");
+  auto found = directory.findResidentFrame(100, "test.db");
   ASSERT_TRUE(found.has_value());
 
   // api to test
-  directory.unregisterPage(frame_id);
+  directory.unregisterResidentPage(frame_id);
 
   // page not found
-  found = directory.findFrameByPage(100, "test.db");
+  found = directory.findResidentFrame(100, "test.db");
   EXPECT_FALSE(found.has_value());
 
   // frame is free again
@@ -120,19 +123,19 @@ TEST_F(FrameDirectoryTest, UnregisterPageFreesFrame) {
 }
 
 TEST_F(FrameDirectoryTest, CheckOccupiedStatusBeforeAndAfterRegistration) {
-  auto frame_opt = directory.claimFreeFrame();
+  auto frame_opt = directory.reserveFreeFrame();
   ASSERT_TRUE(frame_opt.has_value());
   int frame_id = frame_opt.value();
 
   // before registration: free
   EXPECT_TRUE(directory.getFrame(frame_id).page == nullptr);
 
-  directory.registerPage(frame_id, 100, "test.db", std::move(page1));
+  directory.registerResidentPage(frame_id, 100, "test.db", std::move(page1));
 
   // after registration: occupied
   EXPECT_FALSE(directory.getFrame(frame_id).page == nullptr);
 
-  directory.unregisterPage(frame_id);
+  directory.unregisterResidentPage(frame_id);
 
   // after unregistration: free again
   EXPECT_TRUE(directory.getFrame(frame_id).page == nullptr);
@@ -145,7 +148,7 @@ TEST_F(FrameDirectoryTest, MultipleRegisterUnregisterCycles) {
     // Fill all frames
     std::vector<int> claimed_frames;
     for (size_t i = 0; i < FrameDirectory::MAX_FRAME_COUNT; ++i) {
-      auto frame_opt = directory.claimFreeFrame();
+      auto frame_opt = directory.reserveFreeFrame();
       ASSERT_TRUE(frame_opt.has_value())
           << "Failed to claim frame in cycle " << cycle;
       int frame_id = frame_opt.value();
@@ -156,31 +159,32 @@ TEST_F(FrameDirectoryTest, MultipleRegisterUnregisterCycles) {
       auto page = std::make_unique<Page>(buffer.data(), true, 0, i);
       int page_id = cycle * 100 + i;
 
-      directory.registerPage(frame_id, page_id, "test.db", std::move(page));
+      directory.registerResidentPage(frame_id, page_id, "test.db",
+                                     std::move(page));
 
       // Verify registration
-      auto found = directory.findFrameByPage(page_id, "test.db");
+      auto found = directory.findResidentFrame(page_id, "test.db");
       EXPECT_TRUE(found.has_value());
       EXPECT_EQ(frame_id, found.value());
     }
 
     // All frames should be occupied now
-    auto no_frame = directory.claimFreeFrame();
+    auto no_frame = directory.reserveFreeFrame();
     EXPECT_FALSE(no_frame.has_value())
         << "Should have no free frames after filling all";
 
     // Unregister all frames
     for (int frame_id : claimed_frames) {
-      directory.unregisterPage(frame_id);
+      directory.unregisterResidentPage(frame_id);
     }
 
     // All frames should be free again
     for (size_t i = 0; i < FrameDirectory::MAX_FRAME_COUNT; ++i) {
-      auto frame_opt = directory.claimFreeFrame();
+      auto frame_opt = directory.reserveFreeFrame();
       EXPECT_TRUE(frame_opt.has_value())
           << "Frame should be free after unregister in cycle " << cycle;
       if (frame_opt.has_value()) {
-        directory.unregisterPage(
+        directory.unregisterResidentPage(
             frame_opt.value());  // Clean up for next iteration
       }
     }
@@ -194,7 +198,7 @@ TEST_F(FrameDirectoryTest, FrameReuseAfterUnregister) {
   // Fill all frames
   std::vector<int> initial_frames;
   for (size_t i = 0; i < FrameDirectory::MAX_FRAME_COUNT; ++i) {
-    auto frame_opt = directory.claimFreeFrame();
+    auto frame_opt = directory.reserveFreeFrame();
     ASSERT_TRUE(frame_opt.has_value());
     int frame_id = frame_opt.value();
     initial_frames.push_back(frame_id);
@@ -202,18 +206,18 @@ TEST_F(FrameDirectoryTest, FrameReuseAfterUnregister) {
 
     std::array<char, 4096> buffer;
     auto page = std::make_unique<Page>(buffer.data(), true, 0, i);
-    directory.registerPage(frame_id, i, "test.db", std::move(page));
+    directory.registerResidentPage(frame_id, i, "test.db", std::move(page));
   }
 
   // No free frames should be available
-  EXPECT_FALSE(directory.claimFreeFrame().has_value());
+  EXPECT_FALSE(directory.reserveFreeFrame().has_value());
 
   // Unregister one frame
   int unregistered_frame_id = initial_frames[0];
-  directory.unregisterPage(unregistered_frame_id);
+  directory.unregisterResidentPage(unregistered_frame_id);
 
   // Claim the freed frame
-  auto reused_frame_opt = directory.claimFreeFrame();
+  auto reused_frame_opt = directory.reserveFreeFrame();
   ASSERT_TRUE(reused_frame_opt.has_value());
   int reused_frame_id = reused_frame_opt.value();
 
@@ -225,10 +229,11 @@ TEST_F(FrameDirectoryTest, FrameReuseAfterUnregister) {
   // Register a new page in the reused frame
   std::array<char, 4096> new_buffer;
   auto new_page = std::make_unique<Page>(new_buffer.data(), true, 0, 99);
-  directory.registerPage(reused_frame_id, 999, "new.db", std::move(new_page));
+  directory.registerResidentPage(reused_frame_id, 999, "new.db",
+                                 std::move(new_page));
 
   // Verify the new registration
-  auto found = directory.findFrameByPage(999, "new.db");
+  auto found = directory.findResidentFrame(999, "new.db");
   ASSERT_TRUE(found.has_value());
   EXPECT_EQ(reused_frame_id, found.value());
 }
@@ -236,16 +241,17 @@ TEST_F(FrameDirectoryTest, FrameReuseAfterUnregister) {
 TEST_F(FrameDirectoryTest, FindVictimFrameWhenAllFramesFilled) {
   // Fill all frames
   for (size_t i = 0; i < FrameDirectory::MAX_FRAME_COUNT; ++i) {
-    auto frame_opt = directory.claimFreeFrame();
+    auto frame_opt = directory.reserveFreeFrame();
     ASSERT_TRUE(frame_opt.has_value());
 
     std::array<char, 4096> buffer;
     auto page = std::make_unique<Page>(buffer.data(), true, 0, i);
-    directory.registerPage(frame_opt.value(), i, "test.db", std::move(page));
+    directory.registerResidentPage(frame_opt.value(), i, "test.db",
+                                   std::move(page));
   }
 
   // No free frames should be available
-  EXPECT_FALSE(directory.claimFreeFrame().has_value());
+  EXPECT_FALSE(directory.reserveFreeFrame().has_value());
 
   // Should be able to find a victim frame for eviction.
   auto victim_opt = directory.findVictimFrame();

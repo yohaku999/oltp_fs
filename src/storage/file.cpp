@@ -152,8 +152,8 @@ File::~File() {
 File::File(const std::string& file_path) : file_path_(file_path) {
   const bool is_new_file = !std::filesystem::exists(file_path_) ||
                            std::filesystem::file_size(file_path_) == 0;
-  LOG_INFO("initializing File object for path: {}, is_new_file: {}",
-           file_path_, is_new_file);
+  LOG_INFO("initializing File object for path: {}, is_new_file: {}", file_path_,
+           is_new_file);
 
   if (!is_new_file) {
     initializeStreamIfClosed();
@@ -188,7 +188,7 @@ File::File(const std::string& file_path) : file_path_(file_path) {
 }
 
 // this method should be called only from buffer pool in prod.
-void File::writePageOnFile(uint16_t const page_id, char* buffer) {
+void File::writePageFromBuffer(uint16_t const page_id, char* buffer) {
   initializeStreamIfClosed();
 
   const std::streamoff offset =
@@ -209,7 +209,7 @@ void File::writePageOnFile(uint16_t const page_id, char* buffer) {
   stream_->clear();
 }
 
-void File::loadPageOnFrame(uint16_t const page_id, char* buffer) {
+void File::readPageIntoBuffer(uint16_t const page_id, char* buffer) {
   initializeStreamIfClosed();
 
   const std::streamoff offset =

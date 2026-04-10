@@ -13,24 +13,22 @@
 BufferPool::BufferPool(WAL& wal)
     : buffer_(operator new(BUFFER_SIZE_BYTE)), wal_(wal) {};
 
-uint16_t BufferPool::createNewPage(bool is_leaf, File& file,
-                                   uint16_t right_most_child_page_id) {
+uint16_t BufferPool::createPage(bool is_leaf, File& file,
+                                uint16_t right_most_child_page_id) {
   uint16_t page_id = file.allocateNextPageId();
-  auto [frame_id, frame_ptr] = allocateFrame();
+  auto [frame_id, frame_ptr] = acquireFrame();
 
-  auto page =
-      std::make_unique<Page>(frame_ptr, is_leaf, right_most_child_page_id,
-                             page_id);
-  frame_directory_.registerPage(frame_id, page_id, file.getFilePath(),
-                                std::move(page));
+  auto page = std::make_unique<Page>(frame_ptr, is_leaf,
+                                     right_most_child_page_id, page_id);
+  frame_directory_.registerResidentPage(frame_id, page_id, file.getFilePath(),
+                                        std::move(page));
   LOG_INFO("Created new page ID {} as {} page in frame ID {}", page_id,
            is_leaf ? "leaf" : "intermediate", frame_id);
   return page_id;
 }
 
-Page* BufferPool::getPage(int page_id, File& file) {
-  LOG_DEBUG("Requesting page ID {} from file {}", page_id,
-            file.getFilePath());
+Page* BufferPool::pinPage(int page_id, File& file) {
+  LOG_DEBUG("Requesting page ID {} from file {}", page_id, file.getFilePath());
   auto it = frame_directory_.findResidentFrame(page_id, file.getFilePath());
   // if the page exists on buffer pool
   if (it.has_value()) {
@@ -38,7 +36,7 @@ Page* BufferPool::getPage(int page_id, File& file) {
     frame_directory_.pin(frame_id);
     return frame_directory_.getFrame(frame_id).page.get();
   } else {
-    auto [frame_id, frame_p] = allocateFrame();
+    auto [frame_id, frame_p] = acquireFrame();
 
     // load page on frame
     if (!file.isPageIDUsed(page_id)) {
@@ -47,26 +45,26 @@ Page* BufferPool::getPage(int page_id, File& file) {
                       "page ID {} in file {}",
                       page_id, file.getFilePath()));
     }
-    file.loadPageOnFrame(page_id, frame_p);
+    file.readPageIntoBuffer(page_id, frame_p);
     auto page = std::make_unique<Page>(frame_p, page_id);
     Page* page_ptr = page.get();
-    frame_directory_.registerPage(frame_id, page_id, file.getFilePath(),
-                                  std::move(page));
+    frame_directory_.registerResidentPage(frame_id, page_id, file.getFilePath(),
+                                          std::move(page));
     frame_directory_.pin(frame_id);
     LOG_DEBUG("Loaded page ID {} into frame ID {}", page_id, frame_id);
     return page_ptr;
   }
 };
 
-void BufferPool::unpin(Page* page, File& file) {
+void BufferPool::unpinPage(Page* page, File& file) {
   if (!page) {
-    throw std::invalid_argument("BufferPool::unpin called with null page");
+    throw std::invalid_argument("BufferPool::unpinPage called with null page");
   }
-  auto it = frame_directory_.findResidentFrame(page->getPageID(),
-                                               file.getFilePath());
+  auto it =
+      frame_directory_.findResidentFrame(page->getPageID(), file.getFilePath());
   if (!it.has_value()) {
     throw std::logic_error(
-        fmt::format("BufferPool::unpin: page ID {} in file {} is not "
+        fmt::format("BufferPool::unpinPage: page ID {} in file {} is not "
                     "registered in FrameDirectory",
                     page->getPageID(), file.getFilePath()));
   }
@@ -76,13 +74,13 @@ void BufferPool::unpin(Page* page, File& file) {
 BufferPool::~BufferPool() { operator delete(buffer_); }
 
 // private methods
-bool BufferPool::isPageLSNFlushed(const Page& page) const {
+bool BufferPool::isPageFlushable(const Page& page) const {
   std::uint64_t page_lsn = page.getPageLSN();
   std::uint64_t flushed_lsn = wal_.getFlushedLSN();
   return page_lsn <= flushed_lsn;
 }
 
-void BufferPool::evictPage() {
+void BufferPool::evictOnePage() {
   // decide which unused page to evict.
   auto victim_opt = frame_directory_.findVictimFrame();
   if (!victim_opt.has_value()) {
@@ -94,13 +92,13 @@ void BufferPool::evictPage() {
   int victim_frame_id = victim_opt.value();
   auto& victim_frame = frame_directory_.getFrame(victim_frame_id);
   // REFACTOR: Have to cache these values before unregistering the page since
-  // the frame will be cleared in unregisterPage().
+  // the frame will be cleared in unregisterResidentPage().
   int evicted_page_id = victim_frame.page_id;
   if (victim_frame.page->isDirty()) {
-    if (!isPageLSNFlushed(*victim_frame.page)) {
+    if (!isPageFlushable(*victim_frame.page)) {
       wal_.flush();
       // Guard for concurrency mistake just in case.
-      if (!isPageLSNFlushed(*victim_frame.page)) {
+      if (!isPageFlushable(*victim_frame.page)) {
         throw std::runtime_error(
             "BufferPool::evictPage: WAL flush did not advance flushedLSN "
             "sufficiently for pageLSN");
@@ -111,9 +109,9 @@ void BufferPool::evictPage() {
     // avoid confusion and potential bugs in the future.
     victim_frame.page->clearDirty();
     File file(victim_frame.file_path);
-    file.writePageOnFile(victim_frame.page_id, victim_frame.page->start_p_);
+    file.writePageFromBuffer(victim_frame.page_id, victim_frame.page->start_p_);
   }
-  frame_directory_.unregisterPage(victim_frame_id);
+  frame_directory_.unregisterResidentPage(victim_frame_id);
   LOG_INFO("Evicted page ID {} from frame ID {}", evicted_page_id,
            victim_frame_id);
 };
@@ -125,13 +123,15 @@ void BufferPool::zeroOutFrame(int frame_id) {
   std::memset(frame_p, 0, BufferPool::FRAME_SIZE_BYTE);
 };
 
-std::pair<int, char*> BufferPool::allocateFrame() {
-  auto free_frame = frame_directory_.claimFreeFrame();
+std::pair<int, char*> BufferPool::acquireFrame() {
+  auto free_frame = frame_directory_.reserveFreeFrame();
   if (!free_frame.has_value()) {
     LOG_DEBUG("No free frame available, attempting eviction");
-    evictPage();
-    free_frame = frame_directory_.claimFreeFrame();
+    evictOnePage();
+    free_frame = frame_directory_.reserveFreeFrame();
     if (!free_frame.has_value()) {
+      // TODO: this should happen under multithreading when other thread theives
+      // the frame right after eviction.
       LOG_WARN("Eviction completed but no free frame reclaimed");
     } else {
       LOG_DEBUG("Eviction reclaimed free frame {}", free_frame.value());

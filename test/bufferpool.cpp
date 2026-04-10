@@ -58,20 +58,20 @@ class BufferPoolTest : public ::testing::Test {
 };
 
 TEST_F(BufferPoolTest, GetPageSamePageReturnsCachedPage) {
-  uint16_t page_id = pool->createNewPage(true, *testFile);
-  Page* page1 = pool->getPage(page_id, *testFile);
-  Page* page1_again = pool->getPage(page_id, *testFile);
+  uint16_t page_id = pool->createPage(true, *testFile);
+  Page* page1 = pool->pinPage(page_id, *testFile);
+  Page* page1_again = pool->pinPage(page_id, *testFile);
   EXPECT_EQ(page1, page1_again);
-  pool->unpin(page1, *testFile);
-  pool->unpin(page1_again, *testFile);
+  pool->unpinPage(page1, *testFile);
+  pool->unpinPage(page1_again, *testFile);
 }
 
 TEST_F(BufferPoolTest, createNewPageAllFramesFilledSuccessfully) {
   for (size_t i = 0; i < BufferPool::MAX_FRAME_COUNT; ++i) {
-    uint16_t page_id = pool->createNewPage(true, *testFile);
-    Page* page = pool->getPage(page_id, *testFile);
+    uint16_t page_id = pool->createPage(true, *testFile);
+    Page* page = pool->pinPage(page_id, *testFile);
     ASSERT_NE(page, nullptr);
-    pool->unpin(page, *testFile);
+    pool->unpinPage(page, *testFile);
   }
 }
 
@@ -87,8 +87,8 @@ TEST_F(BufferPoolTest, createNewPageWithEviction) {
 
   // Fill all frames and write unique data to each page
   for (size_t i = 0; i < BufferPool::MAX_FRAME_COUNT + 10; ++i) {
-    uint16_t page_id = pool->createNewPage(true, *testFile);
-    Page* page = pool->getPage(page_id, *testFile);
+    uint16_t page_id = pool->createPage(true, *testFile);
+    Page* page = pool->pinPage(page_id, *testFile);
     ASSERT_NE(page, nullptr);
 
     // Store the page ID (it's the max page ID after allocation)
@@ -102,7 +102,7 @@ TEST_F(BufferPoolTest, createNewPageWithEviction) {
 
     // Copy the page content
     std::memcpy(page_copies[i].data(), page->start_p_, Page::PAGE_SIZE_BYTE);
-    pool->unpin(page, *testFile);
+    pool->unpinPage(page, *testFile);
   }
 
   // make sure file size has incresed by eviction.
@@ -114,7 +114,7 @@ TEST_F(BufferPoolTest, createNewPageWithEviction) {
 
   // Verify all pages can still be accessed and their contents match
   for (size_t i = 0; i < BufferPool::MAX_FRAME_COUNT + 10; ++i) {
-    Page* page = pool->getPage(page_ids[i], *testFile);
+    Page* page = pool->pinPage(page_ids[i], *testFile);
     ASSERT_NE(page, nullptr) << "Should be able to access/reload page " << i;
 
     // Compare the page content with the saved copy
@@ -122,7 +122,7 @@ TEST_F(BufferPoolTest, createNewPageWithEviction) {
                                  Page::PAGE_SIZE_BYTE);
     EXPECT_EQ(cmp_result, 0)
         << "Page " << i << " content should match after eviction and reload";
-    pool->unpin(page, *testFile);
+    pool->unpinPage(page, *testFile);
   }
 }
 
@@ -138,15 +138,15 @@ TEST_F(BufferPoolTest, EvictionFlushesWALUpToPageLSN) {
   EXPECT_EQ(wal->getFlushedLSN(), 0u);
 
   for (size_t i = 0; i < BufferPool::MAX_FRAME_COUNT; ++i) {
-    uint16_t page_id = pool->createNewPage(true, *testFile);
-    Page* page = pool->getPage(page_id, *testFile);
+    uint16_t page_id = pool->createPage(true, *testFile);
+    Page* page = pool->pinPage(page_id, *testFile);
     // all the page has the same LSN.
     page->setPageLSN(rec.get_lsn());
-    pool->unpin(page, *testFile);
+    pool->unpinPage(page, *testFile);
   }
 
   // trigger eviction
-  (void)pool->createNewPage(true, *testFile);
+  (void)pool->createPage(true, *testFile);
 
   EXPECT_EQ(wal->getFlushedLSN(), rec.get_lsn());
 }

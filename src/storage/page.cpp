@@ -106,15 +106,15 @@ LeafCell Page::getLeafCellOnXthPointer(int x) {
   return LeafCell::decodeCell(data_p);
 }
 
-char* Page::getXthSlotCellStart(int x) {
-  char* cell_data = start_p_ + getCellOffsetOnXthPointer(x);
+char* Page::getSlotCellStart(int slot_id) {
+  char* cell_data = start_p_ + getCellOffsetOnXthPointer(slot_id);
   if (!Cell::isValid(cell_data)) {
     throw std::runtime_error("This slot has been invalidated.");
   }
   return cell_data;
 }
 
-char* Page::getSeparateKey() {
+char* Page::getSplitKeyCellStart() {
   // Since the cell pointers are sorted, just return the key value of the cell
   // that the middle slot pointer points to.
   int middle_slot_index = getSlotCount() / 2;

@@ -26,14 +26,14 @@ int BTreeCursor::findLeafPageID(BufferPool& pool, File& indexFile, int key) {
         "Traversing to find leaf page for key {}: currently at page ID {} in "
         "index file {}.",
         key, pageID, indexFile.getFilePath());
-    Page* page = pool.getPage(pageID, indexFile);
+    Page* page = pool.pinPage(pageID, indexFile);
     // if the page has parent page id of -1, the page is the root page or just
     // not memoed yet.
     page->setParentPageID(parentPageID);
     if (page->isLeaf()) {
       LOG_INFO("Found leaf page ID {} for key {} in index {}", pageID, key,
                indexFile.getFilePath());
-      pool.unpin(page, indexFile);
+      pool.unpinPage(page, indexFile);
       break;
     }
     // zero outしているので、はじめは必ずintermediate扱いになる
@@ -48,7 +48,7 @@ int BTreeCursor::findLeafPageID(BufferPool& pool, File& indexFile, int key) {
     // そもそもrightmostpageIDのsplitってちゃんとできるんだっけ
     // 現在のsplitの実装がうまく走るように初期化を構築したい。
     int childPageID = internal.findChildPage(key);
-    pool.unpin(page, indexFile);
+    pool.unpinPage(page, indexFile);
     LOG_INFO("The child page ID of page ID {} for key {} is {}", pageID, key,
              childPageID);
     parentPageID = pageID;
@@ -64,10 +64,10 @@ std::optional<std::pair<uint16_t, uint16_t>> BTreeCursor::findRecordLocation(
   // NOTE: we decided not to invalidate intermediate nodes during traversal for
   // now. we will come back to this when we start to support concurrency.
   int pageID = findLeafPageID(pool, indexFile, key);
-  Page* leafPage = pool.getPage(pageID, indexFile);
+  Page* leafPage = pool.pinPage(pageID, indexFile);
   LeafIndexPage leaf(*leafPage);
   auto result = leaf.findRef(key, do_invalidate);
-  pool.unpin(leafPage, indexFile);
+  pool.unpinPage(leafPage, indexFile);
   if (!result.has_value()) {
     LOG_INFO("Key {} not found in leaf page ID {} of index file {}.", key,
              pageID, indexFile.getFilePath());
@@ -90,15 +90,15 @@ void BTreeCursor::insertIntoIndex(BufferPool& pool, File& indexFile, int key,
   // OPTIMIZE : currently we are traversing the same path twice and can be
   // omitted.
   int leaf_page_id = findLeafPageID(pool, indexFile, key);
-  Page* leafPage = pool.getPage(leaf_page_id, indexFile);
+  Page* leafPage = pool.pinPage(leaf_page_id, indexFile);
   auto leaf_slot_id =
       leafPage->insertCell(LeafCell(key, heap_page_id, slot_id));
   if (!leaf_slot_id.has_value()) {
     splitPage(pool, indexFile, leafPage);
-    pool.unpin(leafPage, indexFile);
+    pool.unpinPage(leafPage, indexFile);
     insertIntoIndex(pool, indexFile, key, heap_page_id, slot_id);
   } else {
-    pool.unpin(leafPage, indexFile);
+    pool.unpinPage(leafPage, indexFile);
   }
   LOG_INFO(
       "Inserted index entry for key {} pointing to heap page ID {}, slot ID "
@@ -115,7 +115,7 @@ Page* BTreeCursor::ensureParentPage(BufferPool& pool, File& index_file,
         "root page.",
         old_page.getPageID());
     int new_root_page_id =
-        pool.createNewPage(false, index_file, old_page.getPageID());
+        pool.createPage(false, index_file, old_page.getPageID());
     index_file.setRootPageID(new_root_page_id);
     old_page.setParentPageID(new_root_page_id);
     parent_page_id = new_root_page_id;
@@ -123,7 +123,7 @@ Page* BTreeCursor::ensureParentPage(BufferPool& pool, File& index_file,
     parent_page_id = old_page.getParentPageID();
   }
 
-  Page* parent_page = pool.getPage(parent_page_id, index_file);
+  Page* parent_page = pool.pinPage(parent_page_id, index_file);
   return parent_page;
 }
 
@@ -131,8 +131,8 @@ void BTreeCursor::splitLeafPage(BufferPool& pool, File& index_file,
                                 Page& old_page, Page& parent_page,
                                 char* separate_key) {
   int separate_key_value = LeafCell::getKey(separate_key);
-  int new_page_id = pool.createNewPage(true, index_file);
-  Page* new_page = pool.getPage(new_page_id, index_file);
+  int new_page_id = pool.createPage(true, index_file);
+  Page* new_page = pool.pinPage(new_page_id, index_file);
 
   LeafIndexPage old_leaf(old_page);
   LeafIndexPage new_leaf(*new_page);
@@ -140,15 +140,15 @@ void BTreeCursor::splitLeafPage(BufferPool& pool, File& index_file,
 
   parent_page.insertCell(IntermediateCell(new_page_id, separate_key_value));
 
-  pool.unpin(new_page, index_file);
+  pool.unpinPage(new_page, index_file);
 }
 
 void BTreeCursor::splitInternalPage(BufferPool& pool, File& index_file,
                                     Page& old_page, Page& parent_page,
                                     char* separate_key) {
   int separate_key_value = IntermediateCell::getKey(separate_key);
-  int new_page_id = pool.createNewPage(false, index_file, old_page.getPageID());
-  Page* new_page = pool.getPage(new_page_id, index_file);
+  int new_page_id = pool.createPage(false, index_file, old_page.getPageID());
+  Page* new_page = pool.pinPage(new_page_id, index_file);
 
   InternalIndexPage old_internal(old_page);
   InternalIndexPage new_internal(*new_page);
@@ -156,7 +156,7 @@ void BTreeCursor::splitInternalPage(BufferPool& pool, File& index_file,
 
   parent_page.insertCell(IntermediateCell(new_page_id, separate_key_value));
 
-  pool.unpin(new_page, index_file);
+  pool.unpinPage(new_page, index_file);
 }
 
 void BTreeCursor::splitPage(BufferPool& pool, File& index_file,
@@ -166,7 +166,7 @@ void BTreeCursor::splitPage(BufferPool& pool, File& index_file,
   auto parent_page = ensureParentPage(pool, index_file, *old_page);
 
   LOG_INFO("Split old page and rewire pointer.");
-  char* separate_key = old_page->getSeparateKey();
+  char* separate_key = old_page->getSplitKeyCellStart();
 
   if (old_page->isLeaf()) {
     splitLeafPage(pool, index_file, *old_page, *parent_page, separate_key);
@@ -174,7 +174,7 @@ void BTreeCursor::splitPage(BufferPool& pool, File& index_file,
     splitInternalPage(pool, index_file, *old_page, *parent_page, separate_key);
   }
 
-  pool.unpin(parent_page, index_file);
+  pool.unpinPage(parent_page, index_file);
 }
 
 void BTreeCursor::dumpTree(BufferPool& pool, File& indexFile,
@@ -185,8 +185,8 @@ void BTreeCursor::dumpTree(BufferPool& pool, File& indexFile,
       continue;
     }
 
-    Page* page = pool.getPage(pid, indexFile);
+    Page* page = pool.pinPage(pid, indexFile);
     page->dump(os);
-    pool.unpin(page, indexFile);
+    pool.unpinPage(page, indexFile);
   }
 }

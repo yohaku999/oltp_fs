@@ -261,7 +261,7 @@ TEST(PageTest, HeapInsertInvalidateReuseSlot) {
   ASSERT_TRUE(second_slot.has_value());
   EXPECT_NE(first_slot.value(), second_slot.value());
 
-  char* cell_start = page->getXthSlotCellStart(second_slot.value());
+  char* cell_start = page->getSlotCellStart(second_slot.value());
   static const Schema schema{
       "single_varchar_record",
       std::vector<Column>{Column("value", Column::Type::Varchar)}};

@@ -31,14 +31,14 @@ std::pair<uint16_t, uint16_t> insertIntoHeap(BufferPool& pool, File& heapFile,
   const std::vector<std::byte>& serialized_cell = cell.serializedBytes();
 
   int targetPageID = heapFile.getMaxPageID();
-  Page* heapPage = pool.getPage(targetPageID, heapFile);
+  Page* heapPage = pool.pinPage(targetPageID, heapFile);
   auto insertedSlotID = heapPage->insertCell(serialized_cell);
   if (!insertedSlotID.has_value()) {
-    pool.unpin(heapPage, heapFile);
+    pool.unpinPage(heapPage, heapFile);
     // WARNING : currently how we deal with leafpage and heappage is the same.
     // Thus it is correct to set is_leaf = true here but, it's confusing.
-    targetPageID = pool.createNewPage(true, heapFile);
-    heapPage = pool.getPage(targetPageID, heapFile);
+    targetPageID = pool.createPage(true, heapFile);
+    heapPage = pool.pinPage(targetPageID, heapFile);
     insertedSlotID = heapPage->insertCell(serialized_cell);
     if (!insertedSlotID.has_value()) {
       throw std::runtime_error(
@@ -56,7 +56,7 @@ std::pair<uint16_t, uint16_t> insertIntoHeap(BufferPool& pool, File& heapFile,
             .encode()));
   }
 
-  pool.unpin(heapPage, heapFile);
+  pool.unpinPage(heapPage, heapFile);
   LOG_INFO("Inserted record with key {} into heap page ID {} successfully.",
            key, targetPageID);
 
@@ -111,9 +111,9 @@ void executor::remove(BufferPool& pool, Table& table, int key) {
                              " not found in leaf page.");
   }
   auto [page_id, slot_id] = location.value();
-  Page* page = pool.getPage(page_id, table.heapFile());
+  Page* page = pool.pinPage(page_id, table.heapFile());
   page->invalidateSlot(slot_id);
-  pool.unpin(page, table.heapFile());
+  pool.unpinPage(page, table.heapFile());
   LOG_INFO("Removed record with key {} successfully.", key);
 }
 
@@ -126,12 +126,12 @@ void executor::remove(BufferPool& pool, Table& table, int key,
                              " not found in leaf page.");
   }
   auto [page_id, slot_id] = location.value();
-  Page* page = pool.getPage(page_id, table.heapFile());
+  Page* page = pool.pinPage(page_id, table.heapFile());
   wal.write(make_wal_record(
       allocator, WALRecord::RecordType::DELETE, static_cast<uint16_t>(page_id),
       DeleteRedoBody(static_cast<uint16_t>(slot_id)).encode()));
   page->invalidateSlot(slot_id);
-  pool.unpin(page, table.heapFile());
+  pool.unpinPage(page, table.heapFile());
   LOG_INFO("Removed record with key {} successfully.", key);
 }
 

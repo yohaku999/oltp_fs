@@ -30,13 +30,14 @@ class FrameDirectory {
  public:
   FrameDirectory();
 
-  std::optional<int> claimFreeFrame();
+  std::optional<int> reserveFreeFrame();
   std::optional<int> findResidentFrame(int page_id,
                                        const std::string& file_path);
 
-  void registerPage(int frame_id, int page_id, const std::string& file_path,
-                    std::unique_ptr<Page> page);
-  void unregisterPage(int frame_id);
+  void registerResidentPage(int frame_id, int page_id,
+                            const std::string& file_path,
+                            std::unique_ptr<Page> page);
+  void unregisterResidentPage(int frame_id);
   /**
    * We use explicit pin/unpin.
    * Although Intuitively, for a buffer pool, eviction depends on "safe to reuse

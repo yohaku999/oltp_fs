@@ -33,8 +33,8 @@ class File {
   ~File();
   void initializeStreamIfClosed();
   void close();
-  void loadPageOnFrame(uint16_t const page_id, char* buffer);
-  void writePageOnFile(uint16_t const page_id, char* buffer);
+  void readPageIntoBuffer(uint16_t const page_id, char* buffer);
+  void writePageFromBuffer(uint16_t const page_id, char* buffer);
   std::string getFilePath() const { return file_path_; }
   uint16_t getMaxPageID() const { return max_page_id_; }
   uint16_t getRootPageID() const { return root_page_id_; }

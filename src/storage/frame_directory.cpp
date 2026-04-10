@@ -12,7 +12,7 @@ FrameDirectory::FrameDirectory() {
   }
 }
 
-std::optional<int> FrameDirectory::claimFreeFrame() {
+std::optional<int> FrameDirectory::reserveFreeFrame() {
   if (free_frames_.empty()) {
     return std::nullopt;
   }
@@ -33,9 +33,9 @@ std::optional<int> FrameDirectory::findResidentFrame(
   return std::nullopt;
 }
 
-void FrameDirectory::registerPage(int frame_id, int page_id,
-                                  const std::string& file_path,
-                                  std::unique_ptr<Page> page) {
+void FrameDirectory::registerResidentPage(int frame_id, int page_id,
+                                          const std::string& file_path,
+                                          std::unique_ptr<Page> page) {
   frames_[frame_id].page = std::move(page);
   frames_[frame_id].page_id = page_id;
   frames_[frame_id].file_path = file_path;
@@ -48,7 +48,7 @@ void FrameDirectory::registerPage(int frame_id, int page_id,
             frame_id);
 }
 
-void FrameDirectory::unregisterPage(int frame_id) {
+void FrameDirectory::unregisterResidentPage(int frame_id) {
   auto key =
       std::make_pair(frames_[frame_id].page_id, frames_[frame_id].file_path);
   page_to_frame_.erase(key);

@@ -43,10 +43,10 @@ TEST_F(FileTest, WriteAndLoadPage) {
     write_buffer[i] = static_cast<char>(i % 256);
   }
 
-  file_p->writePageOnFile(1, write_buffer.data());
+  file_p->writePageFromBuffer(1, write_buffer.data());
 
   std::vector<char> read_buffer(Page::PAGE_SIZE_BYTE);
-  file_p->loadPageOnFrame(1, read_buffer.data());
+  file_p->readPageIntoBuffer(1, read_buffer.data());
 
   EXPECT_EQ(0, std::memcmp(write_buffer.data(), read_buffer.data(),
                            Page::PAGE_SIZE_BYTE));
