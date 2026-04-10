@@ -105,7 +105,7 @@ uint16_t writeVariableLengthValue(const Column& column, const FieldValue& value,
   return static_cast<uint16_t>(field_payload_size);
 }
 
-}
+}  // namespace
 
 RecordSerializer::RecordSerializer(const Schema& schema, const TypedRow& row)
     : serialized_bytes_() {

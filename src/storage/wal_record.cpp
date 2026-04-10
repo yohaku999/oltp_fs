@@ -12,8 +12,7 @@ std::vector<std::byte> WALRecord::serialize() const {
   serialized_data.insert(serialized_data.end(), p_lsn, p_lsn + sizeof(lsn_));
 
   const auto* p_type = reinterpret_cast<const std::byte*>(&type_);
-  serialized_data.insert(serialized_data.end(), p_type,
-                         p_type + sizeof(type_));
+  serialized_data.insert(serialized_data.end(), p_type, p_type + sizeof(type_));
 
   const auto* p_page = reinterpret_cast<const std::byte*>(&page_id_);
   serialized_data.insert(serialized_data.end(), p_page,

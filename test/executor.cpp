@@ -26,7 +26,7 @@ class ExecutorTest : public ::testing::Test {
   std::unique_ptr<WAL> wal_;
 
   void SetUp() override {
-    Table::removeFilesFor(kTableName);
+    Table::removeBackingFilesFor(kTableName);
     std::remove(kWalPath);
     wal_ = std::make_unique<WAL>(kWalPath);
     pool_ = std::make_unique<BufferPool>(*wal_);
@@ -35,7 +35,7 @@ class ExecutorTest : public ::testing::Test {
   void TearDown() override {
     pool_.reset();
     wal_.reset();
-    Table::removeFilesFor(kTableName);
+    Table::removeBackingFilesFor(kTableName);
     std::remove(kWalPath);
   }
 

@@ -31,7 +31,7 @@ class E2ETest : public ::testing::Test {
   PgQueryParseResult result;
 
   void SetUp() override {
-    Table::removeFilesFor(kTableName);
+    Table::removeBackingFilesFor(kTableName);
     std::remove("e2e_test.wal");
     wal = std::make_unique<WAL>("e2e_test.wal");
     pool = std::make_unique<BufferPool>(*wal);
@@ -40,7 +40,7 @@ class E2ETest : public ::testing::Test {
   void TearDown() override {
     pool.reset();
     wal.reset();
-    Table::removeFilesFor(kTableName);
+    Table::removeBackingFilesFor(kTableName);
     std::remove("e2e_test.wal");
     pg_query_free_parse_result(result);
   }

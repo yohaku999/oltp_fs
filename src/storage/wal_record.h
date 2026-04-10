@@ -46,9 +46,15 @@ class WALRecord {
   static WALRecord deserialize(const std::vector<std::byte>& buffer);
 };
 
-// Helper that uses an external LSNAllocator to assign the next LSN
-// based on the serialized size of the record, and then constructs
-// a WALRecord with that LSN.
+/**
+ * Constructs a WAL record with an LSN allocated from the encoded record size.
+ *
+ * @param allocator LSN allocator that advances by the serialized record size.
+ * @param type WAL record type.
+ * @param page_id Logical page ID associated with the record.
+ * @param body Encoded WAL body payload.
+ * @return A WAL record whose LSN range has been reserved in `allocator`.
+ */
 inline WALRecord make_wal_record(LSNAllocator& allocator,
                                  WALRecord::RecordType type, uint16_t page_id,
                                  const std::vector<std::byte>& body) {

@@ -7,8 +7,7 @@
 #include "leaf_cell.h"
 #include "page.h"
 
-// LeafIndexPage and InternalIndexPage provide typed views over a generic Page
-// for B+tree index nodes. They assume the underlying Page buffer/layout is
+// LeafIndexPage assume the underlying Page buffer/layout is
 // already initialized and do not own the storage.
 
 class LeafIndexPage {

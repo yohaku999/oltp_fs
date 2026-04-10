@@ -23,4 +23,4 @@ void update(BufferPool& pool, Table& table, int key, const TypedRow& row);
 void update(BufferPool& pool, Table& table, int key, const TypedRow& row,
             LSNAllocator& allocator, WAL& wal);
 
-}
+}  // namespace executor

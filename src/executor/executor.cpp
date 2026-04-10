@@ -37,6 +37,8 @@ std::pair<uint16_t, uint16_t> insertIntoHeap(BufferPool& pool, File& heapFile,
     pool.unpinPage(heap_page, heapFile);
     // WARNING : currently how we deal with leafpage and heappage is the same.
     // Thus it is correct to set is_leaf = true here but, it's confusing.
+    // All the page type share the same page layout so some headder filed is
+    // redundunt for some page type.
     target_page_id = pool.createPage(true, heapFile);
     heap_page = pool.pinPage(target_page_id, heapFile);
     inserted_slot_id = heap_page->insertCell(serialized_cell);
@@ -50,21 +52,21 @@ std::pair<uint16_t, uint16_t> insertIntoHeap(BufferPool& pool, File& heapFile,
   if (allocator != nullptr && wal != nullptr) {
     wal->write(make_wal_record(
         *allocator, WALRecord::RecordType::INSERT,
-    static_cast<uint16_t>(target_page_id),
-    InsertRedoBody(static_cast<uint16_t>(inserted_slot_id.value()),
+        static_cast<uint16_t>(target_page_id),
+        InsertRedoBody(static_cast<uint16_t>(inserted_slot_id.value()),
                        serialized_cell)
             .encode()));
   }
 
-    pool.unpinPage(heap_page, heapFile);
+  pool.unpinPage(heap_page, heapFile);
   LOG_INFO("Inserted record with key {} into heap page ID {} successfully.",
-       key, target_page_id);
+           key, target_page_id);
 
-    return {static_cast<uint16_t>(target_page_id),
-      static_cast<uint16_t>(inserted_slot_id.value())};
+  return {static_cast<uint16_t>(target_page_id),
+          static_cast<uint16_t>(inserted_slot_id.value())};
 }
 
-}
+}  // namespace
 
 TypedRow executor::read(BufferPool& pool, Table& table, int key) {
   auto lookup = IndexLookup::fromKey(pool, table.indexFile(), key);

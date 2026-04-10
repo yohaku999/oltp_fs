@@ -6,8 +6,6 @@
 
 class LeafCell : public Cell {
  private:
-  // The value range of pageID, slotID, cell key is 0~4095 for now, so we can
-  // use uint16_t to store them.
   static constexpr size_t KEY_SIZE_BYTE = sizeof(int);
   static constexpr size_t PAYLOAD_SIZE_BYTE =
       Cell::FLAG_FIELD_SIZE + sizeof(uint16_t) + sizeof(uint16_t) +

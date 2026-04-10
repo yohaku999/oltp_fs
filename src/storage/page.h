@@ -55,20 +55,21 @@ class Page {
  public:
   static constexpr int HAS_NO_PARENT = -1;
   static constexpr size_t HEADDER_SIZE_BYTE = 256;
+  static Page initializeNew(char* page_buffer, bool is_leaf,
+                            uint16_t right_most_child_page_id,
+                            uint16_t page_id);
+  static Page wrapExisting(char* page_buffer, uint16_t page_id);
   void markDirty() { is_dirty_ = true; };
   void clearDirty() { is_dirty_ = false; };
   bool isDirty() { return is_dirty_; };
   int getPageID() const { return page_id_; };
   int getParentPageID() const { return parent_page_id_; };
-  // NOTE : Relation between PageID will be collected on traversal for now. This
-  // can be bothring later.
+  // parent pageID will be collected on traversal (at least) for now.
   void setParentPageID(int parent_page_id) {
     parent_page_id_ = parent_page_id;
   };
   bool isLeaf() const;
   char* getSplitKeyCellStart();
-  // The value range of cell is 0~4095 for now, so we can use uint16_t to store
-  // them.
   static constexpr size_t PAGE_SIZE_BYTE = 4096;
   static constexpr size_t CELL_POINTER_SIZE = sizeof(uint16_t);
   char* page_buffer_;
@@ -83,12 +84,10 @@ class Page {
   }
   char* getSlotCellStart(int slot_id);
 
-  // Constructor for creating a new page
-    Page(char* page_buffer, bool is_leaf, uint16_t right_most_child_page_id,
-       uint16_t page_id);
-
-  // Constructor for wrapping existing page data
-    Page(char* page_buffer, uint16_t page_id);
-
   void dump(std::ostream& os);
+
+ private:
+  Page(char* page_buffer, bool is_leaf, uint16_t right_most_child_page_id,
+       uint16_t page_id);
+  Page(char* page_buffer, uint16_t page_id);
 };

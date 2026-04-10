@@ -8,4 +8,4 @@ struct LogInitializer {
 };
 
 static LogInitializer log_initializer;
-}
+}  // namespace

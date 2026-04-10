@@ -33,7 +33,7 @@ IndexLookup IndexLookup::fromKeyRange(BufferPool& pool, File& indexFile,
     lookup.high_key_ = high_key;
     lookup.current_key_ = low_key;
   } else {
-    // 空レンジ: current を high+1 にして即座に EOF 相当にする
+    // Represent an empty range so next() immediately returns std::nullopt.
     lookup.low_key_ = low_key;
     lookup.high_key_ = high_key;
     lookup.current_key_ = high_key + 1;

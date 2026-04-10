@@ -6,7 +6,6 @@
 #include <variant>
 #include <vector>
 
-// Logical bodies for different kinds of WAL records.
 struct InsertRedoBody {
   uint16_t offset;
   std::vector<std::byte> tuple;

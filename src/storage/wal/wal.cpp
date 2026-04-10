@@ -63,7 +63,7 @@ void WAL::flush() {
     remaining -= static_cast<std::size_t>(written);
   }
 
-  // fsync
+  // make sure WAL bytes are durable before updating flushed_lsn_.
   if (::fsync(wal_fd_) != 0) {
     throw std::system_error(errno, std::generic_category(),
                             "Failed to fsync WAL file");

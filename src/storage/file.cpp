@@ -59,13 +59,7 @@ void File::writeHeader() {
 }
 
 /**
- * Ensure stream_ holds an open fstream for this file path,
- * reusing a cached shared instance or creating a new one if needed.
- *
- * This way we keep at most one OS-level stream per file path while still
- * allowing multiple File objects to share it safely via shared_ptr/weak_ptr.
- * The last owning File closes the underlying fstream when its shared_ptr is
- * released.
+ * Ensures `stream_` refers to an open stream for `file_path_`.
  */
 void File::initializeStreamIfClosed() {
   if (stream_ && stream_->is_open()) {
@@ -166,7 +160,7 @@ File::File(const std::string& file_path) : file_path_(file_path) {
     stream_->read(header_buffer.get(), File::HEADDER_SIZE_BYTE);
     max_page_id_ = readValue<uint16_t>(header_buffer.get());
     root_page_id_ =
-      readValue<uint16_t>(header_buffer.get() + File::MAX_PAGE_ID_SIZE_BYTE);
+        readValue<uint16_t>(header_buffer.get() + File::MAX_PAGE_ID_SIZE_BYTE);
     LOG_INFO(
         "opened existing file: {}, max_page_id loaded from header: {}, "
         "root_page_id loaded from header: {}",

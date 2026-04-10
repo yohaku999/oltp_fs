@@ -16,7 +16,15 @@
 #include "logging.h"
 #include "record_cell.h"
 
-// Constructor for creating a new page
+Page Page::initializeNew(char* page_buffer, bool is_leaf,
+                         uint16_t right_most_child_page_id, uint16_t page_id) {
+  return Page(page_buffer, is_leaf, right_most_child_page_id, page_id);
+}
+
+Page Page::wrapExisting(char* page_buffer, uint16_t page_id) {
+  return Page(page_buffer, page_id);
+}
+
 Page::Page(char* page_buffer, bool is_leaf, uint16_t right_most_child_page_id,
            uint16_t page_id)
     : page_buffer_(page_buffer),
@@ -31,33 +39,37 @@ Page::Page(char* page_buffer, bool is_leaf, uint16_t right_most_child_page_id,
   markDirty();
 }
 
-// Constructor for wrapping existing page data
 Page::Page(char* page_buffer, uint16_t page_id)
-  : page_buffer_(page_buffer),
+    : page_buffer_(page_buffer),
       page_id_(page_id),
       parent_page_id_(-1),
-      is_dirty_(false) {
-  // Existing page data is already initialized, so we don't need to do anything
-}
+      is_dirty_(false) {}
 
 /**
- * returns the slot ID of the inserted cell.
+ * Attempts to append a serialized cell to this page.
+ *
+ * @param serialized_cell Serialized cell bytes to place in the page payload.
+ * @return Slot ID of the inserted cell when enough free space remains;
+ *         `std::nullopt` otherwise.
+ *
+ * On success, this method updates the slot directory, advances the payload
+ * boundary, and marks the page dirty.
  */
 std::optional<int> Page::insertCell(
     const std::vector<std::byte>& serialized_cell) {
   LOG_INFO("Attempting to insert serialized cell into page ID {}", getPageID());
-  // check if the page has enough space to insert the new cell.
+
   uint16_t new_cell_offset = getSlotDirectoryOffset() - serialized_cell.size();
   char* cell_data_start = page_buffer_ + new_cell_offset;
-  char* slot_pointer_end = page_buffer_ + Page::HEADDER_SIZE_BYTE +
-                           Page::CELL_POINTER_SIZE * (getSlotCount() + 1);
-  if (!(cell_data_start > slot_pointer_end)) {
+  char* next_slot_pointer = page_buffer_ + Page::HEADDER_SIZE_BYTE +
+                            Page::CELL_POINTER_SIZE * (getSlotCount() + 1);
+  const bool has_space_for_new_cell = cell_data_start > next_slot_pointer;
+  if (!has_space_for_new_cell) {
     LOG_INFO(
         "This page does not have enough space to insert the cell anymore.");
     return std::nullopt;
   }
 
-  // copy serialized cell bytes into the page payload area.
   std::memcpy(cell_data_start, serialized_cell.data(), serialized_cell.size());
 
   // update cell pointer.
@@ -119,7 +131,8 @@ char* Page::getSplitKeyCellStart() {
   // that the middle slot pointer points to.
   int middle_slot_index = getSlotCount() / 2;
   while (true) {
-    char* cell_data = page_buffer_ + getCellOffsetOnXthPointer(middle_slot_index);
+    char* cell_data =
+        page_buffer_ + getCellOffsetOnXthPointer(middle_slot_index);
     if (Cell::isValid(cell_data)) {
       return cell_data;
     }

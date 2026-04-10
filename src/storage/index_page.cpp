@@ -7,8 +7,7 @@
 
 bool LeafIndexPage::hasKey(int key) const {
   for (int idx = 0; idx < page_.getSlotCount(); ++idx) {
-    char* cell_data =
-        page_.page_buffer_ + page_.getCellOffsetOnXthPointer(idx);
+    char* cell_data = page_.page_buffer_ + page_.getCellOffsetOnXthPointer(idx);
     if (!Cell::isValid(cell_data)) {
       continue;
     }
@@ -26,8 +25,7 @@ std::optional<std::pair<uint16_t, uint16_t>> LeafIndexPage::findRef(
    * PERFORMANCE:Same consideration as Page::findLeafRef; kept verbatim.
    */
   for (int idx = 0; idx < page_.getSlotCount(); ++idx) {
-    char* cell_data =
-        page_.page_buffer_ + page_.getCellOffsetOnXthPointer(idx);
+    char* cell_data = page_.page_buffer_ + page_.getCellOffsetOnXthPointer(idx);
     if (!Cell::isValid(cell_data)) {
       LOG_DEBUG("LeafIndexPage::findRef skipping invalid slot {}", idx);
       continue;
@@ -52,8 +50,7 @@ void LeafIndexPage::transferAndCompactTo(LeafIndexPage& dst,
 
   const int slot_count = page_.getSlotCount();
   for (int idx = 0; idx < slot_count; ++idx) {
-    char* cell_data =
-        page_.page_buffer_ + page_.getCellOffsetOnXthPointer(idx);
+    char* cell_data = page_.page_buffer_ + page_.getCellOffsetOnXthPointer(idx);
     if (!Cell::isValid(cell_data)) {
       continue;
     }
@@ -114,8 +111,7 @@ uint16_t InternalIndexPage::findChildPage(int key) {
   std::vector<IntermediateCell> cells;
   cells.reserve(page_.getSlotCount());
   for (int idx = 0; idx < page_.getSlotCount(); ++idx) {
-    char* cell_data =
-        page_.page_buffer_ + page_.getCellOffsetOnXthPointer(idx);
+    char* cell_data = page_.page_buffer_ + page_.getCellOffsetOnXthPointer(idx);
     if (!Cell::isValid(cell_data)) {
       continue;
     }
@@ -144,8 +140,7 @@ void InternalIndexPage::transferAndCompactTo(InternalIndexPage& dst,
 
   const int slot_count = page_.getSlotCount();
   for (int idx = 0; idx < slot_count; ++idx) {
-    char* cell_data =
-        page_.page_buffer_ + page_.getCellOffsetOnXthPointer(idx);
+    char* cell_data = page_.page_buffer_ + page_.getCellOffsetOnXthPointer(idx);
     if (!Cell::isValid(cell_data)) {
       continue;
     }

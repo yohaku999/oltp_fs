@@ -43,3 +43,17 @@ Design implication
  - How aggressively dirty pages are written back is a design and tuning choice.
 
 For now, page flushing is best-effort: correctness is enforced by the WAL rule, while aggressive coordination for hot pages and recovery-time optimization is left for future work.
+
+### Current WAL write-path rationale
+- We currently serialize WAL records on writer threads and append the bytes into a shared in-memory buffer.
+- This keeps the prototype simple while preserving the on-disk format and the buffer-pool/WAL interaction we want to study.
+- For the workloads we currently target, fsync and device latency are expected to dominate before per-record serialization work does.
+- If profiling later shows contention or serialization overhead in this path, the same write API can move behind a dedicated WAL thread without changing the WAL format.
+
+## File stream cache
+
+`File` keeps a shared stream cache keyed by file path.
+
+- Multiple `File` objects for the same path reuse one live OS-level stream when possible.
+- This avoids repeatedly opening the same backing file while still letting callers keep lightweight `File` wrappers.
+- When the last shared owner goes away, the underlying stream can be closed and removed from the cache.

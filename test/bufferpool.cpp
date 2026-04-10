@@ -28,7 +28,7 @@ RecordSerializer serializeSingleVarcharRecord(const std::string& value) {
   return RecordSerializer(schema, row);
 }
 
-}
+}  // namespace
 
 class BufferPoolTest : public ::testing::Test {
  protected:

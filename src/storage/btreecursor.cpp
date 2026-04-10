@@ -16,9 +16,18 @@
 #include "page.h"
 #include "record_cell.h"
 
+/**
+ * Traverses the B-tree to find the leaf page that may contain `key`.
+ *
+ * @param pool Buffer pool used to pin and unpin index pages during traversal.
+ * @param indexFile Index file whose root page seeds the traversal.
+ * @param key Search key to route through internal nodes.
+ * @return Page ID of the leaf page where `key` should reside.
+ *
+ * As a side effect, each visited page is annotated with its parent page ID for
+ * later split handling.
+ */
 int BTreeCursor::findLeafPageID(BufferPool& pool, File& indexFile, int key) {
-  // traverse the btree from the root page until we find the leaf page that may
-  // contain the key.
   int page_id = indexFile.getRootPageID();
   int parent_page_id = Page::HAS_NO_PARENT;
   while (true) {
@@ -27,32 +36,21 @@ int BTreeCursor::findLeafPageID(BufferPool& pool, File& indexFile, int key) {
         "index file {}.",
         key, page_id, indexFile.getFilePath());
     Page* page = pool.pinPage(page_id, indexFile);
-    // if the page has parent page id of -1, the page is the root page or just
-    // not memoed yet.
     page->setParentPageID(parent_page_id);
     if (page->isLeaf()) {
       LOG_INFO("Found leaf page ID {} for key {} in index {}", page_id, key,
                indexFile.getFilePath());
       pool.unpinPage(page, indexFile);
       break;
+    } else {
+      InternalIndexPage internal(*page);
+      int child_page_id = internal.findChildPage(key);
+      pool.unpinPage(page, indexFile);
+      LOG_INFO("The child page ID of page ID {} for key {} is {}", page_id, key,
+               child_page_id);
+      parent_page_id = page_id;
+      page_id = child_page_id;
     }
-    // zero outしているので、はじめは必ずintermediate扱いになる
-    InternalIndexPage internal(*page);
-    // 実装を簡単にするため、B木の初期化時点でPageID 0のintermediate
-    // pageのrightmostpageIDがPageID 1のLeaf pageを指すようにしている。
-    // ここでrightmostpageIDの初期値が0なので困っている。
-    // rightmostの下にleafまでpage0,1,2で初期化するか
-    // rightmostを1にするなら、その先を辿っていくことになり、ページ1として、leafを初期化すればいい。
-    //
-    // leafを0ノードとしてつくるか、みたいなところで悩んでいる。
-    // そもそもrightmostpageIDのsplitってちゃんとできるんだっけ
-    // 現在のsplitの実装がうまく走るように初期化を構築したい。
-    int child_page_id = internal.findChildPage(key);
-    pool.unpinPage(page, indexFile);
-    LOG_INFO("The child page ID of page ID {} for key {} is {}", page_id, key,
-             child_page_id);
-    parent_page_id = page_id;
-    page_id = child_page_id;
   }
   return page_id;
 }

@@ -18,8 +18,8 @@ uint16_t BufferPool::createPage(bool is_leaf, File& file,
   uint16_t page_id = file.allocateNextPageId();
   auto [frame_id, frame_ptr] = acquireFrame();
 
-  auto page = std::make_unique<Page>(frame_ptr, is_leaf,
-                                     right_most_child_page_id, page_id);
+  auto page = std::make_unique<Page>(Page::initializeNew(
+      frame_ptr, is_leaf, right_most_child_page_id, page_id));
   frame_directory_.registerResidentPage(frame_id, page_id, file.getFilePath(),
                                         std::move(page));
   LOG_INFO("Created new page ID {} as {} page in frame ID {}", page_id,
@@ -28,26 +28,25 @@ uint16_t BufferPool::createPage(bool is_leaf, File& file,
 }
 
 Page* BufferPool::pinPage(int page_id, File& file) {
+  if (!file.isPageIDUsed(page_id)) {
+    throw std::logic_error(
+        fmt::format("BufferPool::pinPage called for uninitialized page ID {} "
+                    "in file {}",
+                    page_id, file.getFilePath()));
+  }
+
   LOG_DEBUG("Requesting page ID {} from file {}", page_id, file.getFilePath());
   auto resident_frame_id =
       frame_directory_.findResidentFrame(page_id, file.getFilePath());
-  // if the page exists on buffer pool
   if (resident_frame_id.has_value()) {
     int frame_id = resident_frame_id.value();
     frame_directory_.pin(frame_id);
     return frame_directory_.getFrame(frame_id).page.get();
   } else {
     auto [frame_id, frame_buffer] = acquireFrame();
-
-    // load page on frame
-    if (!file.isPageIDUsed(page_id)) {
-      throw std::logic_error(
-          fmt::format("Should not expected to call getPage on uninitialized "
-                      "page ID {} in file {}",
-                      page_id, file.getFilePath()));
-    }
     file.readPageIntoBuffer(page_id, frame_buffer);
-    auto page = std::make_unique<Page>(frame_buffer, page_id);
+    auto page =
+        std::make_unique<Page>(Page::wrapExisting(frame_buffer, page_id));
     Page* loaded_page = page.get();
     frame_directory_.registerResidentPage(frame_id, page_id, file.getFilePath(),
                                           std::move(page));
@@ -82,39 +81,31 @@ bool BufferPool::isPageFlushable(const Page& page) const {
 }
 
 void BufferPool::evictOnePage() {
-  // decide which unused page to evict.
   auto victim_opt = frame_directory_.findVictimFrame();
   if (!victim_opt.has_value()) {
     // TODO: we should sleep or kill queries.
     throw std::runtime_error(
         "No victim frame found for eviction. All frames are pinned.");
   }
-  // write the page back to the file if it's dirty.
   int victim_frame_id = victim_opt.value();
   auto& victim_frame = frame_directory_.getFrame(victim_frame_id);
-  // REFACTOR: Have to cache these values before unregistering the page since
-  // the frame will be cleared in unregisterResidentPage().
-  int evicted_page_id = victim_frame.page_id;
+  int evict_page_id = victim_frame.page_id;
   if (victim_frame.page->isDirty()) {
     if (!isPageFlushable(*victim_frame.page)) {
       wal_.flush();
-      // Guard for concurrency mistake just in case.
       if (!isPageFlushable(*victim_frame.page)) {
-        throw std::runtime_error(
-            "BufferPool::evictPage: WAL flush did not advance flushedLSN "
-            "sufficiently for pageLSN");
+        // TODO: fix for multithreading later.
+        throw std::runtime_error("Victim page ID " +
+                                 std::to_string(evict_page_id) +
+                                 " is dirty and not flushable. This should not "
+                                 "happen in single-threaded execution.");
       }
     }
-    // this clearDirty() call is not necessary, since it will be cleared when
-    // loading the page again with Page constructor. However, it can help to
-    // avoid confusion and potential bugs in the future.
-    victim_frame.page->clearDirty();
     File file(victim_frame.file_path);
-    file.writePageFromBuffer(victim_frame.page_id,
-                             victim_frame.page->page_buffer_);
+    file.writePageFromBuffer(evict_page_id, victim_frame.page->page_buffer_);
   }
   frame_directory_.unregisterResidentPage(victim_frame_id);
-  LOG_INFO("Evicted page ID {} from frame ID {}", evicted_page_id,
+  LOG_INFO("Evicted page ID {} from frame ID {}", evict_page_id,
            victim_frame_id);
 };
 
@@ -133,8 +124,10 @@ std::pair<int, char*> BufferPool::acquireFrame() {
     free_frame = frame_directory_.reserveFreeFrame();
     if (!free_frame.has_value()) {
       // TODO: this should happen under multithreading when other thread theives
-      // the frame right after eviction.
-      LOG_WARN("Eviction completed but no free frame reclaimed");
+      // the frame right after eviction. Find a way around later.
+      throw std::runtime_error(
+          "Failed to acquire a free frame even after eviction. This should not "
+          "happen in single-threaded execution.");
     } else {
       LOG_DEBUG("Eviction reclaimed free frame {}", free_frame.value());
     }
