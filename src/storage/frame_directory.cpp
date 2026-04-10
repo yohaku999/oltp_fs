@@ -24,8 +24,8 @@ std::optional<int> FrameDirectory::claimFreeFrame() {
 }
 
 std::optional<int> FrameDirectory::findFrameByPage(
-    int pageID, const std::string& filePath) {
-  auto key = std::make_pair(pageID, filePath);
+    int page_id, const std::string& file_path) {
+  auto key = std::make_pair(page_id, file_path);
   auto it = page_to_frame_.find(key);
   if (it != page_to_frame_.end()) {
     return it->second;
@@ -33,49 +33,49 @@ std::optional<int> FrameDirectory::findFrameByPage(
   return std::nullopt;
 }
 
-void FrameDirectory::registerPage(int frameID, int pageID,
-                                  const std::string& filePath,
+void FrameDirectory::registerPage(int frame_id, int page_id,
+                                  const std::string& file_path,
                                   std::unique_ptr<Page> page) {
-  frames_[frameID].page = std::move(page);
-  frames_[frameID].page_id = pageID;
-  frames_[frameID].file_path = filePath;
-  frames_[frameID].pin_count = 0;
+  frames_[frame_id].page = std::move(page);
+  frames_[frame_id].page_id = page_id;
+  frames_[frame_id].file_path = file_path;
+  frames_[frame_id].pin_count = 0;
 
-  auto key = std::make_pair(pageID, filePath);
-  page_to_frame_[key] = frameID;
+  auto key = std::make_pair(page_id, file_path);
+  page_to_frame_[key] = frame_id;
 
-  LOG_DEBUG("Registered page {} from {} in frame {}", pageID, filePath,
-            frameID);
+  LOG_DEBUG("Registered page {} from {} in frame {}", page_id, file_path,
+            frame_id);
 }
 
-void FrameDirectory::unregisterPage(int frameID) {
+void FrameDirectory::unregisterPage(int frame_id) {
   auto key =
-      std::make_pair(frames_[frameID].page_id, frames_[frameID].file_path);
+      std::make_pair(frames_[frame_id].page_id, frames_[frame_id].file_path);
   page_to_frame_.erase(key);
 
-  frames_[frameID].clear();
+  frames_[frame_id].clear();
 
-  free_frames_.insert(frameID);
+  free_frames_.insert(frame_id);
 
-  LOG_DEBUG("Unregistered and deleted page from frame {}", frameID);
+  LOG_DEBUG("Unregistered and deleted page from frame {}", frame_id);
 }
 
-void FrameDirectory::pin(int frameID) {
-  frames_[frameID].pin_count++;
-  LOG_DEBUG("Marked frame {} as pinned, count = {}", frameID,
-            frames_[frameID].pin_count);
+void FrameDirectory::pin(int frame_id) {
+  frames_[frame_id].pin_count++;
+  LOG_DEBUG("Marked frame {} as pinned, count = {}", frame_id,
+            frames_[frame_id].pin_count);
 }
 
-void FrameDirectory::unpin(int frameID) {
-  if (frames_[frameID].pin_count > 0) {
-    frames_[frameID].pin_count--;
-    LOG_DEBUG("Marked frame {} as unpinned, count = {}", frameID,
-              frames_[frameID].pin_count);
+void FrameDirectory::unpin(int frame_id) {
+  if (frames_[frame_id].pin_count > 0) {
+    frames_[frame_id].pin_count--;
+    LOG_DEBUG("Marked frame {} as unpinned, count = {}", frame_id,
+              frames_[frame_id].pin_count);
   }
 }
 
-bool FrameDirectory::isPinned(int frameID) const {
-  return frames_[frameID].pin_count > 0;
+bool FrameDirectory::isPinned(int frame_id) const {
+  return frames_[frame_id].pin_count > 0;
 }
 
 std::optional<int> FrameDirectory::findVictimFrame() {
@@ -108,10 +108,10 @@ std::optional<int> FrameDirectory::findVictimFrame() {
   return victim;
 }
 
-const FrameDirectory::Frame& FrameDirectory::getFrame(int frameID) const {
-  return frames_[frameID];
+const FrameDirectory::Frame& FrameDirectory::getFrame(int frame_id) const {
+  return frames_[frame_id];
 }
 
-FrameDirectory::Frame& FrameDirectory::getFrame(int frameID) {
-  return frames_[frameID];
+FrameDirectory::Frame& FrameDirectory::getFrame(int frame_id) {
+  return frames_[frame_id];
 }

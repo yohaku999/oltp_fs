@@ -4,27 +4,28 @@
 
 std::vector<std::byte> WALRecord::serialize() const {
   std::vector<std::byte> serialized_data;
-  serialized_data.reserve(sizeof(lsn) + sizeof(type) + sizeof(pageID) +
-                          sizeof(body_size) + record_body.size());
+  serialized_data.reserve(sizeof(lsn_) + sizeof(type_) + sizeof(page_id_) +
+                          sizeof(body_size_) + record_body_.size());
 
   // Header
-  const auto* p_lsn = reinterpret_cast<const std::byte*>(&lsn);
-  serialized_data.insert(serialized_data.end(), p_lsn, p_lsn + sizeof(lsn));
+  const auto* p_lsn = reinterpret_cast<const std::byte*>(&lsn_);
+  serialized_data.insert(serialized_data.end(), p_lsn, p_lsn + sizeof(lsn_));
 
-  const auto* p_type = reinterpret_cast<const std::byte*>(&type);
-  serialized_data.insert(serialized_data.end(), p_type, p_type + sizeof(type));
+  const auto* p_type = reinterpret_cast<const std::byte*>(&type_);
+  serialized_data.insert(serialized_data.end(), p_type,
+                         p_type + sizeof(type_));
 
-  const auto* p_page = reinterpret_cast<const std::byte*>(&pageID);
+  const auto* p_page = reinterpret_cast<const std::byte*>(&page_id_);
   serialized_data.insert(serialized_data.end(), p_page,
-                         p_page + sizeof(pageID));
+                         p_page + sizeof(page_id_));
 
-  const auto* p_size = reinterpret_cast<const std::byte*>(&body_size);
+  const auto* p_size = reinterpret_cast<const std::byte*>(&body_size_);
   serialized_data.insert(serialized_data.end(), p_size,
-                         p_size + sizeof(body_size));
+                         p_size + sizeof(body_size_));
 
   // Body
-  serialized_data.insert(serialized_data.end(), record_body.begin(),
-                         record_body.end());
+  serialized_data.insert(serialized_data.end(), record_body_.begin(),
+                         record_body_.end());
   return serialized_data;
 }
 

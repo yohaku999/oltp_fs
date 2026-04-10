@@ -43,16 +43,16 @@ void File::writeHeader() {
   if (!*stream_) {
     stream_->clear();
     throw std::runtime_error("failed to seek file when writing header: " +
-                             filePath_);
+                             file_path_);
   }
 
   stream_->write(buffer, sizeof(buffer));
   if (!*stream_) {
     stream_->clear();
-    throw std::runtime_error("failed to write header: " + filePath_);
+    throw std::runtime_error("failed to write header: " + file_path_);
   }
   LOG_INFO("Wrote header for file {}: max_page_id {}, root_page_id {}",
-           filePath_, max_page_id_, root_page_id_);
+           file_path_, max_page_id_, root_page_id_);
 
   stream_->clear();
   header_dirty_ = false;
@@ -74,7 +74,7 @@ void File::initializeStreamIfClosed() {
 
   stream_.reset();
 
-  const auto cached = stream_cache_.find(filePath_);
+  const auto cached = stream_cache_.find(file_path_);
   if (cached != stream_cache_.end()) {
     auto existing = cached->second.lock();
     if (existing && existing->is_open()) {
@@ -85,13 +85,13 @@ void File::initializeStreamIfClosed() {
   }
 
   auto new_stream = std::make_shared<std::fstream>(
-      filePath_, std::ios::in | std::ios::out | std::ios::binary);
+      file_path_, std::ios::in | std::ios::out | std::ios::binary);
   if (!*new_stream) {
-    throw std::runtime_error("failed to open file: " + filePath_);
+    throw std::runtime_error("failed to open file: " + file_path_);
   }
 
   stream_ = new_stream;
-  stream_cache_[filePath_] = stream_;
+  stream_cache_[file_path_] = stream_;
 }
 
 void File::close() {
@@ -100,12 +100,12 @@ void File::close() {
       writeHeader();
     } catch (const std::exception& ex) {
       LOG_ERROR("failed to write header for file {} during close: {}",
-                filePath_, ex.what());
+                file_path_, ex.what());
       // fall through and still attempt to close the stream
     } catch (...) {
       LOG_ERROR(
           "failed to write header for file {} during close: unknown error",
-          filePath_);
+          file_path_);
       // fall through and still attempt to close the stream
     }
   }
@@ -123,10 +123,10 @@ void File::close() {
 
   if (stream_->fail()) {
     stream_->clear();
-    throw std::runtime_error("failed to close file: " + filePath_);
+    throw std::runtime_error("failed to close file: " + file_path_);
   }
 
-  auto cached = stream_cache_.find(filePath_);
+  auto cached = stream_cache_.find(file_path_);
   if (cached != stream_cache_.end()) {
     auto existing = cached->second.lock();
     if (!existing || existing == stream_) {
@@ -141,19 +141,19 @@ File::~File() {
   try {
     close();
   } catch (const std::exception& ex) {
-    LOG_ERROR("failed to close file {} in destructor: {}", filePath_,
+    LOG_ERROR("failed to close file {} in destructor: {}", file_path_,
               ex.what());
   } catch (...) {
     LOG_ERROR("failed to close file {} in destructor: unknown error",
-              filePath_);
+              file_path_);
   }
 }
 
-File::File(const std::string& filePath) : filePath_(filePath) {
-  const bool is_new_file = !std::filesystem::exists(filePath_) ||
-                           std::filesystem::file_size(filePath_) == 0;
-  LOG_INFO("initializing File object for path: {}, is_new_file: {}", filePath_,
-           is_new_file);
+File::File(const std::string& file_path) : file_path_(file_path) {
+  const bool is_new_file = !std::filesystem::exists(file_path_) ||
+                           std::filesystem::file_size(file_path_) == 0;
+  LOG_INFO("initializing File object for path: {}, is_new_file: {}",
+           file_path_, is_new_file);
 
   if (!is_new_file) {
     initializeStreamIfClosed();
@@ -170,13 +170,13 @@ File::File(const std::string& filePath) : filePath_(filePath) {
     LOG_INFO(
         "opened existing file: {}, max_page_id loaded from header: {}, "
         "root_page_id loaded from header: {}",
-        filePath_, max_page_id_, root_page_id_);
+        file_path_, max_page_id_, root_page_id_);
   } else {
-    std::ofstream creator(filePath_, std::ios::binary | std::ios::trunc);
+    std::ofstream creator(file_path_, std::ios::binary | std::ios::trunc);
     if (!creator) {
-      throw std::runtime_error("failed to create file: " + filePath_);
+      throw std::runtime_error("failed to create file: " + file_path_);
     }
-    LOG_INFO("created new file: {}", filePath_);
+    LOG_INFO("created new file: {}", file_path_);
     creator.close();
 
     initializeStreamIfClosed();
@@ -197,13 +197,13 @@ void File::writePageOnFile(uint16_t const page_id, char* buffer) {
   stream_->seekp(offset, std::ios::beg);
   if (!stream_) {
     stream_->clear();
-    throw std::runtime_error("failed to seek file: " + filePath_);
+    throw std::runtime_error("failed to seek file: " + file_path_);
   }
 
   stream_->write(buffer, Page::PAGE_SIZE_BYTE);
   if (!stream_) {
     stream_->clear();
-    throw std::runtime_error("failed to write page: " + filePath_);
+    throw std::runtime_error("failed to write page: " + file_path_);
   }
 
   stream_->clear();
@@ -218,13 +218,13 @@ void File::loadPageOnFrame(uint16_t const page_id, char* buffer) {
   stream_->seekg(offset, std::ios::beg);
   if (!stream_) {
     stream_->clear();
-    throw std::runtime_error("failed to seek file: " + filePath_);
+    throw std::runtime_error("failed to seek file: " + file_path_);
   }
 
   stream_->read(buffer, Page::PAGE_SIZE_BYTE);
   if (!stream_) {
     stream_->clear();
-    throw std::runtime_error("failed to read page: " + filePath_);
+    throw std::runtime_error("failed to read page: " + file_path_);
   }
 
   stream_->clear();

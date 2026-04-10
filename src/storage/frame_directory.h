@@ -31,11 +31,12 @@ class FrameDirectory {
   FrameDirectory();
 
   std::optional<int> claimFreeFrame();
-  std::optional<int> findFrameByPage(int pageID, const std::string& filePath);
+  std::optional<int> findFrameByPage(int page_id,
+                                     const std::string& file_path);
 
-  void registerPage(int frameID, int pageID, const std::string& filePath,
+  void registerPage(int frame_id, int page_id, const std::string& file_path,
                     std::unique_ptr<Page> page);
-  void unregisterPage(int frameID);
+  void unregisterPage(int frame_id);
   /**
    * We use explicit pin/unpin.
    * Although Intuitively, for a buffer pool, eviction depends on "safe to reuse
@@ -43,12 +44,12 @@ class FrameDirectory {
    * and it is assumed that we need more control then shared_ptr provides
    * initially.
    */
-  void pin(int frameID);
-  void unpin(int frameID);
-  bool isPinned(int frameID) const;
+  void pin(int frame_id);
+  void unpin(int frame_id);
+  bool isPinned(int frame_id) const;
 
   std::optional<int> findVictimFrame();
 
-  const Frame& getFrame(int frameID) const;
-  Frame& getFrame(int frameID);
+  const Frame& getFrame(int frame_id) const;
+  Frame& getFrame(int frame_id);
 };

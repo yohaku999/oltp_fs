@@ -17,20 +17,26 @@
 #include "record_cell.h"
 
 // Constructor for creating a new page
-Page::Page(char* start_p, bool is_leaf, uint16_t rightMostChildPageId,
+Page::Page(char* start_p, bool is_leaf, uint16_t right_most_child_page_id,
            uint16_t page_id)
-    : start_p_(start_p), pageID_(page_id), parentPageID_(-1), is_dirty_(false) {
+    : start_p_(start_p),
+      page_id_(page_id),
+      parent_page_id_(-1),
+      is_dirty_(false) {
   updateNodeTypeFlag(is_leaf);
   updateSlotCount(0);
   updateSlotDirectoryOffset(Page::PAGE_SIZE_BYTE);
-  setRightMostChildPageId(rightMostChildPageId);
+  setRightMostChildPageId(right_most_child_page_id);
   updatePageLSN(0);
   markDirty();
 }
 
 // Constructor for wrapping existing page data
 Page::Page(char* start_p, uint16_t page_id)
-    : start_p_(start_p), pageID_(page_id), parentPageID_(-1), is_dirty_(false) {
+    : start_p_(start_p),
+      page_id_(page_id),
+      parent_page_id_(-1),
+      is_dirty_(false) {
   // Existing page data is already initialized, so we don't need to do anything
 }
 
@@ -173,9 +179,9 @@ void Page::updatePageLSN(std::uint64_t lsn) {
 }
 
 void Page::dump(std::ostream& os) {
-  os << "=== Page " << pageID_ << " (" << (isLeaf() ? "leaf" : "internal")
+  os << "=== Page " << page_id_ << " (" << (isLeaf() ? "leaf" : "internal")
      << ") ===\n";
-  os << "parent=" << parentPageID_
+  os << "parent=" << parent_page_id_
      << " slotCount=" << static_cast<int>(getSlotCount());
   if (!isLeaf()) {
     os << " rightMostChild=" << rightMostChildPageId();

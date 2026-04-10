@@ -21,7 +21,7 @@ class File {
   uint16_t max_page_id_;
   uint16_t root_page_id_;
   bool header_dirty_ = false;
-  std::string filePath_;
+  std::string file_path_;
   void writeHeader();
 
  public:
@@ -29,13 +29,13 @@ class File {
   static constexpr size_t MAX_PAGE_ID_SIZE_BYTE = 2;
   uint16_t allocateNextPageId();
   bool isPageIDUsed(uint16_t page_id) const;
-  File(const std::string& filePath);
+  File(const std::string& file_path);
   ~File();
   void initializeStreamIfClosed();
   void close();
   void loadPageOnFrame(uint16_t const page_id, char* buffer);
   void writePageOnFile(uint16_t const page_id, char* buffer);
-  std::string getFilePath() const { return filePath_; }
+  std::string getFilePath() const { return file_path_; }
   uint16_t getMaxPageID() const { return max_page_id_; }
   uint16_t getRootPageID() const { return root_page_id_; }
   void setRootPageID(uint16_t root_page_id) {

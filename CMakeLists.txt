@@ -66,6 +66,16 @@ add_library(dbfs_src
 target_include_directories(dbfs_src PUBLIC src src/storage src/storage/wal)
 target_link_libraries(dbfs_src PUBLIC spdlog::spdlog nlohmann_json::nlohmann_json)
 
+if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    target_compile_options(dbfs_src PUBLIC
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+elseif (MSVC)
+    target_compile_options(dbfs_src PUBLIC /W4)
+endif()
+
 add_executable(bufferpool_test test/bufferpool.cpp)
 target_link_libraries(bufferpool_test dbfs_src GTest::gtest_main)
 

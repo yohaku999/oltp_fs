@@ -46,8 +46,8 @@ class Page {
   void setRightMostChildPageId(uint16_t page_id);
   void updatePageLSN(std::uint64_t lsn);
   bool is_dirty_ = false;
-  int pageID_ = -1;
-  int parentPageID_ = HAS_NO_PARENT;
+    int page_id_ = -1;
+    int parent_page_id_ = HAS_NO_PARENT;
 
   friend class LeafIndexPage;
   friend class InternalIndexPage;
@@ -58,11 +58,13 @@ class Page {
   void markDirty() { is_dirty_ = true; };
   void clearDirty() { is_dirty_ = false; };
   bool isDirty() { return is_dirty_; };
-  int getPageID() const { return pageID_; };
-  int getParentPageID() const { return parentPageID_; };
+    int getPageID() const { return page_id_; };
+    int getParentPageID() const { return parent_page_id_; };
   // NOTE : Relation between PageID will be collected on traversal for now. This
   // can be bothring later.
-  void setParentPageID(int parent_page_id) { parentPageID_ = parent_page_id; };
+    void setParentPageID(int parent_page_id) {
+        parent_page_id_ = parent_page_id;
+    };
   bool isLeaf() const;
   char* getSeparateKey();
   // The value range of cell is 0~4095 for now, so we can use uint16_t to store
@@ -82,7 +84,7 @@ class Page {
   char* getXthSlotCellStart(int x);
 
   // Constructor for creating a new page
-  Page(char* start_p, bool is_leaf, uint16_t rightMostChildPageId,
+    Page(char* start_p, bool is_leaf, uint16_t right_most_child_page_id,
        uint16_t page_id);
 
   // Constructor for wrapping existing page data

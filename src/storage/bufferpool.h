@@ -11,16 +11,25 @@
 class WAL;
 
 class BufferPool {
+ public:
+  static constexpr size_t MAX_FRAME_COUNT = 10;
+  static constexpr uint16_t HAS_NO_CHILD = -1;
+  explicit BufferPool(WAL& wal);
+  Page* getPage(int page_id, File& file);
+  void unpin(Page* page, File& file);
+  // REFACTOR : spread code for Page and Leaf Page.
+  uint16_t createNewPage(bool is_leaf, File& file,
+                         uint16_t right_most_child_page_id = HAS_NO_CHILD);
+  ~BufferPool();
+
  private:
   static constexpr size_t BUFFER_SIZE_BYTE = 4096 * 10;
   static constexpr size_t FRAME_SIZE_BYTE = 4096;
   static constexpr size_t MAX_PAGE_COUNT = 10;
-  std::string fileName;
-  void* buffer;
+  void* buffer_;
   WAL& wal_;
   void evictPage();
-  void loadPage(int pageID);
-  void zeroOutFrame(int frameID);
+  void zeroOutFrame(int frame_id);
   // Design Intent:
   // BufferPool and FrameDirectory are tightly coupled (1:1, same lifetime).
   // FrameDirectory is held by value (not pointer) because:
@@ -29,18 +38,7 @@ class BufferPool {
   //   lifecycle)
   // Future: Eviction strategies (FIFO/LRU/Clock) will be injected into
   // FrameDirectory via Strategy pattern
-  FrameDirectory frameDirectory_;
-  int obtainFreeFrame();
+  FrameDirectory frame_directory_;
+  std::pair<int, char*> allocateFrame();
   bool isPageLSNFlushed(const Page& page) const;
-
- public:
-  static constexpr size_t MAX_FRAME_COUNT = 10;
-  static constexpr uint16_t HAS_NO_CHILD = -1;
-  explicit BufferPool(WAL& wal);
-  Page* getPage(int pageID, File& file);
-  void unpin(Page* page, File& file);
-  // REFACTOR : spread code for Page and Leaf Page.
-  u_int16_t createNewPage(bool is_leaf, File& file,
-                          uint16_t rightMostChildPageId = HAS_NO_CHILD);
-  ~BufferPool();
 };
