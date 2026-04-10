@@ -13,7 +13,6 @@
 BufferPool::BufferPool(WAL& wal)
     : buffer_(operator new(BUFFER_SIZE_BYTE)), wal_(wal) {};
 
-// Create new page with incremental pageID.
 uint16_t BufferPool::createNewPage(bool is_leaf, File& file,
                                    uint16_t right_most_child_page_id) {
   uint16_t page_id = file.allocateNextPageId();
@@ -32,7 +31,8 @@ uint16_t BufferPool::createNewPage(bool is_leaf, File& file,
 Page* BufferPool::getPage(int page_id, File& file) {
   LOG_DEBUG("Requesting page ID {} from file {}", page_id,
             file.getFilePath());
-  auto it = frame_directory_.findFrameByPage(page_id, file.getFilePath());
+  auto it = frame_directory_.findResidentFrame(page_id, file.getFilePath());
+  // if the page exists on buffer pool
   if (it.has_value()) {
     int frame_id = it.value();
     frame_directory_.pin(frame_id);
@@ -62,8 +62,8 @@ void BufferPool::unpin(Page* page, File& file) {
   if (!page) {
     throw std::invalid_argument("BufferPool::unpin called with null page");
   }
-  auto it = frame_directory_.findFrameByPage(page->getPageID(),
-                                             file.getFilePath());
+  auto it = frame_directory_.findResidentFrame(page->getPageID(),
+                                               file.getFilePath());
   if (!it.has_value()) {
     throw std::logic_error(
         fmt::format("BufferPool::unpin: page ID {} in file {} is not "

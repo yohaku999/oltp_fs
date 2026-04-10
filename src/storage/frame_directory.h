@@ -31,8 +31,8 @@ class FrameDirectory {
   FrameDirectory();
 
   std::optional<int> claimFreeFrame();
-  std::optional<int> findFrameByPage(int page_id,
-                                     const std::string& file_path);
+  std::optional<int> findResidentFrame(int page_id,
+                                       const std::string& file_path);
 
   void registerPage(int frame_id, int page_id, const std::string& file_path,
                     std::unique_ptr<Page> page);

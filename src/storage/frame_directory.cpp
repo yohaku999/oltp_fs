@@ -23,7 +23,7 @@ std::optional<int> FrameDirectory::claimFreeFrame() {
   return frame_id;
 }
 
-std::optional<int> FrameDirectory::findFrameByPage(
+std::optional<int> FrameDirectory::findResidentFrame(
     int page_id, const std::string& file_path) {
   auto key = std::make_pair(page_id, file_path);
   auto it = page_to_frame_.find(key);
