@@ -10,8 +10,8 @@
 
 #include "../src/storage/bufferpool.h"
 #include "../src/storage/file.h"
-#include "../src/storage/wal/wal.h"
 #include "../src/storage/page.h"
+#include "../src/storage/wal/wal.h"
 
 class BTreeCursorTest : public ::testing::Test {
  protected:

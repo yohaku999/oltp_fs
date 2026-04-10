@@ -16,15 +16,14 @@
 // - allocate() is safe to call from multiple writer threads.
 // - Internally it uses an atomic fetch_add to ensure unique,
 //   strictly increasing LSNs without external locking.
-class LSNAllocator
-{
-public:
-    using value_type = std::uint64_t;
+class LSNAllocator {
+ public:
+  using value_type = std::uint64_t;
 
-    explicit LSNAllocator(value_type start = 0) noexcept;
-    value_type allocate(std::size_t record_size_bytes) noexcept;
-    value_type current() const noexcept;
+  explicit LSNAllocator(value_type start = 0) noexcept;
+  value_type allocate(std::size_t record_size_bytes) noexcept;
+  value_type current() const noexcept;
 
-private:
-    std::atomic<value_type> next_;
+ private:
+  std::atomic<value_type> next_;
 };

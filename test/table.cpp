@@ -8,13 +8,9 @@ class TableTest : public ::testing::Test {
  protected:
   static constexpr const char* kTableName = "table_test_table";
 
-  void SetUp() override {
-    Table::removeFilesFor(kTableName);
-  }
+  void SetUp() override { Table::removeFilesFor(kTableName); }
 
-  void TearDown() override {
-    Table::removeFilesFor(kTableName);
-  }
+  void TearDown() override { Table::removeFilesFor(kTableName); }
 };
 
 TEST_F(TableTest, InitializeAndGetTableRoundTripSchema) {

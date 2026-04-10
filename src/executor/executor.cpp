@@ -5,10 +5,10 @@
 #include <vector>
 
 #include "../logging.h"
-#include "../storage/lsn_allocator.h"
 #include "../storage/btreecursor.h"
 #include "../storage/bufferpool.h"
 #include "../storage/file.h"
+#include "../storage/lsn_allocator.h"
 #include "../storage/page.h"
 #include "../storage/record_cell.h"
 #include "../storage/record_serializer.h"
@@ -64,7 +64,7 @@ std::pair<uint16_t, uint16_t> insertIntoHeap(BufferPool& pool, File& heapFile,
           static_cast<uint16_t>(insertedSlotID.value())};
 }
 
-}
+}  // namespace
 
 TypedRow executor::read(BufferPool& pool, Table& table, int key) {
   auto lookup = IndexLookup::fromKey(pool, table.indexFile(), key);
@@ -88,8 +88,7 @@ void executor::insert(BufferPool& pool, Table& table, int key,
 }
 
 void executor::insert(BufferPool& pool, Table& table, int key,
-                      const TypedRow& row, LSNAllocator& allocator,
-                      WAL& wal) {
+                      const TypedRow& row, LSNAllocator& allocator, WAL& wal) {
   LOG_INFO("Inserting record with key {} into table {}.", key, table.name());
   auto location = BTreeCursor::findRecordLocation(pool, table.indexFile(), key);
   if (location.has_value()) {
@@ -98,9 +97,8 @@ void executor::insert(BufferPool& pool, Table& table, int key,
         " already exists. Duplicate keys are not allowed.");
   }
 
-  auto [heap_page_id, slot_id] =
-      insertIntoHeap(pool, table.heapFile(), table.schema(), row, key,
-                     &allocator, &wal);
+  auto [heap_page_id, slot_id] = insertIntoHeap(
+      pool, table.heapFile(), table.schema(), row, key, &allocator, &wal);
   BTreeCursor::insertIntoIndex(pool, table.indexFile(), key, heap_page_id,
                                slot_id);
 }
@@ -152,8 +150,7 @@ void executor::update(BufferPool& pool, Table& table, int key,
 }
 
 void executor::update(BufferPool& pool, Table& table, int key,
-                      const TypedRow& row, LSNAllocator& allocator,
-                      WAL& wal) {
+                      const TypedRow& row, LSNAllocator& allocator, WAL& wal) {
   executor::remove(pool, table, key, allocator, wal);
   executor::insert(pool, table, key, row, allocator, wal);
 }

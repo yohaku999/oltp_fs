@@ -63,21 +63,17 @@ TEST_F(E2ETest, SelectBGreaterEqual4) {
   Schema schema("x", {col_b});
   Table table = Table::initialize(kTableName, schema);
 
-  executor::insert(*pool, table, 1,
-                   TypedRow{{Column::VarcharType("row_b_1")}});
-  executor::insert(*pool, table, 3,
-                   TypedRow{{Column::VarcharType("row_b_3")}});
-  executor::insert(*pool, table, 4,
-                   TypedRow{{Column::VarcharType("row_b_4")}});
-  executor::insert(*pool, table, 7,
-                   TypedRow{{Column::VarcharType("row_b_7")}});
+  executor::insert(*pool, table, 1, TypedRow{{Column::VarcharType("row_b_1")}});
+  executor::insert(*pool, table, 3, TypedRow{{Column::VarcharType("row_b_3")}});
+  executor::insert(*pool, table, 4, TypedRow{{Column::VarcharType("row_b_4")}});
+  executor::insert(*pool, table, 7, TypedRow{{Column::VarcharType("row_b_7")}});
 
   const int LOW_KEY = 4;
   const int HIGH_KEY = 10;
 
-    IndexLookup lookup =
+  IndexLookup lookup =
       IndexLookup::fromKeyRange(*pool, table.indexFile(), LOW_KEY, HIGH_KEY);
-    HeapFetch fetcher(*pool, table.heapFile());
+  HeapFetch fetcher(*pool, table.heapFile());
 
   // We expect to see keys 4 and 7, in that order, with the
   // corresponding payload strings we inserted above.
@@ -112,20 +108,21 @@ TEST_F(E2ETest, SelectRangeWithMultiColumnRows) {
 
   // insert
   executor::insert(
-    *pool, table, 1,
-    TypedRow{{Column::IntegerType(1), Column::VarcharType("row_1")}});
+      *pool, table, 1,
+      TypedRow{{Column::IntegerType(1), Column::VarcharType("row_1")}});
   executor::insert(
-    *pool, table, 3,
-    TypedRow{{Column::IntegerType(3), Column::VarcharType("row_3")}});
+      *pool, table, 3,
+      TypedRow{{Column::IntegerType(3), Column::VarcharType("row_3")}});
   executor::insert(
-    *pool, table, 4,
-    TypedRow{{Column::IntegerType(4), Column::VarcharType("row_4")}});
+      *pool, table, 4,
+      TypedRow{{Column::IntegerType(4), Column::VarcharType("row_4")}});
   executor::insert(
-    *pool, table, 7,
-    TypedRow{{Column::IntegerType(7), Column::VarcharType("row_7")}});
+      *pool, table, 7,
+      TypedRow{{Column::IntegerType(7), Column::VarcharType("row_7")}});
 
   // read
-  IndexLookup lookup = IndexLookup::fromKeyRange(*pool, table.indexFile(), 4, 10);
+  IndexLookup lookup =
+      IndexLookup::fromKeyRange(*pool, table.indexFile(), 4, 10);
   HeapFetch fetcher(*pool, table.heapFile());
 
   std::vector<TypedRow> seen_rows;

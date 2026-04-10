@@ -2,7 +2,6 @@
 
 #include <array>
 #include <fstream>
-
 #include <nlohmann/json.hpp>
 
 #include "../storage/page.h"
@@ -83,8 +82,7 @@ std::string Table::defaultHeapPath(const std::string& table_name) {
 }
 
 std::string Table::defaultMetaPath(const std::string& table_name) {
-  return (std::filesystem::path("data") / (table_name + ".meta.json"))
-      .string();
+  return (std::filesystem::path("data") / (table_name + ".meta.json")).string();
 }
 
 std::string Table::preparePath(const std::string& path) {
@@ -109,8 +107,9 @@ void Table::writeSchemaMetadata(const std::string& meta_path,
   nlohmann::json metadata;
   metadata["columns"] = nlohmann::json::array();
   for (const auto& column : schema.columns()) {
-    metadata["columns"].push_back({{"name", column.getName()},
-                                    {"type", columnTypeToString(column.getType())}});
+    metadata["columns"].push_back(
+        {{"name", column.getName()},
+         {"type", columnTypeToString(column.getType())}});
   }
 
   std::ofstream output(preparePath(meta_path));
@@ -147,15 +146,16 @@ Schema Table::readSchemaMetadata(const std::string& table_name,
           "invalid table metadata: column requires name and type");
     }
 
-    columns.emplace_back(column_json["name"].get<std::string>(),
-                         columnTypeFromString(
-                             column_json["type"].get<std::string>()));
+    columns.emplace_back(
+        column_json["name"].get<std::string>(),
+        columnTypeFromString(column_json["type"].get<std::string>()));
   }
 
   return Schema(table_name, std::move(columns));
 }
 
-// TODO: This initialization might be better placed in other way since it's not really a "Table" level operation.
+// TODO: This initialization might be better placed in other way since it's not
+// really a "Table" level operation.
 void Table::initializeFirstPage(File& file) {
   std::array<char, Page::PAGE_SIZE_BYTE> buffer{};
   Page page(buffer.data(), true, 0, 0);

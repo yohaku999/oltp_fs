@@ -1,11 +1,7 @@
 #include "../src/storage/bufferpool.h"
-#include "../src/storage/page.h"
-#include "../src/storage/file.h"
-#include "../src/storage/record_cell.h"
-#include "../src/storage/wal/wal.h"
-#include "../src/storage/lsn_allocator.h"
-#include "../src/storage/wal_record.h"
-#include "../src/storage/record_serializer.h"
+
+#include <gtest/gtest.h>
+
 #include <array>
 #include <cstdio>
 #include <cstring>
@@ -13,49 +9,52 @@
 #include <memory>
 #include <set>
 #include <stdexcept>
-#include <set>
-#include <gtest/gtest.h>
+
+#include "../src/storage/file.h"
+#include "../src/storage/lsn_allocator.h"
+#include "../src/storage/page.h"
+#include "../src/storage/record_cell.h"
+#include "../src/storage/record_serializer.h"
+#include "../src/storage/wal/wal.h"
+#include "../src/storage/wal_record.h"
 
 namespace {
 
 RecordSerializer serializeSingleVarcharRecord(const std::string& value) {
   static const Schema schema{
-    "single_varchar_record",
-    std::vector<Column>{Column("value", Column::Type::Varchar)}};
+      "single_varchar_record",
+      std::vector<Column>{Column("value", Column::Type::Varchar)}};
   TypedRow row{{value}};
   return RecordSerializer(schema, row);
 }
 
 }  // namespace
 
-class BufferPoolTest : public ::testing::Test
-{
-protected:
-    static constexpr const char *kTestFile = "testfile.db";
-    static constexpr const char *kWalFile = "bufferpool_test.wal";
-    std::unique_ptr<BufferPool> pool;
-    std::unique_ptr<File> testFile;
-    std::unique_ptr<WAL> wal;
+class BufferPoolTest : public ::testing::Test {
+ protected:
+  static constexpr const char* kTestFile = "testfile.db";
+  static constexpr const char* kWalFile = "bufferpool_test.wal";
+  std::unique_ptr<BufferPool> pool;
+  std::unique_ptr<File> testFile;
+  std::unique_ptr<WAL> wal;
 
-    void SetUp() override
-    {
-        std::remove(kTestFile);
-        std::remove(kWalFile);
-        std::ofstream ofs(kTestFile, std::ios::binary);
-        std::array<char, Page::PAGE_SIZE_BYTE> empty{};
-        ofs.write(empty.data(), empty.size());
-        ofs.close();
-        wal = std::make_unique<WAL>(kWalFile);
-        pool = std::make_unique<BufferPool>(*wal);
-        testFile = std::make_unique<File>(kTestFile);
-    }
+  void SetUp() override {
+    std::remove(kTestFile);
+    std::remove(kWalFile);
+    std::ofstream ofs(kTestFile, std::ios::binary);
+    std::array<char, Page::PAGE_SIZE_BYTE> empty{};
+    ofs.write(empty.data(), empty.size());
+    ofs.close();
+    wal = std::make_unique<WAL>(kWalFile);
+    pool = std::make_unique<BufferPool>(*wal);
+    testFile = std::make_unique<File>(kTestFile);
+  }
 
-    void TearDown() override
-    {
-        pool.reset();
-        std::remove(kTestFile);
-        std::remove(kWalFile);
-    }
+  void TearDown() override {
+    pool.reset();
+    std::remove(kTestFile);
+    std::remove(kWalFile);
+  }
 };
 
 TEST_F(BufferPoolTest, GetPageSamePageReturnsCachedPage) {
@@ -127,28 +126,27 @@ TEST_F(BufferPoolTest, createNewPageWithEviction) {
   }
 }
 
-TEST_F(BufferPoolTest, EvictionFlushesWALUpToPageLSN)
-{
-    LSNAllocator allocator(0);
+TEST_F(BufferPoolTest, EvictionFlushesWALUpToPageLSN) {
+  LSNAllocator allocator(0);
 
-    std::vector<std::byte> body = {std::byte{0x01}, std::byte{0x02}};
-    WALRecord rec = make_wal_record(allocator, WALRecord::RecordType::INSERT, 1, body);
+  std::vector<std::byte> body = {std::byte{0x01}, std::byte{0x02}};
+  WALRecord rec =
+      make_wal_record(allocator, WALRecord::RecordType::INSERT, 1, body);
 
-    // WAL has not been flushed yet because of flush_threshold_bytes_
-    wal->write(rec);
-    EXPECT_EQ(wal->getFlushedLSN(), 0u);
+  // WAL has not been flushed yet because of flush_threshold_bytes_
+  wal->write(rec);
+  EXPECT_EQ(wal->getFlushedLSN(), 0u);
 
-    for (size_t i = 0; i < BufferPool::MAX_FRAME_COUNT; ++i)
-    {
-        uint16_t page_id = pool->createNewPage(true, *testFile);
-        Page *page = pool->getPage(page_id, *testFile);
-        // all the page has the same LSN.
-        page->setPageLSN(rec.get_lsn());
-        pool->unpin(page, *testFile);
-    }
+  for (size_t i = 0; i < BufferPool::MAX_FRAME_COUNT; ++i) {
+    uint16_t page_id = pool->createNewPage(true, *testFile);
+    Page* page = pool->getPage(page_id, *testFile);
+    // all the page has the same LSN.
+    page->setPageLSN(rec.get_lsn());
+    pool->unpin(page, *testFile);
+  }
 
-    // trigger eviction
-    (void)pool->createNewPage(true, *testFile);
+  // trigger eviction
+  (void)pool->createNewPage(true, *testFile);
 
-    EXPECT_EQ(wal->getFlushedLSN(), rec.get_lsn());
+  EXPECT_EQ(wal->getFlushedLSN(), rec.get_lsn());
 }

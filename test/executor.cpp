@@ -41,9 +41,8 @@ class ExecutorTest : public ::testing::Test {
 
   static Table createSingleColumnTable() {
     return Table::initialize(
-        kTableName,
-        Schema(kTableName,
-               std::vector<Column>{Column("value", Column::Type::Varchar)}));
+        kTableName, Schema(kTableName, std::vector<Column>{Column(
+                                           "value", Column::Type::Varchar)}));
   }
 
   static std::string singleVarcharValue(const TypedRow& row) {
@@ -66,9 +65,9 @@ class ExecutorTest : public ::testing::Test {
     std::size_t offset = 0;
 
     while (offset < raw_bytes.size()) {
-      const std::size_t header_size =
-          sizeof(uint64_t) + sizeof(WALRecord::RecordType) +
-          sizeof(uint16_t) + sizeof(uint32_t);
+      const std::size_t header_size = sizeof(uint64_t) +
+                                      sizeof(WALRecord::RecordType) +
+                                      sizeof(uint16_t) + sizeof(uint32_t);
       if (raw_bytes.size() - offset < header_size) {
         throw std::runtime_error("Incomplete WAL header in test fixture.");
       }
@@ -107,7 +106,8 @@ TEST_F(ExecutorTest, InsertAndGetMultipleRecords) {
 
   // read
   for (const auto& record : records) {
-    std::string restored = singleVarcharValue(executor::read(*pool_, table, record.first));
+    std::string restored =
+        singleVarcharValue(executor::read(*pool_, table, record.first));
     EXPECT_EQ(record.second, restored);
   }
 }
@@ -144,16 +144,19 @@ TEST_F(ExecutorTest, UpdateReplacesExistingValue) {
   executor::update(*pool_, table, key,
                    TypedRow{{Column::VarcharType("updated-value")}});
 
-  EXPECT_EQ("updated-value", singleVarcharValue(executor::read(*pool_, table, key)));
+  EXPECT_EQ("updated-value",
+            singleVarcharValue(executor::read(*pool_, table, key)));
 }
 
 TEST_F(ExecutorTest, UpdateNonExistingKeyThrows) {
   Table table = createSingleColumnTable();
   const int key = 777;
-  EXPECT_THROW({
-    executor::update(*pool_, table, key,
-                     TypedRow{{Column::VarcharType("does-not-exist")}});
-  }, std::runtime_error);
+  EXPECT_THROW(
+      {
+        executor::update(*pool_, table, key,
+                         TypedRow{{Column::VarcharType("does-not-exist")}});
+      },
+      std::runtime_error);
 }
 
 TEST_F(ExecutorTest, InsertPageOverflow) {
@@ -188,7 +191,8 @@ TEST_F(ExecutorTest, InsertPageOverflow) {
     std::cout << "Start Verifying inserted records..." << std::endl;
     // Verify that all inserted records can be read back correctly.
     for (const auto& [key, value] : expected) {
-      std::string restored = singleVarcharValue(executor::read(*pool_, table, key));
+      std::string restored =
+          singleVarcharValue(executor::read(*pool_, table, key));
       if (restored != value) {
         std::cout << "Mismatch detected for key=" << key
                   << ". Dumping B+tree index state..." << std::endl;
@@ -253,8 +257,8 @@ TEST_F(ExecutorTest, UpdateWithWalWritesDeleteThenInsert) {
 
   LSNAllocator allocator(0);
   WAL wal(kWalPath);
-  executor::update(*pool_, table, 33,
-                   TypedRow{{Column::VarcharType("after")}}, allocator, wal);
+  executor::update(*pool_, table, 33, TypedRow{{Column::VarcharType("after")}},
+                   allocator, wal);
   wal.flush();
 
   std::vector<WALRecord> records = readWalRecords(kWalPath);
