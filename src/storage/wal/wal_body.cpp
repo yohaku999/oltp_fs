@@ -15,7 +15,7 @@ void append_bytes(std::vector<std::byte>& out, const std::byte* data,
   out.insert(out.end(), data, data + size);
 }
 
-}  // namespace
+}
 
 std::vector<std::byte> InsertRedoBody::encode() const {
   std::vector<std::byte> out;

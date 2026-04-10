@@ -30,17 +30,17 @@ std::pair<uint16_t, uint16_t> insertIntoHeap(BufferPool& pool, File& heapFile,
   RecordSerializer cell(schema, row);
   const std::vector<std::byte>& serialized_cell = cell.serializedBytes();
 
-  int targetPageID = heapFile.getMaxPageID();
-  Page* heapPage = pool.pinPage(targetPageID, heapFile);
-  auto insertedSlotID = heapPage->insertCell(serialized_cell);
-  if (!insertedSlotID.has_value()) {
-    pool.unpinPage(heapPage, heapFile);
+  int target_page_id = heapFile.getMaxPageID();
+  Page* heap_page = pool.pinPage(target_page_id, heapFile);
+  auto inserted_slot_id = heap_page->insertCell(serialized_cell);
+  if (!inserted_slot_id.has_value()) {
+    pool.unpinPage(heap_page, heapFile);
     // WARNING : currently how we deal with leafpage and heappage is the same.
     // Thus it is correct to set is_leaf = true here but, it's confusing.
-    targetPageID = pool.createPage(true, heapFile);
-    heapPage = pool.pinPage(targetPageID, heapFile);
-    insertedSlotID = heapPage->insertCell(serialized_cell);
-    if (!insertedSlotID.has_value()) {
+    target_page_id = pool.createPage(true, heapFile);
+    heap_page = pool.pinPage(target_page_id, heapFile);
+    inserted_slot_id = heap_page->insertCell(serialized_cell);
+    if (!inserted_slot_id.has_value()) {
       throw std::runtime_error(
           "Failed to insert record cell into a new heap page due to "
           "insufficient space.");
@@ -50,21 +50,21 @@ std::pair<uint16_t, uint16_t> insertIntoHeap(BufferPool& pool, File& heapFile,
   if (allocator != nullptr && wal != nullptr) {
     wal->write(make_wal_record(
         *allocator, WALRecord::RecordType::INSERT,
-        static_cast<uint16_t>(targetPageID),
-        InsertRedoBody(static_cast<uint16_t>(insertedSlotID.value()),
+    static_cast<uint16_t>(target_page_id),
+    InsertRedoBody(static_cast<uint16_t>(inserted_slot_id.value()),
                        serialized_cell)
             .encode()));
   }
 
-  pool.unpinPage(heapPage, heapFile);
+    pool.unpinPage(heap_page, heapFile);
   LOG_INFO("Inserted record with key {} into heap page ID {} successfully.",
-           key, targetPageID);
+       key, target_page_id);
 
-  return {static_cast<uint16_t>(targetPageID),
-          static_cast<uint16_t>(insertedSlotID.value())};
+    return {static_cast<uint16_t>(target_page_id),
+      static_cast<uint16_t>(inserted_slot_id.value())};
 }
 
-}  // namespace
+}
 
 TypedRow executor::read(BufferPool& pool, Table& table, int key) {
   auto lookup = IndexLookup::fromKey(pool, table.indexFile(), key);

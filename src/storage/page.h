@@ -71,7 +71,7 @@ class Page {
   // them.
   static constexpr size_t PAGE_SIZE_BYTE = 4096;
   static constexpr size_t CELL_POINTER_SIZE = sizeof(uint16_t);
-  char* start_p_;
+  char* page_buffer_;
   char* getSlotValueStart(int slot_id);
   std::optional<int> insertCell(const std::vector<std::byte>& serialized_cell);
   std::optional<int> insertCell(const Cell& cell);
@@ -84,11 +84,11 @@ class Page {
   char* getSlotCellStart(int slot_id);
 
   // Constructor for creating a new page
-  Page(char* start_p, bool is_leaf, uint16_t right_most_child_page_id,
+    Page(char* page_buffer, bool is_leaf, uint16_t right_most_child_page_id,
        uint16_t page_id);
 
   // Constructor for wrapping existing page data
-  Page(char* start_p, uint16_t page_id);
+    Page(char* page_buffer, uint16_t page_id);
 
   void dump(std::ostream& os);
 };

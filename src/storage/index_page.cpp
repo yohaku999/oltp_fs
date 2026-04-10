@@ -7,7 +7,8 @@
 
 bool LeafIndexPage::hasKey(int key) const {
   for (int idx = 0; idx < page_.getSlotCount(); ++idx) {
-    char* cell_data = page_.start_p_ + page_.getCellOffsetOnXthPointer(idx);
+    char* cell_data =
+        page_.page_buffer_ + page_.getCellOffsetOnXthPointer(idx);
     if (!Cell::isValid(cell_data)) {
       continue;
     }
@@ -25,7 +26,8 @@ std::optional<std::pair<uint16_t, uint16_t>> LeafIndexPage::findRef(
    * PERFORMANCE:Same consideration as Page::findLeafRef; kept verbatim.
    */
   for (int idx = 0; idx < page_.getSlotCount(); ++idx) {
-    char* cell_data = page_.start_p_ + page_.getCellOffsetOnXthPointer(idx);
+    char* cell_data =
+        page_.page_buffer_ + page_.getCellOffsetOnXthPointer(idx);
     if (!Cell::isValid(cell_data)) {
       LOG_DEBUG("LeafIndexPage::findRef skipping invalid slot {}", idx);
       continue;
@@ -50,7 +52,8 @@ void LeafIndexPage::transferAndCompactTo(LeafIndexPage& dst,
 
   const int slot_count = page_.getSlotCount();
   for (int idx = 0; idx < slot_count; ++idx) {
-    char* cell_data = page_.start_p_ + page_.getCellOffsetOnXthPointer(idx);
+    char* cell_data =
+        page_.page_buffer_ + page_.getCellOffsetOnXthPointer(idx);
     if (!Cell::isValid(cell_data)) {
       continue;
     }
@@ -68,7 +71,7 @@ void LeafIndexPage::transferAndCompactTo(LeafIndexPage& dst,
   std::vector<LeafCell> cells;
   cells.reserve(old_slot_count);
   for (int i = 0; i < old_slot_count; ++i) {
-    char* cell_data = page_.start_p_ + page_.getCellOffsetOnXthPointer(i);
+    char* cell_data = page_.page_buffer_ + page_.getCellOffsetOnXthPointer(i);
     if (!Cell::isValid(cell_data)) {
       continue;
     }
@@ -87,13 +90,13 @@ void LeafIndexPage::transferAndCompactTo(LeafIndexPage& dst,
     const LeafCell& cell = cells[idx];
     const uint16_t payload_size = static_cast<uint16_t>(cell.payloadSize());
     write_offset = static_cast<uint16_t>(write_offset - payload_size);
-    char* dest = page_.start_p_ + write_offset;
+    char* cell_destination = page_.page_buffer_ + write_offset;
     std::vector<std::byte> serialized = cell.serialize();
-    std::memcpy(dest, serialized.data(), serialized.size());
+    std::memcpy(cell_destination, serialized.data(), serialized.size());
 
-    char* slot_ptr_p = page_.start_p_ + Page::HEADDER_SIZE_BYTE +
-                       Page::CELL_POINTER_SIZE * idx;
-    std::memcpy(slot_ptr_p, &write_offset, sizeof(uint16_t));
+    char* slot_pointer = page_.page_buffer_ + Page::HEADDER_SIZE_BYTE +
+                         Page::CELL_POINTER_SIZE * idx;
+    std::memcpy(slot_pointer, &write_offset, sizeof(uint16_t));
   }
 
   page_.updateSlotCount(new_slot_count);
@@ -111,7 +114,8 @@ uint16_t InternalIndexPage::findChildPage(int key) {
   std::vector<IntermediateCell> cells;
   cells.reserve(page_.getSlotCount());
   for (int idx = 0; idx < page_.getSlotCount(); ++idx) {
-    char* cell_data = page_.start_p_ + page_.getCellOffsetOnXthPointer(idx);
+    char* cell_data =
+        page_.page_buffer_ + page_.getCellOffsetOnXthPointer(idx);
     if (!Cell::isValid(cell_data)) {
       continue;
     }
@@ -140,7 +144,8 @@ void InternalIndexPage::transferAndCompactTo(InternalIndexPage& dst,
 
   const int slot_count = page_.getSlotCount();
   for (int idx = 0; idx < slot_count; ++idx) {
-    char* cell_data = page_.start_p_ + page_.getCellOffsetOnXthPointer(idx);
+    char* cell_data =
+        page_.page_buffer_ + page_.getCellOffsetOnXthPointer(idx);
     if (!Cell::isValid(cell_data)) {
       continue;
     }
@@ -158,7 +163,7 @@ void InternalIndexPage::transferAndCompactTo(InternalIndexPage& dst,
   std::vector<IntermediateCell> cells;
   cells.reserve(old_slot_count);
   for (int i = 0; i < old_slot_count; ++i) {
-    char* cell_data = page_.start_p_ + page_.getCellOffsetOnXthPointer(i);
+    char* cell_data = page_.page_buffer_ + page_.getCellOffsetOnXthPointer(i);
     if (!Cell::isValid(cell_data)) {
       continue;
     }
@@ -177,13 +182,13 @@ void InternalIndexPage::transferAndCompactTo(InternalIndexPage& dst,
     const IntermediateCell& cell = cells[idx];
     const uint16_t payload_size = static_cast<uint16_t>(cell.payloadSize());
     write_offset = static_cast<uint16_t>(write_offset - payload_size);
-    char* dest = page_.start_p_ + write_offset;
+    char* cell_destination = page_.page_buffer_ + write_offset;
     std::vector<std::byte> serialized = cell.serialize();
-    std::memcpy(dest, serialized.data(), serialized.size());
+    std::memcpy(cell_destination, serialized.data(), serialized.size());
 
-    char* slot_ptr_p = page_.start_p_ + Page::HEADDER_SIZE_BYTE +
-                       Page::CELL_POINTER_SIZE * idx;
-    std::memcpy(slot_ptr_p, &write_offset, sizeof(uint16_t));
+    char* slot_pointer = page_.page_buffer_ + Page::HEADDER_SIZE_BYTE +
+                         Page::CELL_POINTER_SIZE * idx;
+    std::memcpy(slot_pointer, &write_offset, sizeof(uint16_t));
   }
 
   page_.updateSlotCount(new_slot_count);

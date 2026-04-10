@@ -19,19 +19,19 @@
 int BTreeCursor::findLeafPageID(BufferPool& pool, File& indexFile, int key) {
   // traverse the btree from the root page until we find the leaf page that may
   // contain the key.
-  int pageID = indexFile.getRootPageID();
-  int parentPageID = Page::HAS_NO_PARENT;
+  int page_id = indexFile.getRootPageID();
+  int parent_page_id = Page::HAS_NO_PARENT;
   while (true) {
     LOG_INFO(
         "Traversing to find leaf page for key {}: currently at page ID {} in "
         "index file {}.",
-        key, pageID, indexFile.getFilePath());
-    Page* page = pool.pinPage(pageID, indexFile);
+        key, page_id, indexFile.getFilePath());
+    Page* page = pool.pinPage(page_id, indexFile);
     // if the page has parent page id of -1, the page is the root page or just
     // not memoed yet.
-    page->setParentPageID(parentPageID);
+    page->setParentPageID(parent_page_id);
     if (page->isLeaf()) {
-      LOG_INFO("Found leaf page ID {} for key {} in index {}", pageID, key,
+      LOG_INFO("Found leaf page ID {} for key {} in index {}", page_id, key,
                indexFile.getFilePath());
       pool.unpinPage(page, indexFile);
       break;
@@ -47,14 +47,14 @@ int BTreeCursor::findLeafPageID(BufferPool& pool, File& indexFile, int key) {
     // leafを0ノードとしてつくるか、みたいなところで悩んでいる。
     // そもそもrightmostpageIDのsplitってちゃんとできるんだっけ
     // 現在のsplitの実装がうまく走るように初期化を構築したい。
-    int childPageID = internal.findChildPage(key);
+    int child_page_id = internal.findChildPage(key);
     pool.unpinPage(page, indexFile);
-    LOG_INFO("The child page ID of page ID {} for key {} is {}", pageID, key,
-             childPageID);
-    parentPageID = pageID;
-    pageID = childPageID;
+    LOG_INFO("The child page ID of page ID {} for key {} is {}", page_id, key,
+             child_page_id);
+    parent_page_id = page_id;
+    page_id = child_page_id;
   }
-  return pageID;
+  return page_id;
 }
 
 std::optional<std::pair<uint16_t, uint16_t>> BTreeCursor::findRecordLocation(
@@ -63,19 +63,19 @@ std::optional<std::pair<uint16_t, uint16_t>> BTreeCursor::findRecordLocation(
            indexFile.getFilePath());
   // NOTE: we decided not to invalidate intermediate nodes during traversal for
   // now. we will come back to this when we start to support concurrency.
-  int pageID = findLeafPageID(pool, indexFile, key);
-  Page* leafPage = pool.pinPage(pageID, indexFile);
-  LeafIndexPage leaf(*leafPage);
+  int page_id = findLeafPageID(pool, indexFile, key);
+  Page* leaf_page = pool.pinPage(page_id, indexFile);
+  LeafIndexPage leaf(*leaf_page);
   auto result = leaf.findRef(key, do_invalidate);
-  pool.unpinPage(leafPage, indexFile);
+  pool.unpinPage(leaf_page, indexFile);
   if (!result.has_value()) {
     LOG_INFO("Key {} not found in leaf page ID {} of index file {}.", key,
-             pageID, indexFile.getFilePath());
+             page_id, indexFile.getFilePath());
   } else {
     LOG_INFO(
         "Found record location for key {} in leaf page ID {} of index file {}: "
         "heap page ID {}, slot ID {}.",
-        key, pageID, indexFile.getFilePath(), result->first, result->second);
+        key, page_id, indexFile.getFilePath(), result->first, result->second);
   }
   return result;
 }
@@ -90,15 +90,15 @@ void BTreeCursor::insertIntoIndex(BufferPool& pool, File& indexFile, int key,
   // OPTIMIZE : currently we are traversing the same path twice and can be
   // omitted.
   int leaf_page_id = findLeafPageID(pool, indexFile, key);
-  Page* leafPage = pool.pinPage(leaf_page_id, indexFile);
+  Page* leaf_page = pool.pinPage(leaf_page_id, indexFile);
   auto leaf_slot_id =
-      leafPage->insertCell(LeafCell(key, heap_page_id, slot_id));
+      leaf_page->insertCell(LeafCell(key, heap_page_id, slot_id));
   if (!leaf_slot_id.has_value()) {
-    splitPage(pool, indexFile, leafPage);
-    pool.unpinPage(leafPage, indexFile);
+    splitPage(pool, indexFile, leaf_page);
+    pool.unpinPage(leaf_page, indexFile);
     insertIntoIndex(pool, indexFile, key, heap_page_id, slot_id);
   } else {
-    pool.unpinPage(leafPage, indexFile);
+    pool.unpinPage(leaf_page, indexFile);
   }
   LOG_INFO(
       "Inserted index entry for key {} pointing to heap page ID {}, slot ID "
@@ -179,13 +179,13 @@ void BTreeCursor::splitPage(BufferPool& pool, File& index_file,
 
 void BTreeCursor::dumpTree(BufferPool& pool, File& indexFile,
                            std::ostream& os) {
-  const uint16_t maxPageId = indexFile.getMaxPageID();
-  for (uint16_t pid = 0; pid <= maxPageId; ++pid) {
-    if (!indexFile.isPageIDUsed(pid)) {
+  const uint16_t max_page_id = indexFile.getMaxPageID();
+  for (uint16_t page_id = 0; page_id <= max_page_id; ++page_id) {
+    if (!indexFile.isPageIDUsed(page_id)) {
       continue;
     }
 
-    Page* page = pool.pinPage(pid, indexFile);
+    Page* page = pool.pinPage(page_id, indexFile);
     page->dump(os);
     pool.unpinPage(page, indexFile);
   }

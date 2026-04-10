@@ -28,7 +28,7 @@ RecordSerializer serializeSingleVarcharRecord(const std::string& value) {
   return RecordSerializer(schema, row);
 }
 
-}  // namespace
+}
 
 class BufferPoolTest : public ::testing::Test {
  protected:
@@ -101,7 +101,8 @@ TEST_F(BufferPoolTest, createNewPageWithEviction) {
     page->insertCell(cell.serializedBytes());
 
     // Copy the page content
-    std::memcpy(page_copies[i].data(), page->start_p_, Page::PAGE_SIZE_BYTE);
+    std::memcpy(page_copies[i].data(), page->page_buffer_,
+          Page::PAGE_SIZE_BYTE);
     pool->unpinPage(page, *testFile);
   }
 
@@ -118,7 +119,7 @@ TEST_F(BufferPoolTest, createNewPageWithEviction) {
     ASSERT_NE(page, nullptr) << "Should be able to access/reload page " << i;
 
     // Compare the page content with the saved copy
-    int cmp_result = std::memcmp(page->start_p_, page_copies[i].data(),
+    int cmp_result = std::memcmp(page->page_buffer_, page_copies[i].data(),
                                  Page::PAGE_SIZE_BYTE);
     EXPECT_EQ(cmp_result, 0)
         << "Page " << i << " content should match after eviction and reload";

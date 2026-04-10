@@ -28,7 +28,7 @@ Column::Type columnTypeFromString(const std::string& type_name) {
   throw std::runtime_error("Unknown column type in metadata: " + type_name);
 }
 
-}  // namespace
+}
 
 Table::Table(std::string name, Schema schema)
     : name_(std::move(name)),

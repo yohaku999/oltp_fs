@@ -23,7 +23,7 @@ RecordSerializer serializeSingleVarcharRecord(const std::string& value) {
   return RecordSerializer(schema, row);
 }
 
-}  // namespace
+}
 
 TEST(PageTest, InsertLeafPageAndFind) {
   std::array<char, Page::PAGE_SIZE_BYTE> page_data{};

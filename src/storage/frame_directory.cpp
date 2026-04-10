@@ -26,9 +26,9 @@ std::optional<int> FrameDirectory::reserveFreeFrame() {
 std::optional<int> FrameDirectory::findResidentFrame(
     int page_id, const std::string& file_path) {
   auto key = std::make_pair(page_id, file_path);
-  auto it = page_to_frame_.find(key);
-  if (it != page_to_frame_.end()) {
-    return it->second;
+  auto resident_frame = page_to_frame_.find(key);
+  if (resident_frame != page_to_frame_.end()) {
+    return resident_frame->second;
   }
   return std::nullopt;
 }

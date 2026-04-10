@@ -29,14 +29,15 @@ uint16_t BufferPool::createPage(bool is_leaf, File& file,
 
 Page* BufferPool::pinPage(int page_id, File& file) {
   LOG_DEBUG("Requesting page ID {} from file {}", page_id, file.getFilePath());
-  auto it = frame_directory_.findResidentFrame(page_id, file.getFilePath());
+  auto resident_frame_id =
+      frame_directory_.findResidentFrame(page_id, file.getFilePath());
   // if the page exists on buffer pool
-  if (it.has_value()) {
-    int frame_id = it.value();
+  if (resident_frame_id.has_value()) {
+    int frame_id = resident_frame_id.value();
     frame_directory_.pin(frame_id);
     return frame_directory_.getFrame(frame_id).page.get();
   } else {
-    auto [frame_id, frame_p] = acquireFrame();
+    auto [frame_id, frame_buffer] = acquireFrame();
 
     // load page on frame
     if (!file.isPageIDUsed(page_id)) {
@@ -45,14 +46,14 @@ Page* BufferPool::pinPage(int page_id, File& file) {
                       "page ID {} in file {}",
                       page_id, file.getFilePath()));
     }
-    file.readPageIntoBuffer(page_id, frame_p);
-    auto page = std::make_unique<Page>(frame_p, page_id);
-    Page* page_ptr = page.get();
+    file.readPageIntoBuffer(page_id, frame_buffer);
+    auto page = std::make_unique<Page>(frame_buffer, page_id);
+    Page* loaded_page = page.get();
     frame_directory_.registerResidentPage(frame_id, page_id, file.getFilePath(),
                                           std::move(page));
     frame_directory_.pin(frame_id);
     LOG_DEBUG("Loaded page ID {} into frame ID {}", page_id, frame_id);
-    return page_ptr;
+    return loaded_page;
   }
 };
 
@@ -60,15 +61,15 @@ void BufferPool::unpinPage(Page* page, File& file) {
   if (!page) {
     throw std::invalid_argument("BufferPool::unpinPage called with null page");
   }
-  auto it =
+  auto resident_frame_id =
       frame_directory_.findResidentFrame(page->getPageID(), file.getFilePath());
-  if (!it.has_value()) {
+  if (!resident_frame_id.has_value()) {
     throw std::logic_error(
         fmt::format("BufferPool::unpinPage: page ID {} in file {} is not "
                     "registered in FrameDirectory",
                     page->getPageID(), file.getFilePath()));
   }
-  frame_directory_.unpin(it.value());
+  frame_directory_.unpin(resident_frame_id.value());
 }
 
 BufferPool::~BufferPool() { operator delete(buffer_); }
@@ -109,7 +110,8 @@ void BufferPool::evictOnePage() {
     // avoid confusion and potential bugs in the future.
     victim_frame.page->clearDirty();
     File file(victim_frame.file_path);
-    file.writePageFromBuffer(victim_frame.page_id, victim_frame.page->start_p_);
+    file.writePageFromBuffer(victim_frame.page_id,
+                             victim_frame.page->page_buffer_);
   }
   frame_directory_.unregisterResidentPage(victim_frame_id);
   LOG_INFO("Evicted page ID {} from frame ID {}", evicted_page_id,
@@ -118,9 +120,9 @@ void BufferPool::evictOnePage() {
 
 void BufferPool::zeroOutFrame(int frame_id) {
   LOG_DEBUG("Zeroing out frame ID: {}", frame_id);
-  char* frame_p =
+  char* frame_buffer =
       static_cast<char*>(buffer_) + frame_id * BufferPool::FRAME_SIZE_BYTE;
-  std::memset(frame_p, 0, BufferPool::FRAME_SIZE_BYTE);
+  std::memset(frame_buffer, 0, BufferPool::FRAME_SIZE_BYTE);
 };
 
 std::pair<int, char*> BufferPool::acquireFrame() {
@@ -139,7 +141,7 @@ std::pair<int, char*> BufferPool::acquireFrame() {
   }
   int frame_id = free_frame.value();
   zeroOutFrame(frame_id);
-  char* frame_p =
+  char* frame_buffer =
       static_cast<char*>(buffer_) + frame_id * BufferPool::FRAME_SIZE_BYTE;
-  return {frame_id, frame_p};
+  return {frame_id, frame_buffer};
 }

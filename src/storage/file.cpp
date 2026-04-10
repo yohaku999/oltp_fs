@@ -161,12 +161,12 @@ File::File(const std::string& file_path) : file_path_(file_path) {
     // update max_page_id_ by reading the file header if the file already
     // exists.
     stream_->seekg(0, std::ios::beg);
-    std::unique_ptr<char[]> headder =
+    std::unique_ptr<char[]> header_buffer =
         std::make_unique<char[]>(File::HEADDER_SIZE_BYTE);
-    stream_->read(headder.get(), File::HEADDER_SIZE_BYTE);
-    max_page_id_ = readValue<uint16_t>(headder.get());
+    stream_->read(header_buffer.get(), File::HEADDER_SIZE_BYTE);
+    max_page_id_ = readValue<uint16_t>(header_buffer.get());
     root_page_id_ =
-        readValue<uint16_t>(headder.get() + File::MAX_PAGE_ID_SIZE_BYTE);
+      readValue<uint16_t>(header_buffer.get() + File::MAX_PAGE_ID_SIZE_BYTE);
     LOG_INFO(
         "opened existing file: {}, max_page_id loaded from header: {}, "
         "root_page_id loaded from header: {}",
