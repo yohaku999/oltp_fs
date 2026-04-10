@@ -43,31 +43,38 @@ Table Table::initialize(const std::string& table_name, const Schema& schema) {
 
   try {
     Table table(table_name, schema);
-    initializeFirstPage(table.index_file_);
-    initializeFirstPage(table.heap_file_);
+
+    std::array<char, Page::PAGE_SIZE_BYTE> index_root_buffer{};
+    Page index_root_page(index_root_buffer.data(), true, 0, 0);
+    table.index_file_.writePageFromBuffer(0, index_root_buffer.data());
+
+    std::array<char, Page::PAGE_SIZE_BYTE> heap_page_buffer{};
+    Page heap_page(heap_page_buffer.data(), true, 0, 0);
+    table.heap_file_.writePageFromBuffer(0, heap_page_buffer.data());
+
     writeSchemaMetadata(defaultMetaPath(table_name), schema);
     return table;
   } catch (...) {
-    removeFilesFor(table_name);
+    removeBackingFilesFor(table_name);
     throw;
   }
 }
 
 Table Table::getTable(const std::string& table_name) {
-  if (!exists(table_name)) {
+  if (!isPersisted(table_name)) {
     throw std::runtime_error("Table does not exist: " + table_name);
   }
   return Table(table_name,
                readSchemaMetadata(table_name, defaultMetaPath(table_name)));
 }
 
-bool Table::exists(const std::string& table_name) {
+bool Table::isPersisted(const std::string& table_name) {
   return std::filesystem::exists(defaultIndexPath(table_name)) &&
          std::filesystem::exists(defaultHeapPath(table_name)) &&
          std::filesystem::exists(defaultMetaPath(table_name));
 }
 
-void Table::removeFilesFor(const std::string& table_name) {
+void Table::removeBackingFilesFor(const std::string& table_name) {
   removeFileIfExists(defaultIndexPath(table_name));
   removeFileIfExists(defaultHeapPath(table_name));
   removeFileIfExists(defaultMetaPath(table_name));
@@ -153,15 +160,6 @@ Schema Table::readSchemaMetadata(const std::string& table_name,
 
   return Schema(table_name, std::move(columns));
 }
-
-// TODO: This initialization might be better placed in other way since it's not
-// really a "Table" level operation.
-void Table::initializeFirstPage(File& file) {
-  std::array<char, Page::PAGE_SIZE_BYTE> buffer{};
-  Page page(buffer.data(), true, 0, 0);
-  file.writePageFromBuffer(0, buffer.data());
-}
-
 bool Table::anyBackingFileExists(const std::string& table_name) {
   return std::filesystem::exists(defaultIndexPath(table_name)) ||
          std::filesystem::exists(defaultHeapPath(table_name)) ||

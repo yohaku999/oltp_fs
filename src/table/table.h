@@ -14,9 +14,9 @@ class Table {
 
   static Table getTable(const std::string& table_name);
 
-  static bool exists(const std::string& table_name);
+  static bool isPersisted(const std::string& table_name);
 
-  static void removeFilesFor(const std::string& table_name);
+  static void removeBackingFilesFor(const std::string& table_name);
 
   const std::string& name() const { return name_; }
   const Schema& schema() const { return schema_; }
@@ -41,8 +41,6 @@ class Table {
 
   static Schema readSchemaMetadata(const std::string& table_name,
                                    const std::string& meta_path);
-
-  static void initializeFirstPage(File& file);
 
   static bool anyBackingFileExists(const std::string& table_name);
 
