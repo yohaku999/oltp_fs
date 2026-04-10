@@ -8,10 +8,11 @@
 
 #include "../src/storage/wal/wal_body.h"
 
+// Build a representative INSERT record and verify that serialization keeps
+// both the record metadata and raw body bytes intact across round-trip.
 TEST(WALRecordTest, SerializeDeserializeRoundTrip) {
   uint16_t page_id = 321;
 
-  // Make an INSERT body and encode it.
   InsertRedoBody body;
   body.offset = 55;
   body.tuple = {std::byte{0x01}, std::byte{0x02}, std::byte{0x03}};
@@ -35,11 +36,10 @@ TEST(WALRecordTest, SerializeDeserializeRoundTrip) {
   }
 }
 
+// Check that decode_body dispatches to the matching WALBody variant for
+// each record type, while preserving the decoded payload contents.
 TEST(WALRecordTest, DecodeBodyDispatchesToCorrectType) {
   LSNAllocator allocator(0);
-
-  // Prepare three different bodies and make WALRecord for each, then use
-  // decode_body.
 
   // INSERT
   InsertRedoBody insert_body;

@@ -75,50 +75,45 @@ TEST_F(BufferPoolTest, createNewPageAllFramesFilledSuccessfully) {
   }
 }
 
-// test eviction by filling more than max frames and verifying evicted pages can
-// be reloaded correctly and also make sure reloaded through storage as well.
+// Fill beyond the in-memory frame budget and verify that evicted pages can be
+// loaded back from storage without losing their contents.
 TEST_F(BufferPoolTest, createNewPageWithEviction) {
-  // Store copies of page contents for later comparison
-  // 10 pages will be evicted.
+  // Keep page snapshots so the test can compare the reloaded page bytes after
+  // eviction writes them out to disk.
   std::array<std::array<char, Page::PAGE_SIZE_BYTE>,
              BufferPool::MAX_FRAME_COUNT + 10>
       page_copies;
   std::array<uint16_t, BufferPool::MAX_FRAME_COUNT + 10> page_ids;
 
-  // Fill all frames and write unique data to each page
   for (size_t i = 0; i < BufferPool::MAX_FRAME_COUNT + 10; ++i) {
     uint16_t page_id = pool->createPage(true, *testFile);
     Page* page = pool->pinPage(page_id, *testFile);
     ASSERT_NE(page, nullptr);
 
-    // Store the page ID (it's the max page ID after allocation)
     page_ids[i] = page_id;
 
-    // Write unique data to each page
     char test_data[50];
     std::snprintf(test_data, sizeof(test_data), "test_data_page_%zu", i);
     RecordSerializer cell = serializeSingleVarcharRecord(test_data);
     page->insertCell(cell.serializedBytes());
 
-    // Copy the page content
     std::memcpy(page_copies[i].data(), page->page_buffer_,
-          Page::PAGE_SIZE_BYTE);
+                Page::PAGE_SIZE_BYTE);
     pool->unpinPage(page, *testFile);
   }
 
-  // make sure file size has incresed by eviction.
+  // Sanity-check that the backing file remains readable after eviction.
   std::ifstream ifs(kTestFile, std::ios::binary | std::ios::ate);
   ASSERT_TRUE(ifs.is_open());
   std::streamsize file_size = ifs.tellg();
   ifs.close();
   EXPECT_GE(file_size, 0);
 
-  // Verify all pages can still be accessed and their contents match
+  // Every page should round-trip through eviction without byte-level changes.
   for (size_t i = 0; i < BufferPool::MAX_FRAME_COUNT + 10; ++i) {
     Page* page = pool->pinPage(page_ids[i], *testFile);
     ASSERT_NE(page, nullptr) << "Should be able to access/reload page " << i;
 
-    // Compare the page content with the saved copy
     int cmp_result = std::memcmp(page->page_buffer_, page_copies[i].data(),
                                  Page::PAGE_SIZE_BYTE);
     EXPECT_EQ(cmp_result, 0)
@@ -134,19 +129,19 @@ TEST_F(BufferPoolTest, EvictionFlushesWALUpToPageLSN) {
   WALRecord rec =
       make_wal_record(allocator, WALRecord::RecordType::INSERT, 1, body);
 
-  // WAL has not been flushed yet because of flush_threshold_bytes_
+  // The record stays buffered until eviction forces WAL durability.
   wal->write(rec);
   EXPECT_EQ(wal->getFlushedLSN(), 0u);
 
   for (size_t i = 0; i < BufferPool::MAX_FRAME_COUNT; ++i) {
     uint16_t page_id = pool->createPage(true, *testFile);
     Page* page = pool->pinPage(page_id, *testFile);
-    // all the page has the same LSN.
+    // Mark each resident page as depending on the same WAL record.
     page->setPageLSN(rec.get_lsn());
     pool->unpinPage(page, *testFile);
   }
 
-  // trigger eviction
+  // Allocate one more page to force eviction of a dirty page.
   (void)pool->createPage(true, *testFile);
 
   EXPECT_EQ(wal->getFlushedLSN(), rec.get_lsn());

@@ -38,7 +38,7 @@ TEST_F(WALTest, FlushedLSNFollowsLastRecordLSN) {
   wal.write(rec1);
   wal.write(rec2);
 
-  // make sure it is flushed.
+  // Flush so getFlushedLSN() reflects the written records.
   wal.flush();
 
   auto flushed = wal.getFlushedLSN();

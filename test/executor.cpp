@@ -98,13 +98,11 @@ TEST_F(ExecutorTest, InsertAndGetMultipleRecords) {
   std::vector<std::pair<int, std::string>> records = {
       {1, "value1"}, {2, "value-two"}, {10, "value-003"}};
 
-  // insert
   for (const auto& record : records) {
     executor::insert(*pool_, table, record.first,
                      TypedRow{{Column::VarcharType(record.second)}});
   }
 
-  // read
   for (const auto& record : records) {
     std::string restored =
         singleVarcharValue(executor::read(*pool_, table, record.first));
@@ -131,7 +129,7 @@ TEST_F(ExecutorTest, InsertDeleteThenFailToRead) {
 
   executor::remove(*pool_, table, key);
 
-  // reading should now fail because the slot has been invalidated
+  // Once a record is removed, executor::read should no longer surface it.
   EXPECT_THROW({ executor::read(*pool_, table, key); }, std::runtime_error);
 }
 
@@ -189,7 +187,8 @@ TEST_F(ExecutorTest, InsertPageOverflow) {
     }
 
     std::cout << "Start Verifying inserted records..." << std::endl;
-    // Verify that all inserted records can be read back correctly.
+    // The overflow path only succeeds if every inserted record remains
+    // retrievable after the heap and index span many pages.
     for (const auto& [key, value] : expected) {
       std::string restored =
           singleVarcharValue(executor::read(*pool_, table, key));

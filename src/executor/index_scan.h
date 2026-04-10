@@ -13,7 +13,6 @@ class File;
 class IndexLookup {
  public:
   IndexLookup(BufferPool& pool, File& indexFile, std::vector<int> keys);
-  // named constructors
   static IndexLookup fromKey(BufferPool& pool, File& indexFile, int key);
   static IndexLookup fromKeys(BufferPool& pool, File& indexFile,
                               std::vector<int> keys);

@@ -60,13 +60,13 @@ TEST(PageTest, TransferCellsToCompactsSourcePage) {
   auto src_page = std::make_unique<Page>(src_data.data(), true, 0, 1);
   auto dst_page = std::make_unique<Page>(dst_data.data(), true, 0, 2);
 
-  // Insert 4 keys: 1,2,3,4
   for (int key = 1; key <= 4; ++key) {
     auto slot_id_opt = src_page->insertCell(LeafCell(key, 0, 0));
     ASSERT_TRUE(slot_id_opt.has_value());
   }
 
-  // Split with separate_key = 3: keys < 3 (1,2) should move to dst_page
+  // Use key 3 as the split boundary and verify that compaction leaves the
+  // source and destination pages in the expected partitioned state.
   LeafCell separate_cell(3, 0, 0);
   std::vector<std::byte> separate_serialized = separate_cell.serialize();
   LeafIndexPage src_leaf(*src_page);
@@ -74,13 +74,11 @@ TEST(PageTest, TransferCellsToCompactsSourcePage) {
   src_leaf.transferAndCompactTo(
       dst_leaf, reinterpret_cast<char*>(separate_serialized.data()));
 
-  // Destination page should have keys 1 and 2
   EXPECT_TRUE(dst_leaf.hasKey(1));
   EXPECT_TRUE(dst_leaf.hasKey(2));
   EXPECT_TRUE(dst_leaf.hasKey(3));
   EXPECT_FALSE(dst_leaf.hasKey(4));
 
-  // Source page should keep keys 3 and 4 only, and be compacted
   EXPECT_FALSE(src_leaf.hasKey(1));
   EXPECT_FALSE(src_leaf.hasKey(2));
   EXPECT_FALSE(src_leaf.hasKey(3));
@@ -102,18 +100,22 @@ TEST(PageTest, TransferCellsToCompactsSourcePage) {
 TEST(PageTest, InsertLeafPageRunsOutOfSpace) {
   std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
   auto page = std::make_unique<Page>(page_data.data(), true, 0, 1);
+  std::array<char, Page::PAGE_SIZE_BYTE> page_snapshot{};
 
   size_t successful_inserts = 0;
   bool saw_nullopt = false;
   const size_t max_attempts = Page::PAGE_SIZE_BYTE;
 
   for (size_t attempt = 0; attempt < max_attempts; ++attempt) {
+    std::memcpy(page_snapshot.data(), page->page_buffer_, Page::PAGE_SIZE_BYTE);
     LeafCell cell(100000 + static_cast<int>(attempt),
                   static_cast<uint16_t>(attempt),
                   static_cast<uint16_t>(attempt));
     auto slot_id_opt = page->insertCell(cell);
     if (!slot_id_opt.has_value()) {
       saw_nullopt = true;
+      EXPECT_EQ(0, std::memcmp(page->page_buffer_, page_snapshot.data(),
+                               Page::PAGE_SIZE_BYTE));
       break;
     }
     EXPECT_TRUE(page->isDirty());
@@ -162,8 +164,9 @@ TEST(PageTest, InsertIntermediatePageAndFind) {
   EXPECT_EQ(right_most_child_page_id, child_page_for_largest_key);
 }
 
-// TODO: invalidation should be done via page API. we will implement later.
 TEST(PageTest, InvalidateSlotSetsFlag) {
+  // Verify invalidation through the public Page API for both typed cells and
+  // already-serialized record payloads.
   auto assertInvalidation = [](bool is_leaf, const Cell& cell) {
     std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
     auto page = std::make_unique<Page>(page_data.data(), is_leaf, 0, 1);

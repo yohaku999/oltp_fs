@@ -51,26 +51,24 @@ class Schema {
     return count;
   }
 
-  // Sum of sizes of fixed-length columns from index 0 up to (but excluding)
-  // fixed_index.
-  std::size_t getFixedColumnsPrefixSize(int fixed_index) const {
-    if (fixed_index <= 0) {
+  std::size_t getFixedColumnsPrefixSize(int target_fixed_column_index) const {
+    if (target_fixed_column_index <= 0) {
       return 0;
     }
 
-    std::size_t total_size = 0;
-    int current_fixed_index = 0;
+    std::size_t prefix_size = 0;
+    int seen_fixed_column_count = 0;
     for (const auto& column : columns_) {
       if (!column.isFixedLength()) {
         continue;
       }
-      total_size += column.size();
-      ++current_fixed_index;
-      if (current_fixed_index >= fixed_index) {
+      prefix_size += column.size();
+      ++seen_fixed_column_count;
+      if (seen_fixed_column_count >= target_fixed_column_index) {
         break;
       }
     }
-    return total_size;
+    return prefix_size;
   }
 
  private:

@@ -53,12 +53,13 @@ TEST_F(E2ETest, SelectBGreaterEqual4) {
   ASSERT_EQ(result.error, nullptr)
       << "parse error: " << (result.error ? result.error->message : "");
 
-  // We don't assert on the exact AST JSON here, but we do ensure it's
-  // non-empty.
+  // This test only needs parsing to succeed; it does not depend on the exact
+  // AST shape produced by libpg_query.
   ASSERT_NE(result.parse_tree, nullptr);
   ASSERT_GT(std::strlen(result.parse_tree), 0u);
 
-  // Insert a few rows with different b values
+  // Populate rows on both sides of the lower bound so the range scan can
+  // prove its filtering behavior.
   Column col_b("b", Column::Type::Varchar);
   Schema schema("x", {col_b});
   Table table = Table::initialize(kTableName, schema);
@@ -75,8 +76,6 @@ TEST_F(E2ETest, SelectBGreaterEqual4) {
       IndexLookup::fromKeyRange(*pool, table.indexFile(), LOW_KEY, HIGH_KEY);
   HeapFetch fetcher(*pool, table.heapFile());
 
-  // We expect to see keys 4 and 7, in that order, with the
-  // corresponding payload strings we inserted above.
   std::vector<std::string> seen;
 
   while (auto rid = lookup.next()) {
@@ -106,7 +105,6 @@ TEST_F(E2ETest, SelectRangeWithMultiColumnRows) {
                       Column("name", Column::Type::Varchar)});
   Table table = Table::initialize(kTableName, schema);
 
-  // insert
   executor::insert(
       *pool, table, 1,
       TypedRow{{Column::IntegerType(1), Column::VarcharType("row_1")}});
@@ -120,7 +118,7 @@ TEST_F(E2ETest, SelectRangeWithMultiColumnRows) {
       *pool, table, 7,
       TypedRow{{Column::IntegerType(7), Column::VarcharType("row_7")}});
 
-  // read
+  // The range [4, 10] should return only the final two inserted rows.
   IndexLookup lookup =
       IndexLookup::fromKeyRange(*pool, table.indexFile(), 4, 10);
   HeapFetch fetcher(*pool, table.heapFile());

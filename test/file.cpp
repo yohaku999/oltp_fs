@@ -83,10 +83,10 @@ TEST_F(FileTest, TestPersistanceLoadFromHeader) {
 
   file_p->setRootPageID(persisted_root);
 
-  // Close File so the header is flushed to disk.
+  // Closing the File should flush header metadata before the next open.
   file_p.reset();
 
-  // Reopen and verify header was persisted correctly.
+  // Reopening should recover the same persisted header values.
   file_p = std::make_unique<File>(test_file_path_);
 
   EXPECT_EQ(persisted_max, file_p->getMaxPageID());
