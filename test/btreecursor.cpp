@@ -10,24 +10,31 @@
 
 #include "../src/storage/bufferpool.h"
 #include "../src/storage/file.h"
+#include "../src/storage/wal/wal.h"
 #include "../src/storage/page.h"
 
 class BTreeCursorTest : public ::testing::Test {
  protected:
   std::unique_ptr<BufferPool> pool_;
   std::unique_ptr<File> index_file_;
+  std::unique_ptr<WAL> wal_;
   const std::string index_path_ = "btreecursor_test.index";
+  const std::string wal_path_ = "btreecursor_test.wal";
 
   void SetUp() override {
-    pool_ = std::make_unique<BufferPool>();
     std::remove(index_path_.c_str());
+    std::remove(wal_path_.c_str());
+    wal_ = std::make_unique<WAL>(wal_path_);
+    pool_ = std::make_unique<BufferPool>(*wal_);
     index_file_ = std::make_unique<File>(index_path_);
     initializeLeafPage(*index_file_);
   }
 
   void TearDown() override {
     index_file_.reset();
+    wal_.reset();
     std::remove(index_path_.c_str());
+    std::remove(wal_path_.c_str());
   }
 
   static void initializeLeafPage(File& file) {

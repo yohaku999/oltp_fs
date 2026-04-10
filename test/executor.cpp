@@ -23,14 +23,18 @@ class ExecutorTest : public ::testing::Test {
   static constexpr const char* kTableName = "executor_test_table";
   static constexpr const char* kWalPath = "executor_test_table.wal";
   std::unique_ptr<BufferPool> pool_;
+  std::unique_ptr<WAL> wal_;
 
   void SetUp() override {
-    pool_ = std::make_unique<BufferPool>();
     Table::removeFilesFor(kTableName);
     std::remove(kWalPath);
+    wal_ = std::make_unique<WAL>(kWalPath);
+    pool_ = std::make_unique<BufferPool>(*wal_);
   }
 
   void TearDown() override {
+    pool_.reset();
+    wal_.reset();
     Table::removeFilesFor(kTableName);
     std::remove(kWalPath);
   }

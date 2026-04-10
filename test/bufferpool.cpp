@@ -16,6 +16,18 @@
 #include <set>
 #include <gtest/gtest.h>
 
+namespace {
+
+RecordSerializer serializeSingleVarcharRecord(const std::string& value) {
+  static const Schema schema{
+    "single_varchar_record",
+    std::vector<Column>{Column("value", Column::Type::Varchar)}};
+  TypedRow row{{value}};
+  return RecordSerializer(schema, row);
+}
+
+}  // namespace
+
 class BufferPoolTest : public ::testing::Test
 {
 protected:

@@ -18,6 +18,7 @@ extern "C" {
 #include "storage/page.h"
 #include "storage/record_cell.h"
 #include "storage/record_serializer.h"
+#include "storage/wal/wal.h"
 #include "table/table.h"
 
 class E2ETest : public ::testing::Test {
@@ -25,17 +26,22 @@ class E2ETest : public ::testing::Test {
   static constexpr const char* kTableName = "x";
 
   std::unique_ptr<BufferPool> pool;
+  std::unique_ptr<WAL> wal;
 
   PgQueryParseResult result;
 
   void SetUp() override {
-    pool = std::make_unique<BufferPool>();
     Table::removeFilesFor(kTableName);
+    std::remove("e2e_test.wal");
+    wal = std::make_unique<WAL>("e2e_test.wal");
+    pool = std::make_unique<BufferPool>(*wal);
   }
 
   void TearDown() override {
     pool.reset();
+    wal.reset();
     Table::removeFilesFor(kTableName);
+    std::remove("e2e_test.wal");
     pg_query_free_parse_result(result);
   }
 };
