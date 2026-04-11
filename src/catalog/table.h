@@ -31,9 +31,8 @@ class Table {
                              bool do_invalidate = false);
   TypedRow readRow(BufferPool& pool, RID rid) const;
   RID insertHeapRecord(BufferPool& pool, int key, const TypedRow& row,
-                       LSNAllocator* allocator = nullptr, WAL* wal = nullptr);
+                       LSNAllocator& allocator, WAL& wal);
   void insertIndexEntry(BufferPool& pool, int key, RID rid);
-  void invalidateHeapRecord(BufferPool& pool, RID rid);
   void invalidateHeapRecord(BufferPool& pool, RID rid, LSNAllocator& allocator,
                             WAL& wal);
   File& indexFile() { return index_file_; }

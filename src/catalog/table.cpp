@@ -93,7 +93,7 @@ TypedRow Table::readRow(BufferPool& pool, RID rid) const {
 }
 
 RID Table::insertHeapRecord(BufferPool& pool, int key, const TypedRow& row,
-                            LSNAllocator* allocator, WAL* wal) {
+                            LSNAllocator& allocator, WAL& wal) {
   LOG_INFO("Inserting record with key {} into heap file {}.", key,
            heap_file_.getFilePath());
   RecordSerializer cell(schema_, row);
@@ -114,14 +114,12 @@ RID Table::insertHeapRecord(BufferPool& pool, int key, const TypedRow& row,
     }
   }
 
-  if (allocator != nullptr && wal != nullptr) {
-    wal->write(make_wal_record(
-        *allocator, WALRecord::RecordType::INSERT,
-        static_cast<uint16_t>(target_page_id),
-        InsertRedoBody(static_cast<uint16_t>(inserted_slot_id.value()),
-                       serialized_cell)
-            .encode()));
-  }
+  wal.write(make_wal_record(
+      allocator, WALRecord::RecordType::INSERT,
+      static_cast<uint16_t>(target_page_id),
+      InsertRedoBody(static_cast<uint16_t>(inserted_slot_id.value()),
+                     serialized_cell)
+          .encode()));
 
   pool.unpinPage(heap_page, heap_file_);
   LOG_INFO("Inserted record with key {} into heap page ID {} successfully.",
@@ -134,12 +132,6 @@ RID Table::insertHeapRecord(BufferPool& pool, int key, const TypedRow& row,
 void Table::insertIndexEntry(BufferPool& pool, int key, RID rid) {
   BTreeCursor::insertIntoIndex(pool, index_file_, key, rid.heap_page_id,
                                rid.slot_id);
-}
-
-void Table::invalidateHeapRecord(BufferPool& pool, RID rid) {
-  Page* page = pool.pinPage(rid.heap_page_id, heap_file_);
-  page->invalidateSlot(rid.slot_id);
-  pool.unpinPage(page, heap_file_);
 }
 
 void Table::invalidateHeapRecord(BufferPool& pool, RID rid,

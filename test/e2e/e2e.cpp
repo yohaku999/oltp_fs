@@ -18,6 +18,7 @@ extern "C" {
 #include "storage/page/page.h"
 #include "storage/record/record_cell.h"
 #include "storage/record/record_serializer.h"
+#include "storage/wal/lsn_allocator.h"
 #include "storage/wal/wal.h"
 #include "catalog/table.h"
 
@@ -27,6 +28,7 @@ class E2ETest : public ::testing::Test {
 
   std::unique_ptr<BufferPool> pool;
   std::unique_ptr<WAL> wal;
+  LSNAllocator allocator{0};
 
   PgQueryParseResult result;
 
@@ -64,10 +66,14 @@ TEST_F(E2ETest, SelectBGreaterEqual4) {
   Schema schema("x", {col_b});
   Table table = Table::initialize(kTableName, schema);
 
-  executor::insert(*pool, table, 1, TypedRow{{Column::VarcharType("row_b_1")}});
-  executor::insert(*pool, table, 3, TypedRow{{Column::VarcharType("row_b_3")}});
-  executor::insert(*pool, table, 4, TypedRow{{Column::VarcharType("row_b_4")}});
-  executor::insert(*pool, table, 7, TypedRow{{Column::VarcharType("row_b_7")}});
+  executor::insert(*pool, table, 1, TypedRow{{Column::VarcharType("row_b_1")}},
+                   allocator, *wal);
+  executor::insert(*pool, table, 3, TypedRow{{Column::VarcharType("row_b_3")}},
+                   allocator, *wal);
+  executor::insert(*pool, table, 4, TypedRow{{Column::VarcharType("row_b_4")}},
+                   allocator, *wal);
+  executor::insert(*pool, table, 7, TypedRow{{Column::VarcharType("row_b_7")}},
+                   allocator, *wal);
 
   const int LOW_KEY = 4;
   const int HIGH_KEY = 10;
@@ -107,16 +113,20 @@ TEST_F(E2ETest, SelectRangeWithMultiColumnRows) {
 
   executor::insert(
       *pool, table, 1,
-      TypedRow{{Column::IntegerType(1), Column::VarcharType("row_1")}});
+      TypedRow{{Column::IntegerType(1), Column::VarcharType("row_1")}},
+      allocator, *wal);
   executor::insert(
       *pool, table, 3,
-      TypedRow{{Column::IntegerType(3), Column::VarcharType("row_3")}});
+      TypedRow{{Column::IntegerType(3), Column::VarcharType("row_3")}},
+      allocator, *wal);
   executor::insert(
       *pool, table, 4,
-      TypedRow{{Column::IntegerType(4), Column::VarcharType("row_4")}});
+      TypedRow{{Column::IntegerType(4), Column::VarcharType("row_4")}},
+      allocator, *wal);
   executor::insert(
       *pool, table, 7,
-      TypedRow{{Column::IntegerType(7), Column::VarcharType("row_7")}});
+      TypedRow{{Column::IntegerType(7), Column::VarcharType("row_7")}},
+      allocator, *wal);
 
   // The range [4, 10] should return only the final two inserted rows.
   IndexLookup lookup =

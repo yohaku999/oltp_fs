@@ -121,9 +121,11 @@ TEST_F(TableTest, InitializeCreatesReadableTableBootstrap) {
 
 TEST_F(TableTest, InsertIndexFindRIDAndReadRowRoundTrip) {
   Table table = createSingleColumnTable();
+  LSNAllocator allocator(0);
 
   RID inserted = table.insertHeapRecord(
-      *pool_, 11, TypedRow{{Column::VarcharType("table-value")}});
+      *pool_, 11, TypedRow{{Column::VarcharType("table-value")}}, allocator,
+      *wal_);
   table.insertIndexEntry(*pool_, 11, inserted);
 
   std::optional<RID> found = table.findRID(*pool_, 11);
@@ -138,12 +140,11 @@ TEST_F(TableTest, InsertIndexFindRIDAndReadRowRoundTrip) {
 TEST_F(TableTest, InsertHeapRecordWithWalWritesInsertRecord) {
   Table table = createSingleColumnTable();
   LSNAllocator allocator(0);
-  WAL wal(kWalPath);
 
   RID inserted = table.insertHeapRecord(
-      *pool_, 11, TypedRow{{Column::VarcharType("wal")}}, &allocator, &wal);
+      *pool_, 11, TypedRow{{Column::VarcharType("wal")}}, allocator, *wal_);
   table.insertIndexEntry(*pool_, 11, inserted);
-  wal.flush();
+  wal_->flush();
 
   std::vector<WALRecord> records = readWalRecords(kWalPath);
   ASSERT_EQ(records.size(), 1u);
@@ -158,20 +159,22 @@ TEST_F(TableTest, InsertHeapRecordWithWalWritesInsertRecord) {
 
 TEST_F(TableTest, InvalidateHeapRecordWithWalWritesDeleteRecord) {
   Table table = createSingleColumnTable();
+  LSNAllocator insert_allocator(0);
   RID inserted = table.insertHeapRecord(
-      *pool_, 22, TypedRow{{Column::VarcharType("gone")}});
+      *pool_, 22, TypedRow{{Column::VarcharType("gone")}}, insert_allocator,
+      *wal_);
   table.insertIndexEntry(*pool_, 22, inserted);
 
   LSNAllocator allocator(0);
-  WAL wal(kWalPath);
-  table.invalidateHeapRecord(*pool_, inserted, allocator, wal);
-  wal.flush();
+  table.invalidateHeapRecord(*pool_, inserted, allocator, *wal_);
+  wal_->flush();
 
   std::vector<WALRecord> records = readWalRecords(kWalPath);
-  ASSERT_EQ(records.size(), 1u);
-  EXPECT_EQ(records[0].get_type(), WALRecord::RecordType::DELETE);
+  ASSERT_EQ(records.size(), 2u);
+  EXPECT_EQ(records[0].get_type(), WALRecord::RecordType::INSERT);
+  EXPECT_EQ(records[1].get_type(), WALRecord::RecordType::DELETE);
 
-  WALBody body = decode_body(records[0]);
+  WALBody body = decode_body(records[1]);
   ASSERT_TRUE(std::holds_alternative<DeleteRedoBody>(body));
   const auto& delete_body = std::get<DeleteRedoBody>(body);
   EXPECT_EQ(delete_body.offset, inserted.slot_id);

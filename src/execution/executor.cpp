@@ -30,12 +30,6 @@ TypedRow executor::read(BufferPool& pool, Table& table, int key) {
 }
 
 void executor::insert(BufferPool& pool, Table& table, int key,
-                      const TypedRow& row) {
-  RID rid = table.insertHeapRecord(pool, key, row);
-  table.insertIndexEntry(pool, key, rid);
-}
-
-void executor::insert(BufferPool& pool, Table& table, int key,
                       const TypedRow& row, LSNAllocator& allocator, WAL& wal) {
   LOG_INFO("Inserting record with key {} into table {}.", key, table.name());
   std::optional<RID> existing_rid = table.findRID(pool, key);
@@ -45,18 +39,8 @@ void executor::insert(BufferPool& pool, Table& table, int key,
         " already exists. Duplicate keys are not allowed.");
   }
 
-  RID rid = table.insertHeapRecord(pool, key, row, &allocator, &wal);
+  RID rid = table.insertHeapRecord(pool, key, row, allocator, wal);
   table.insertIndexEntry(pool, key, rid);
-}
-
-void executor::remove(BufferPool& pool, Table& table, int key) {
-  std::optional<RID> rid = table.findRID(pool, key, true);
-  if (!rid.has_value()) {
-    throw std::runtime_error("Key " + std::to_string(key) +
-                             " not found in leaf page.");
-  }
-  table.invalidateHeapRecord(pool, rid.value());
-  LOG_INFO("Removed record with key {} successfully.", key);
 }
 
 void executor::remove(BufferPool& pool, Table& table, int key,
@@ -78,12 +62,6 @@ void executor::remove(BufferPool& pool, Table& table, int key,
  * fewer page-structure assumptions) without requiring in-place updates or
  * special-case split handling.
  */
-void executor::update(BufferPool& pool, Table& table, int key,
-                      const TypedRow& row) {
-  executor::remove(pool, table, key);
-  executor::insert(pool, table, key, row);
-}
-
 void executor::update(BufferPool& pool, Table& table, int key,
                       const TypedRow& row, LSNAllocator& allocator, WAL& wal) {
   executor::remove(pool, table, key, allocator, wal);

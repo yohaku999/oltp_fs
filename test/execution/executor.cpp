@@ -12,6 +12,7 @@
 
 #include "storage/index/btreecursor.h"
 #include "storage/runtime/bufferpool.h"
+#include "storage/wal/lsn_allocator.h"
 #include "storage/wal/wal.h"
 #include "catalog/table.h"
 
@@ -21,6 +22,7 @@ class ExecutorTest : public ::testing::Test {
   static constexpr const char* kWalPath = "executor_test_table.wal";
   std::unique_ptr<BufferPool> pool_;
   std::unique_ptr<WAL> wal_;
+  LSNAllocator allocator_{0};
 
   void SetUp() override {
     Table::removeBackingFilesFor(kTableName);
@@ -59,7 +61,8 @@ TEST_F(ExecutorTest, InsertAndGetMultipleRecords) {
 
   for (const auto& record : records) {
     executor::insert(*pool_, table, record.first,
-                     TypedRow{{Column::VarcharType(record.second)}});
+                     TypedRow{{Column::VarcharType(record.second)}},
+                     allocator_, *wal_);
   }
 
   for (const auto& record : records) {
@@ -72,7 +75,7 @@ TEST_F(ExecutorTest, InsertAndGetMultipleRecords) {
 TEST_F(ExecutorTest, InsertAndReadTypedRow) {
   Table table = createSingleColumnTable();
   TypedRow inserted{{Column::VarcharType("typed-value")}};
-  executor::insert(*pool_, table, 11, inserted);
+  executor::insert(*pool_, table, 11, inserted, allocator_, *wal_);
 
   TypedRow restored = executor::read(*pool_, table, 11);
   ASSERT_EQ(restored.values.size(), 1u);
@@ -84,9 +87,10 @@ TEST_F(ExecutorTest, InsertDeleteThenFailToRead) {
   Table table = createSingleColumnTable();
   const int key = 99;
   executor::insert(*pool_, table, key,
-                   TypedRow{{Column::VarcharType("transient")}});
+                   TypedRow{{Column::VarcharType("transient")}}, allocator_,
+                   *wal_);
 
-  executor::remove(*pool_, table, key);
+  executor::remove(*pool_, table, key, allocator_, *wal_);
 
   // Once a record is removed, executor::read should no longer surface it.
   EXPECT_THROW({ executor::read(*pool_, table, key); }, std::runtime_error);
@@ -96,10 +100,12 @@ TEST_F(ExecutorTest, UpdateReplacesExistingValue) {
   Table table = createSingleColumnTable();
   const int key = 123;
   executor::insert(*pool_, table, key,
-                   TypedRow{{Column::VarcharType("initial-value")}});
+                   TypedRow{{Column::VarcharType("initial-value")}},
+                   allocator_, *wal_);
 
   executor::update(*pool_, table, key,
-                   TypedRow{{Column::VarcharType("updated-value")}});
+                   TypedRow{{Column::VarcharType("updated-value")}},
+                   allocator_, *wal_);
 
   EXPECT_EQ("updated-value",
             singleVarcharValue(executor::read(*pool_, table, key)));
@@ -111,7 +117,8 @@ TEST_F(ExecutorTest, UpdateNonExistingKeyThrows) {
   EXPECT_THROW(
       {
         executor::update(*pool_, table, key,
-                         TypedRow{{Column::VarcharType("does-not-exist")}});
+                         TypedRow{{Column::VarcharType("does-not-exist")}},
+                         allocator_, *wal_);
       },
       std::runtime_error);
 }
@@ -141,7 +148,8 @@ TEST_F(ExecutorTest, InsertPageOverflow) {
         ch = static_cast<char>('a' + (rng() % 26));
       }
       executor::insert(*pool_, table, key,
-                       TypedRow{{Column::VarcharType(payload)}});
+                       TypedRow{{Column::VarcharType(payload)}}, allocator_,
+                       *wal_);
       expected.emplace(key, payload);
     }
 
