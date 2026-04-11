@@ -1,9 +1,14 @@
 #include "index_page.h"
 
 #include <algorithm>
+#include <cstring>
 #include <vector>
 
 #include "logging.h"
+
+LeafCell LeafIndexPage::cellAt(int slot_id) const {
+  return LeafCell::decodeCell(page_.getSlotCellStart(slot_id));
+}
 
 bool LeafIndexPage::hasKey(int key) const {
   for (int idx = 0; idx < page_.getSlotCount(); ++idx) {
@@ -11,7 +16,7 @@ bool LeafIndexPage::hasKey(int key) const {
     if (!Cell::isValid(cell_data)) {
       continue;
     }
-    LeafCell cell = page_.getLeafCellOnXthPointer(idx);
+    LeafCell cell = cellAt(idx);
     if (cell.key() == key) {
       return true;
     }
@@ -30,7 +35,7 @@ std::optional<std::pair<uint16_t, uint16_t>> LeafIndexPage::findRef(
       LOG_DEBUG("LeafIndexPage::findRef skipping invalid slot {}", idx);
       continue;
     }
-    LeafCell cell = page_.getLeafCellOnXthPointer(idx);
+    LeafCell cell = cellAt(idx);
     if (cell.key() == key) {
       if (do_invalidate) {
         LOG_DEBUG("LeafIndexPage::findRef invalidating slot {} for key {}", idx,
@@ -62,7 +67,6 @@ void LeafIndexPage::transferAndCompactTo(LeafIndexPage& dst,
     }
   }
 
-  // Compact this page (leaf branch of Page::compact).
   uint16_t old_slot_count = page_.getSlotCount();
 
   std::vector<LeafCell> cells;
@@ -72,7 +76,7 @@ void LeafIndexPage::transferAndCompactTo(LeafIndexPage& dst,
     if (!Cell::isValid(cell_data)) {
       continue;
     }
-    cells.push_back(page_.getLeafCellOnXthPointer(i));
+    cells.push_back(cellAt(i));
   }
 
   const uint16_t new_slot_count = static_cast<uint16_t>(cells.size());
@@ -106,8 +110,15 @@ void LeafIndexPage::transferAndCompactTo(LeafIndexPage& dst,
       new_slot_count, write_offset);
 }
 
+IntermediateCell InternalIndexPage::cellAt(int slot_id) const {
+  return IntermediateCell::decodeCell(page_.getSlotCellStart(slot_id));
+}
+
+uint16_t InternalIndexPage::rightMostChildPageId() const {
+  return page_.rightMostChildPageId();
+}
+
 uint16_t InternalIndexPage::findChildPage(int key) {
-  // collect valid intermediate cells.
   std::vector<IntermediateCell> cells;
   cells.reserve(page_.getSlotCount());
   for (int idx = 0; idx < page_.getSlotCount(); ++idx) {
@@ -115,7 +126,7 @@ uint16_t InternalIndexPage::findChildPage(int key) {
     if (!Cell::isValid(cell_data)) {
       continue;
     }
-    cells.push_back(page_.getIntermediateCellOnXthPointer(idx));
+    cells.push_back(cellAt(idx));
   }
 
   std::sort(cells.begin(), cells.end(),
@@ -129,11 +140,10 @@ uint16_t InternalIndexPage::findChildPage(int key) {
     }
   }
   LOG_INFO("InternalIndexPage::findChildPage: Going to right most child {}.",
-           page_.rightMostChildPageId());
-  return page_.rightMostChildPageId();
+           rightMostChildPageId());
+  return rightMostChildPageId();
 }
 
-// TODO: can we get separate_key from super method maybe?
 void InternalIndexPage::transferAndCompactTo(InternalIndexPage& dst,
                                              char* separate_key) {
   int separate_key_value = IntermediateCell::getKey(separate_key);
@@ -152,7 +162,6 @@ void InternalIndexPage::transferAndCompactTo(InternalIndexPage& dst,
     }
   }
 
-  // Compact this page for intermediate cells (analogous to leaf compaction).
   uint16_t old_slot_count = page_.getSlotCount();
 
   std::vector<IntermediateCell> cells;
@@ -162,7 +171,7 @@ void InternalIndexPage::transferAndCompactTo(InternalIndexPage& dst,
     if (!Cell::isValid(cell_data)) {
       continue;
     }
-    cells.push_back(page_.getIntermediateCellOnXthPointer(i));
+    cells.push_back(cellAt(i));
   }
 
   const uint16_t new_slot_count = static_cast<uint16_t>(cells.size());

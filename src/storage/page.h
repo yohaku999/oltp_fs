@@ -5,8 +5,6 @@
 #include <vector>
 
 #include "cell.h"
-#include "intermediate_cell.h"
-#include "leaf_cell.h"
 
 class LeafIndexPage;
 class InternalIndexPage;
@@ -34,8 +32,6 @@ class Page {
       SLOT_DIRECTORY_OFFSET + sizeof(uint16_t);
   static constexpr size_t PAGE_LSN_OFFSET =
       RIGHT_MOST_CHILD_POINTER_OFFSET + sizeof(uint16_t);
-  IntermediateCell getIntermediateCellOnXthPointer(int x);
-  LeafCell getLeafCellOnXthPointer(int x);
   uint16_t getCellOffsetOnXthPointer(int x);
   uint16_t getSlotCount();
   uint16_t getSlotDirectoryOffset();

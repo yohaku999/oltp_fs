@@ -11,8 +11,7 @@
 #include <utility>
 #include <vector>
 
-#include "intermediate_cell.h"
-#include "leaf_cell.h"
+#include "index_page.h"
 #include "logging.h"
 #include "record_cell.h"
 
@@ -102,20 +101,10 @@ std::optional<int> Page::insertCell(const Cell& cell) {
 }
 
 // private methods
-IntermediateCell Page::getIntermediateCellOnXthPointer(int x) {
-  char* cell_data = page_buffer_ + getCellOffsetOnXthPointer(x);
-  return IntermediateCell::decodeCell(cell_data);
-}
-
 uint16_t Page::getCellOffsetOnXthPointer(int x) {
   char* slot_pointer =
       page_buffer_ + Page::HEADDER_SIZE_BYTE + Page::CELL_POINTER_SIZE * x;
   return readValue<uint16_t>(slot_pointer);
-}
-
-LeafCell Page::getLeafCellOnXthPointer(int x) {
-  char* cell_data = page_buffer_ + getCellOffsetOnXthPointer(x);
-  return LeafCell::decodeCell(cell_data);
 }
 
 char* Page::getSlotCellStart(int slot_id) {
@@ -198,7 +187,7 @@ void Page::dump(std::ostream& os) {
   os << "parent=" << parent_page_id_
      << " slotCount=" << static_cast<int>(getSlotCount());
   if (!isLeaf()) {
-    os << " rightMostChild=" << rightMostChildPageId();
+   os << " rightMostChild=" << InternalIndexPage(*this).rightMostChildPageId();
   }
   os << "\n";
 
@@ -210,11 +199,11 @@ void Page::dump(std::ostream& os) {
     }
 
     if (isLeaf()) {
-      LeafCell c = getLeafCellOnXthPointer(i);
+      LeafCell c = LeafIndexPage(*this).cellAt(i);
       os << "  [" << i << "] Leaf  key=" << c.key()
          << " heapPage=" << c.heap_page_id() << " slot=" << c.slot_id() << "\n";
     } else {
-      IntermediateCell c = getIntermediateCellOnXthPointer(i);
+      IntermediateCell c = InternalIndexPage(*this).cellAt(i);
       os << "  [" << i << "] Inter key=" << c.key()
          << " childPage=" << c.page_id() << "\n";
     }
