@@ -1,6 +1,8 @@
 # dbfs
 
 Learning-oriented prototype of a disk-based OLTP RDBMS.
+- https://www.youtube.com/@CMUDatabaseGroup
+- https://www.oreilly.com/library/view/database-internals/9781492040330/
 
 ## Project
 
