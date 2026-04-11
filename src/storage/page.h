@@ -7,6 +7,9 @@
 
 class LeafIndexPage;
 class InternalIndexPage;
+
+enum class PageKind { Heap, LeafIndex, InternalIndex };
+
 /**
  * The structure of page is as follows:
  * | header (256 bytes) | cell pointer array (2 bytes per cell) | cells
@@ -36,7 +39,7 @@ class Page {
   uint16_t getSlotDirectoryOffset();
   void updateSlotCount(uint16_t new_count);
   void updateSlotDirectoryOffset(uint16_t new_offset);
-  void updateNodeTypeFlag(bool is_leaf);
+  void updateNodeTypeFlag(PageKind kind);
   uint16_t rightMostChildPageId() const;
   void setRightMostChildPageId(uint16_t page_id);
   void updatePageLSN(std::uint64_t lsn);
@@ -50,7 +53,7 @@ class Page {
  public:
   static constexpr int HAS_NO_PARENT = -1;
   static constexpr size_t HEADDER_SIZE_BYTE = 256;
-  static Page initializeNew(char* page_buffer, bool is_leaf,
+  static Page initializeNew(char* page_buffer, PageKind kind,
                             uint16_t right_most_child_page_id,
                             uint16_t page_id);
   static Page wrapExisting(char* page_buffer, uint16_t page_id);
@@ -85,7 +88,7 @@ class Page {
 
  private:
   char* page_buffer_;
-  Page(char* page_buffer, bool is_leaf, uint16_t right_most_child_page_id,
+  Page(char* page_buffer, PageKind kind, uint16_t right_most_child_page_id,
        uint16_t page_id);
   Page(char* page_buffer, uint16_t page_id);
 };

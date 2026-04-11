@@ -13,22 +13,26 @@
 #include "logging.h"
 #include "record_cell.h"
 
-Page Page::initializeNew(char* page_buffer, bool is_leaf,
+namespace {
+
+}  // namespace
+
+Page Page::initializeNew(char* page_buffer, PageKind kind,
                          uint16_t right_most_child_page_id, uint16_t page_id) {
-  return Page(page_buffer, is_leaf, right_most_child_page_id, page_id);
+  return Page(page_buffer, kind, right_most_child_page_id, page_id);
 }
 
 Page Page::wrapExisting(char* page_buffer, uint16_t page_id) {
   return Page(page_buffer, page_id);
 }
 
-Page::Page(char* page_buffer, bool is_leaf, uint16_t right_most_child_page_id,
+Page::Page(char* page_buffer, PageKind kind, uint16_t right_most_child_page_id,
            uint16_t page_id)
     : page_buffer_(page_buffer),
       page_id_(page_id),
       parent_page_id_(-1),
       is_dirty_(false) {
-  updateNodeTypeFlag(is_leaf);
+  updateNodeTypeFlag(kind);
   updateSlotCount(0);
   updateSlotDirectoryOffset(Page::PAGE_SIZE_BYTE);
   setRightMostChildPageId(right_most_child_page_id);
@@ -153,8 +157,17 @@ void Page::updateSlotDirectoryOffset(uint16_t new_offset) {
               sizeof(uint16_t));
 }
 
-void Page::updateNodeTypeFlag(bool is_leaf) {
-  uint8_t flag = is_leaf ? 1 : 0;
+void Page::updateNodeTypeFlag(PageKind kind) {
+  uint8_t flag = 0;
+  switch (kind) {
+    case PageKind::Heap:
+    case PageKind::LeafIndex:
+      flag = 1;
+      break;
+    case PageKind::InternalIndex:
+      flag = 0;
+      break;
+  }
   std::memcpy(page_buffer_ + NODE_TYPE_FLAG_OFFSET, &flag, sizeof(uint8_t));
 }
 

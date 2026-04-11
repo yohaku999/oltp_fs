@@ -17,8 +17,7 @@ class BufferPool {
   explicit BufferPool(WAL& wal);
   Page* pinPage(int page_id, File& file);
   void unpinPage(Page* page, File& file);
-  // REFACTOR : spread code for Page and Leaf Page.
-  uint16_t createPage(bool is_leaf, File& file,
+  uint16_t createPage(PageKind kind, File& file,
                       uint16_t right_most_child_page_id = HAS_NO_CHILD);
   ~BufferPool();
 

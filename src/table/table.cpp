@@ -45,11 +45,11 @@ Table Table::initialize(const std::string& table_name, const Schema& schema) {
     Table table(table_name, schema);
 
     std::array<char, Page::PAGE_SIZE_BYTE> index_root_buffer{};
-    Page::initializeNew(index_root_buffer.data(), true, 0, 0);
+    Page::initializeNew(index_root_buffer.data(), PageKind::LeafIndex, 0, 0);
     table.index_file_.writePageFromBuffer(0, index_root_buffer.data());
 
     std::array<char, Page::PAGE_SIZE_BYTE> heap_page_buffer{};
-    Page::initializeNew(heap_page_buffer.data(), true, 0, 0);
+    Page::initializeNew(heap_page_buffer.data(), PageKind::Heap, 0, 0);
     table.heap_file_.writePageFromBuffer(0, heap_page_buffer.data());
 
     writeSchemaMetadata(defaultMetaPath(table_name), schema);

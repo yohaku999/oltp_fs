@@ -45,11 +45,7 @@ std::pair<uint16_t, uint16_t> insertIntoHeap(BufferPool& pool, File& heapFile,
   auto inserted_slot_id = heap_page->insertCell(serialized_cell);
   if (!inserted_slot_id.has_value()) {
     pool.unpinPage(heap_page, heapFile);
-    // WARNING : currently how we deal with leafpage and heappage is the same.
-    // Thus it is correct to set is_leaf = true here but, it's confusing.
-    // All the page type share the same page layout so some headder filed is
-    // redundunt for some page type.
-    target_page_id = pool.createPage(true, heapFile);
+    target_page_id = pool.createPage(PageKind::Heap, heapFile);
     heap_page = pool.pinPage(target_page_id, heapFile);
     inserted_slot_id = heap_page->insertCell(serialized_cell);
     if (!inserted_slot_id.has_value()) {

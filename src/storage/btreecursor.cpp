@@ -159,8 +159,8 @@ Page* BTreeCursor::ensureParentPage(BufferPool& pool, File& index_file,
         "Initialized Parent Page for page ID {} because it has no parent but "
         "root page.",
         old_page.getPageID());
-    int new_root_page_id =
-        pool.createPage(false, index_file, old_page.getPageID());
+    int new_root_page_id = pool.createPage(PageKind::InternalIndex, index_file,
+                         old_page.getPageID());
     index_file.setRootPageID(new_root_page_id);
     old_page.setParentPageID(new_root_page_id);
     parent_page_id = new_root_page_id;
@@ -176,7 +176,7 @@ void BTreeCursor::splitLeafPage(BufferPool& pool, File& index_file,
                                 Page& old_page, Page& parent_page,
                                 char* separate_key) {
   int separate_key_value = LeafCell::getKey(separate_key);
-  int new_page_id = pool.createPage(true, index_file);
+  int new_page_id = pool.createPage(PageKind::LeafIndex, index_file);
   Page* new_page = pool.pinPage(new_page_id, index_file);
 
   LeafIndexPage old_leaf(old_page);
@@ -192,7 +192,8 @@ void BTreeCursor::splitInternalPage(BufferPool& pool, File& index_file,
                                     Page& old_page, Page& parent_page,
                                     char* separate_key) {
   int separate_key_value = IntermediateCell::getKey(separate_key);
-  int new_page_id = pool.createPage(false, index_file, old_page.getPageID());
+  int new_page_id = pool.createPage(PageKind::InternalIndex, index_file,
+                                    old_page.getPageID());
   Page* new_page = pool.pinPage(new_page_id, index_file);
 
   InternalIndexPage old_internal(old_page);

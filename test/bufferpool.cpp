@@ -58,7 +58,7 @@ class BufferPoolTest : public ::testing::Test {
 };
 
 TEST_F(BufferPoolTest, GetPageSamePageReturnsCachedPage) {
-  uint16_t page_id = pool->createPage(true, *testFile);
+  uint16_t page_id = pool->createPage(PageKind::Heap, *testFile);
   Page* page1 = pool->pinPage(page_id, *testFile);
   Page* page1_again = pool->pinPage(page_id, *testFile);
   EXPECT_EQ(page1, page1_again);
@@ -68,7 +68,7 @@ TEST_F(BufferPoolTest, GetPageSamePageReturnsCachedPage) {
 
 TEST_F(BufferPoolTest, createNewPageAllFramesFilledSuccessfully) {
   for (size_t i = 0; i < BufferPool::MAX_FRAME_COUNT; ++i) {
-    uint16_t page_id = pool->createPage(true, *testFile);
+    uint16_t page_id = pool->createPage(PageKind::Heap, *testFile);
     Page* page = pool->pinPage(page_id, *testFile);
     ASSERT_NE(page, nullptr);
     pool->unpinPage(page, *testFile);
@@ -86,7 +86,7 @@ TEST_F(BufferPoolTest, createNewPageWithEviction) {
   std::array<uint16_t, BufferPool::MAX_FRAME_COUNT + 10> page_ids;
 
   for (size_t i = 0; i < BufferPool::MAX_FRAME_COUNT + 10; ++i) {
-    uint16_t page_id = pool->createPage(true, *testFile);
+    uint16_t page_id = pool->createPage(PageKind::Heap, *testFile);
     Page* page = pool->pinPage(page_id, *testFile);
     ASSERT_NE(page, nullptr);
 
@@ -97,8 +97,7 @@ TEST_F(BufferPoolTest, createNewPageWithEviction) {
     RecordSerializer cell = serializeSingleVarcharRecord(test_data);
     page->insertCell(cell.serializedBytes());
 
-    std::memcpy(page_copies[i].data(), page->page_buffer_,
-                Page::PAGE_SIZE_BYTE);
+    std::memcpy(page_copies[i].data(), page->data(), Page::PAGE_SIZE_BYTE);
     pool->unpinPage(page, *testFile);
   }
 
@@ -114,8 +113,8 @@ TEST_F(BufferPoolTest, createNewPageWithEviction) {
     Page* page = pool->pinPage(page_ids[i], *testFile);
     ASSERT_NE(page, nullptr) << "Should be able to access/reload page " << i;
 
-    int cmp_result = std::memcmp(page->page_buffer_, page_copies[i].data(),
-                                 Page::PAGE_SIZE_BYTE);
+    int cmp_result =
+      std::memcmp(page->data(), page_copies[i].data(), Page::PAGE_SIZE_BYTE);
     EXPECT_EQ(cmp_result, 0)
         << "Page " << i << " content should match after eviction and reload";
     pool->unpinPage(page, *testFile);
@@ -134,7 +133,7 @@ TEST_F(BufferPoolTest, EvictionFlushesWALUpToPageLSN) {
   EXPECT_EQ(wal->getFlushedLSN(), 0u);
 
   for (size_t i = 0; i < BufferPool::MAX_FRAME_COUNT; ++i) {
-    uint16_t page_id = pool->createPage(true, *testFile);
+    uint16_t page_id = pool->createPage(PageKind::Heap, *testFile);
     Page* page = pool->pinPage(page_id, *testFile);
     // Mark each resident page as depending on the same WAL record.
     page->setPageLSN(rec.get_lsn());
@@ -142,7 +141,7 @@ TEST_F(BufferPoolTest, EvictionFlushesWALUpToPageLSN) {
   }
 
   // Allocate one more page to force eviction of a dirty page.
-  (void)pool->createPage(true, *testFile);
+  (void)pool->createPage(PageKind::Heap, *testFile);
 
   EXPECT_EQ(wal->getFlushedLSN(), rec.get_lsn());
 }

@@ -29,7 +29,7 @@ All page types share one slotted-page physical layout.
 
 | Field | Meaning | Notes |
 | --- | --- | --- |
-| node type flag | Distinguishes leaf vs internal index semantics | Heap pages currently reuse the leaf side of this shared flag |
+| node type flag | Distinguishes leaf vs internal index semantics | The storage API uses explicit page kinds (`Heap`, `LeafIndex`, `InternalIndex`), while heap pages currently map to the leaf-side value of this shared on-disk flag |
 | slot count | Number of slot pointers currently in use | Shared by all page types |
 | slot directory offset | Start of free space / payload boundary | Shared by all page types |
 | right-most child pointer | Final branch pointer for internal index pages | Physically present on all pages, semantically used only by internal index pages |

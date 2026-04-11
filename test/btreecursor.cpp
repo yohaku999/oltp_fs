@@ -39,8 +39,8 @@ class BTreeCursorTest : public ::testing::Test {
 
   static void initializeLeafPage(File& file) {
     std::array<char, Page::PAGE_SIZE_BYTE> buffer{};
-    auto page =
-        std::make_unique<Page>(Page::initializeNew(buffer.data(), true, 0, 0));
+    auto page = std::make_unique<Page>(
+        Page::initializeNew(buffer.data(), PageKind::LeafIndex, 0, 0));
     file.writePageFromBuffer(0, buffer.data());
   }
 };

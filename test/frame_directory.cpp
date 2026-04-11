@@ -19,11 +19,11 @@ class FrameDirectoryTest : public ::testing::Test {
 
   void SetUp() override {
     page1 = std::make_unique<Page>(
-        Page::initializeNew(page_buffer1.data(), true, 0, 1));
+      Page::initializeNew(page_buffer1.data(), PageKind::Heap, 0, 1));
     page2 = std::make_unique<Page>(
-        Page::initializeNew(page_buffer2.data(), true, 0, 2));
+      Page::initializeNew(page_buffer2.data(), PageKind::Heap, 0, 2));
     page3 = std::make_unique<Page>(
-        Page::initializeNew(page_buffer3.data(), true, 0, 3));
+      Page::initializeNew(page_buffer3.data(), PageKind::Heap, 0, 3));
   }
 };
 
@@ -145,8 +145,8 @@ TEST_F(FrameDirectoryTest, MultipleRegisterUnregisterCycles) {
       claimed_frames.push_back(frame_id);
 
       std::array<char, 4096> buffer;
-      auto page = std::make_unique<Page>(
-          Page::initializeNew(buffer.data(), true, 0, i));
+        auto page = std::make_unique<Page>(
+          Page::initializeNew(buffer.data(), PageKind::Heap, 0, i));
       int page_id = cycle * 100 + i;
 
       directory.registerResidentPage(frame_id, page_id, "test.db",
@@ -188,8 +188,8 @@ TEST_F(FrameDirectoryTest, FrameReuseAfterUnregister) {
     used_frame_ids.insert(frame_id);
 
     std::array<char, 4096> buffer;
-    auto page =
-        std::make_unique<Page>(Page::initializeNew(buffer.data(), true, 0, i));
+    auto page = std::make_unique<Page>(
+      Page::initializeNew(buffer.data(), PageKind::Heap, 0, i));
     directory.registerResidentPage(frame_id, i, "test.db", std::move(page));
   }
 
@@ -208,7 +208,7 @@ TEST_F(FrameDirectoryTest, FrameReuseAfterUnregister) {
 
   std::array<char, 4096> new_buffer;
   auto new_page = std::make_unique<Page>(
-      Page::initializeNew(new_buffer.data(), true, 0, 99));
+      Page::initializeNew(new_buffer.data(), PageKind::Heap, 0, 99));
   directory.registerResidentPage(reused_frame_id, 999, "new.db",
                                  std::move(new_page));
 
@@ -223,8 +223,8 @@ TEST_F(FrameDirectoryTest, FindVictimFrameWhenAllFramesFilled) {
     ASSERT_TRUE(frame_opt.has_value());
 
     std::array<char, 4096> buffer;
-    auto page =
-        std::make_unique<Page>(Page::initializeNew(buffer.data(), true, 0, i));
+    auto page = std::make_unique<Page>(
+      Page::initializeNew(buffer.data(), PageKind::Heap, 0, i));
     directory.registerResidentPage(frame_opt.value(), i, "test.db",
                                    std::move(page));
   }

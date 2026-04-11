@@ -13,17 +13,29 @@
 BufferPool::BufferPool(WAL& wal)
     : buffer_(operator new(BUFFER_SIZE_BYTE)), wal_(wal) {};
 
-uint16_t BufferPool::createPage(bool is_leaf, File& file,
+uint16_t BufferPool::createPage(PageKind kind, File& file,
                                 uint16_t right_most_child_page_id) {
   uint16_t page_id = file.allocateNextPageId();
   auto [frame_id, frame_ptr] = acquireFrame();
 
   auto page = std::make_unique<Page>(Page::initializeNew(
-      frame_ptr, is_leaf, right_most_child_page_id, page_id));
+      frame_ptr, kind, right_most_child_page_id, page_id));
   frame_directory_.registerResidentPage(frame_id, page_id, file.getFilePath(),
                                         std::move(page));
+  const char* kind_label = "unknown";
+  switch (kind) {
+    case PageKind::Heap:
+      kind_label = "heap";
+      break;
+    case PageKind::LeafIndex:
+      kind_label = "leaf index";
+      break;
+    case PageKind::InternalIndex:
+      kind_label = "internal index";
+      break;
+  }
   LOG_INFO("Created new page ID {} as {} page in frame ID {}", page_id,
-           is_leaf ? "leaf" : "intermediate", frame_id);
+           kind_label, frame_id);
   return page_id;
 }
 
