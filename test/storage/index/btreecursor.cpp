@@ -69,7 +69,7 @@ TEST_F(BTreeCursorTest, InsertIntoIndexAndFindRecordLocation) {
   }
 
   for (int key : keys) {
-    auto rid = BTreeCursor::findRecordLocation(*pool_, *index_file_, key);
+    auto rid = BTreeCursor::findRID(*pool_, *index_file_, key);
     ASSERT_TRUE(rid.has_value());
     EXPECT_EQ(rid->heap_page_id, heap_page_id);
     EXPECT_EQ(rid->slot_id, slot_id);
@@ -93,7 +93,7 @@ TEST_F(BTreeCursorTest, InsertManyKeysTriggersSplitAndIsSearchable) {
       << "index did not allocate any new pages";
 
   for (int key = 0; key < num_keys; ++key) {
-    auto rid = BTreeCursor::findRecordLocation(*pool_, *index_file_, key);
+    auto rid = BTreeCursor::findRID(*pool_, *index_file_, key);
     ASSERT_TRUE(rid.has_value()) << "missing index entry for key=" << key;
     EXPECT_EQ(rid->heap_page_id, heap_page_id);
     EXPECT_EQ(rid->slot_id, slot_id);

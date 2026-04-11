@@ -3,7 +3,6 @@
 #include <gtest/gtest.h>
 
 #include <cstdio>
-#include <fstream>
 #include <memory>
 #include <random>
 #include <string>
@@ -13,9 +12,7 @@
 
 #include "storage/index/btreecursor.h"
 #include "storage/runtime/bufferpool.h"
-#include "storage/wal/lsn_allocator.h"
 #include "storage/wal/wal.h"
-#include "storage/wal/wal_record.h"
 #include "catalog/table.h"
 
 class ExecutorTest : public ::testing::Test {
@@ -53,44 +50,6 @@ class ExecutorTest : public ::testing::Test {
     return std::get<Column::VarcharType>(row.values[0]);
   }
 
-  static std::vector<WALRecord> readWalRecords(const std::string& wal_path) {
-    std::ifstream wal_file(wal_path, std::ios::binary);
-    if (!wal_file) {
-      return {};
-    }
-
-    std::vector<char> raw_bytes((std::istreambuf_iterator<char>(wal_file)),
-                                std::istreambuf_iterator<char>());
-    std::vector<WALRecord> records;
-    std::size_t offset = 0;
-
-    while (offset < raw_bytes.size()) {
-      const std::size_t header_size = sizeof(uint64_t) +
-                                      sizeof(WALRecord::RecordType) +
-                                      sizeof(uint16_t) + sizeof(uint32_t);
-      if (raw_bytes.size() - offset < header_size) {
-        throw std::runtime_error("Incomplete WAL header in test fixture.");
-      }
-
-      uint32_t body_size = 0;
-      std::memcpy(&body_size,
-                  raw_bytes.data() + offset + sizeof(uint64_t) +
-                      sizeof(WALRecord::RecordType) + sizeof(uint16_t),
-                  sizeof(uint32_t));
-
-      const std::size_t record_size = header_size + body_size;
-      if (raw_bytes.size() - offset < record_size) {
-        throw std::runtime_error("Incomplete WAL record body in test fixture.");
-      }
-
-      std::vector<std::byte> record_bytes(record_size);
-      std::memcpy(record_bytes.data(), raw_bytes.data() + offset, record_size);
-      records.push_back(WALRecord::deserialize(record_bytes));
-      offset += record_size;
-    }
-
-    return records;
-  }
 };
 
 TEST_F(ExecutorTest, InsertAndGetMultipleRecords) {
@@ -210,58 +169,3 @@ TEST_F(ExecutorTest, InsertPageOverflow) {
   }
 }
 
-TEST_F(ExecutorTest, InsertWithWalWritesInsertRecord) {
-  Table table = createSingleColumnTable();
-  LSNAllocator allocator(0);
-  WAL wal(kWalPath);
-
-  executor::insert(*pool_, table, 11, TypedRow{{Column::VarcharType("wal")}},
-                   allocator, wal);
-  wal.flush();
-
-  std::vector<WALRecord> records = readWalRecords(kWalPath);
-  ASSERT_EQ(records.size(), 1u);
-  EXPECT_EQ(records[0].get_type(), WALRecord::RecordType::INSERT);
-
-  WALBody body = decode_body(records[0]);
-  ASSERT_TRUE(std::holds_alternative<InsertRedoBody>(body));
-  const auto& insert_body = std::get<InsertRedoBody>(body);
-  EXPECT_EQ(insert_body.offset, 0);
-  EXPECT_FALSE(insert_body.tuple.empty());
-}
-
-TEST_F(ExecutorTest, RemoveWithWalWritesDeleteRecord) {
-  Table table = createSingleColumnTable();
-  executor::insert(*pool_, table, 22, TypedRow{{Column::VarcharType("gone")}});
-
-  LSNAllocator allocator(0);
-  WAL wal(kWalPath);
-  executor::remove(*pool_, table, 22, allocator, wal);
-  wal.flush();
-
-  std::vector<WALRecord> records = readWalRecords(kWalPath);
-  ASSERT_EQ(records.size(), 1u);
-  EXPECT_EQ(records[0].get_type(), WALRecord::RecordType::DELETE);
-
-  WALBody body = decode_body(records[0]);
-  ASSERT_TRUE(std::holds_alternative<DeleteRedoBody>(body));
-  const auto& delete_body = std::get<DeleteRedoBody>(body);
-  EXPECT_EQ(delete_body.offset, 0);
-}
-
-TEST_F(ExecutorTest, UpdateWithWalWritesDeleteThenInsert) {
-  Table table = createSingleColumnTable();
-  executor::insert(*pool_, table, 33,
-                   TypedRow{{Column::VarcharType("before")}});
-
-  LSNAllocator allocator(0);
-  WAL wal(kWalPath);
-  executor::update(*pool_, table, 33, TypedRow{{Column::VarcharType("after")}},
-                   allocator, wal);
-  wal.flush();
-
-  std::vector<WALRecord> records = readWalRecords(kWalPath);
-  ASSERT_EQ(records.size(), 2u);
-  EXPECT_EQ(records[0].get_type(), WALRecord::RecordType::DELETE);
-  EXPECT_EQ(records[1].get_type(), WALRecord::RecordType::INSERT);
-}

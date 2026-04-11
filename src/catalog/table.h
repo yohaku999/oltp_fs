@@ -1,12 +1,19 @@
 #pragma once
 
+#include <optional>
 #include <filesystem>
 #include <stdexcept>
 #include <string>
 #include <utility>
 
 #include "schema/schema.h"
+#include "storage/index/rid.h"
 #include "storage/runtime/file.h"
+#include "tuple/typed_row.h"
+
+class BufferPool;
+class LSNAllocator;
+class WAL;
 
 class Table {
  public:
@@ -20,6 +27,15 @@ class Table {
 
   const std::string& name() const { return name_; }
   const Schema& schema() const { return schema_; }
+  std::optional<RID> findRID(BufferPool& pool, int key,
+                             bool do_invalidate = false);
+  TypedRow readRow(BufferPool& pool, RID rid) const;
+  RID insertHeapRecord(BufferPool& pool, int key, const TypedRow& row,
+                       LSNAllocator* allocator = nullptr, WAL* wal = nullptr);
+  void insertIndexEntry(BufferPool& pool, int key, RID rid);
+  void invalidateHeapRecord(BufferPool& pool, RID rid);
+  void invalidateHeapRecord(BufferPool& pool, RID rid, LSNAllocator& allocator,
+                            WAL& wal);
   File& indexFile() { return index_file_; }
   File& heapFile() { return heap_file_; }
 

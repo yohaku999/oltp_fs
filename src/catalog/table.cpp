@@ -4,7 +4,17 @@
 #include <fstream>
 #include <nlohmann/json.hpp>
 
+#include "execution/heap_fetch.h"
+#include "logging.h"
+#include "storage/index/btreecursor.h"
 #include "storage/page/page.h"
+#include "storage/record/record_cell.h"
+#include "storage/record/record_serializer.h"
+#include "storage/runtime/bufferpool.h"
+#include "storage/wal/lsn_allocator.h"
+#include "storage/wal/wal.h"
+#include "storage/wal/wal_body.h"
+#include "storage/wal/wal_record.h"
 
 namespace {
 
@@ -66,6 +76,80 @@ Table Table::getTable(const std::string& table_name) {
   }
   return Table(table_name,
                readSchemaMetadata(table_name, defaultMetaPath(table_name)));
+}
+
+std::optional<RID> Table::findRID(BufferPool& pool, int key,
+                                  bool do_invalidate) {
+  return BTreeCursor::findRID(pool, index_file_, key, do_invalidate);
+}
+
+TypedRow Table::readRow(BufferPool& pool, RID rid) const {
+  Page* page = pool.pinPage(rid.heap_page_id,
+                            const_cast<Table*>(this)->heap_file_);
+  TypedRow row = RecordCellView(page->getSlotCellStart(rid.slot_id))
+                     .getTypedRow(schema_);
+  pool.unpinPage(page, const_cast<Table*>(this)->heap_file_);
+  return row;
+}
+
+RID Table::insertHeapRecord(BufferPool& pool, int key, const TypedRow& row,
+                            LSNAllocator* allocator, WAL* wal) {
+  LOG_INFO("Inserting record with key {} into heap file {}.", key,
+           heap_file_.getFilePath());
+  RecordSerializer cell(schema_, row);
+  const std::vector<std::byte>& serialized_cell = cell.serializedBytes();
+
+  int target_page_id = heap_file_.getMaxPageID();
+  Page* heap_page = pool.pinPage(target_page_id, heap_file_);
+  auto inserted_slot_id = heap_page->insertCell(serialized_cell);
+  if (!inserted_slot_id.has_value()) {
+    pool.unpinPage(heap_page, heap_file_);
+    target_page_id = pool.createPage(PageKind::Heap, heap_file_);
+    heap_page = pool.pinPage(target_page_id, heap_file_);
+    inserted_slot_id = heap_page->insertCell(serialized_cell);
+    if (!inserted_slot_id.has_value()) {
+      throw std::runtime_error(
+          "Failed to insert record cell into a new heap page due to "
+          "insufficient space.");
+    }
+  }
+
+  if (allocator != nullptr && wal != nullptr) {
+    wal->write(make_wal_record(
+        *allocator, WALRecord::RecordType::INSERT,
+        static_cast<uint16_t>(target_page_id),
+        InsertRedoBody(static_cast<uint16_t>(inserted_slot_id.value()),
+                       serialized_cell)
+            .encode()));
+  }
+
+  pool.unpinPage(heap_page, heap_file_);
+  LOG_INFO("Inserted record with key {} into heap page ID {} successfully.",
+           key, target_page_id);
+
+  return RID{static_cast<uint16_t>(target_page_id),
+             static_cast<uint16_t>(inserted_slot_id.value())};
+}
+
+void Table::insertIndexEntry(BufferPool& pool, int key, RID rid) {
+  BTreeCursor::insertIntoIndex(pool, index_file_, key, rid.heap_page_id,
+                               rid.slot_id);
+}
+
+void Table::invalidateHeapRecord(BufferPool& pool, RID rid) {
+  Page* page = pool.pinPage(rid.heap_page_id, heap_file_);
+  page->invalidateSlot(rid.slot_id);
+  pool.unpinPage(page, heap_file_);
+}
+
+void Table::invalidateHeapRecord(BufferPool& pool, RID rid,
+                                 LSNAllocator& allocator, WAL& wal) {
+  Page* page = pool.pinPage(rid.heap_page_id, heap_file_);
+  wal.write(make_wal_record(allocator, WALRecord::RecordType::DELETE,
+                            rid.heap_page_id,
+                            DeleteRedoBody(rid.slot_id).encode()));
+  page->invalidateSlot(rid.slot_id);
+  pool.unpinPage(page, heap_file_);
 }
 
 bool Table::isPersisted(const std::string& table_name) {

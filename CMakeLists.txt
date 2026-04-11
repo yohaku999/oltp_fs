@@ -76,42 +76,42 @@ elseif (MSVC)
     target_compile_options(dbfs_src PUBLIC /W4)
 endif()
 
-add_executable(bufferpool_test test/bufferpool.cpp)
+add_executable(bufferpool_test test/storage/runtime/bufferpool.cpp)
 target_link_libraries(bufferpool_test dbfs_src GTest::gtest_main)
 
-add_executable(cell_test test/cell.cpp)
+add_executable(cell_test test/storage/page/cell.cpp)
 target_link_libraries(cell_test dbfs_src GTest::gtest_main)
 
-add_executable(page_test test/page.cpp)
+add_executable(page_test test/storage/page/page.cpp)
 target_link_libraries(page_test dbfs_src GTest::gtest_main)
 
-add_executable(file_test test/file.cpp)
+add_executable(file_test test/storage/runtime/file.cpp)
 target_link_libraries(file_test dbfs_src GTest::gtest_main)
 
-add_executable(btreecursor_test test/btreecursor.cpp)
+add_executable(btreecursor_test test/storage/index/btreecursor.cpp)
 target_link_libraries(btreecursor_test dbfs_src GTest::gtest_main)
 
-add_executable(executor_test test/executor.cpp)
+add_executable(executor_test test/execution/executor.cpp)
 target_link_libraries(executor_test dbfs_src GTest::gtest_main)
 
-add_executable(table_test test/table.cpp)
+add_executable(table_test test/catalog/table.cpp)
 target_link_libraries(table_test dbfs_src GTest::gtest_main)
 
-add_executable(frame_directory_test test/frame_directory.cpp)
+add_executable(frame_directory_test test/storage/runtime/frame_directory.cpp)
 target_link_libraries(frame_directory_test dbfs_src GTest::gtest_main)
 
-add_executable(wal_body_test test/wal_body.cpp)
+add_executable(wal_body_test test/storage/wal/wal_body.cpp)
 target_link_libraries(wal_body_test dbfs_src GTest::gtest_main)
 
-add_executable(wal_record_test test/wal_record.cpp)
+add_executable(wal_record_test test/storage/wal/wal_record.cpp)
 target_link_libraries(wal_record_test dbfs_src GTest::gtest_main)
 
-add_executable(lsn_allocator_test test/lsn_allocator.cpp)
+add_executable(lsn_allocator_test test/storage/wal/lsn_allocator.cpp)
 target_link_libraries(lsn_allocator_test dbfs_src GTest::gtest_main)
-add_executable(wal_test test/wal.cpp)
+add_executable(wal_test test/storage/wal/wal.cpp)
 target_link_libraries(wal_test dbfs_src GTest::gtest_main)
 
-add_executable(e2e_test test/e2e.cpp)
+add_executable(e2e_test test/e2e/e2e.cpp)
 target_link_libraries(e2e_test dbfs_src GTest::gtest_main pg_query)
 
 enable_testing()

@@ -3,22 +3,12 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
-#include <vector>
 
 #include "../logging.h"
-#include "storage/index/btreecursor.h"
 #include "storage/runtime/bufferpool.h"
-#include "storage/runtime/file.h"
 #include "storage/wal/lsn_allocator.h"
-#include "storage/page/page.h"
-#include "storage/record/record_cell.h"
-#include "storage/record/record_serializer.h"
 #include "storage/wal/wal.h"
-#include "storage/wal/wal_body.h"
-#include "storage/wal/wal_record.h"
 #include "catalog/table.h"
-#include "heap_fetch.h"
-#include "index_scan.h"
 
 /**
  * - executor now operates on Table + TypedRow rather than raw File pairs
@@ -30,113 +20,53 @@
  * 
  * 
  */
-namespace {
-RID insertIntoHeap(BufferPool& pool, File& heapFile, const Schema& schema,
-                   const TypedRow& row, int key,
-                   LSNAllocator* allocator = nullptr, WAL* wal = nullptr) {
-  LOG_INFO("Inserting record with key {} into heap file {}.", key,
-           heapFile.getFilePath());
-  RecordSerializer cell(schema, row);
-  const std::vector<std::byte>& serialized_cell = cell.serializedBytes();
-
-  int target_page_id = heapFile.getMaxPageID();
-  Page* heap_page = pool.pinPage(target_page_id, heapFile);
-  auto inserted_slot_id = heap_page->insertCell(serialized_cell);
-  if (!inserted_slot_id.has_value()) {
-    pool.unpinPage(heap_page, heapFile);
-    target_page_id = pool.createPage(PageKind::Heap, heapFile);
-    heap_page = pool.pinPage(target_page_id, heapFile);
-    inserted_slot_id = heap_page->insertCell(serialized_cell);
-    if (!inserted_slot_id.has_value()) {
-      throw std::runtime_error(
-          "Failed to insert record cell into a new heap page due to "
-          "insufficient space.");
-    }
-  }
-
-  if (allocator != nullptr && wal != nullptr) {
-    wal->write(make_wal_record(
-        *allocator, WALRecord::RecordType::INSERT,
-        static_cast<uint16_t>(target_page_id),
-        InsertRedoBody(static_cast<uint16_t>(inserted_slot_id.value()),
-                       serialized_cell)
-            .encode()));
-  }
-
-  pool.unpinPage(heap_page, heapFile);
-  LOG_INFO("Inserted record with key {} into heap page ID {} successfully.",
-           key, target_page_id);
-
-  return RID{static_cast<uint16_t>(target_page_id),
-             static_cast<uint16_t>(inserted_slot_id.value())};
-}
-
-}  // namespace
-
 TypedRow executor::read(BufferPool& pool, Table& table, int key) {
-  auto lookup = IndexLookup::fromKey(pool, table.indexFile(), key);
-  std::optional<RID> rid = lookup.next();
+  std::optional<RID> rid = table.findRID(pool, key);
   if (!rid.has_value()) {
     throw std::runtime_error("Key " + std::to_string(key) +
                              " not found in index file.");
   }
-
-  HeapFetch fetcher(pool, table.heapFile());
-  char* cell_start = fetcher.fetch(rid->heap_page_id, rid->slot_id);
-  return RecordCellView(cell_start).getTypedRow(table.schema());
+  return table.readRow(pool, rid.value());
 }
 
 void executor::insert(BufferPool& pool, Table& table, int key,
                       const TypedRow& row) {
-  RID rid = insertIntoHeap(pool, table.heapFile(), table.schema(), row, key);
-  BTreeCursor::insertIntoIndex(pool, table.indexFile(), key, rid.heap_page_id,
-                               rid.slot_id);
+  RID rid = table.insertHeapRecord(pool, key, row);
+  table.insertIndexEntry(pool, key, rid);
 }
 
 void executor::insert(BufferPool& pool, Table& table, int key,
                       const TypedRow& row, LSNAllocator& allocator, WAL& wal) {
   LOG_INFO("Inserting record with key {} into table {}.", key, table.name());
-  std::optional<RID> existing_rid =
-      BTreeCursor::findRecordLocation(pool, table.indexFile(), key);
+  std::optional<RID> existing_rid = table.findRID(pool, key);
   if (existing_rid.has_value()) {
     throw std::runtime_error(
         "Key " + std::to_string(key) +
         " already exists. Duplicate keys are not allowed.");
   }
 
-  RID rid = insertIntoHeap(
-      pool, table.heapFile(), table.schema(), row, key, &allocator, &wal);
-  BTreeCursor::insertIntoIndex(pool, table.indexFile(), key, rid.heap_page_id,
-                               rid.slot_id);
+  RID rid = table.insertHeapRecord(pool, key, row, &allocator, &wal);
+  table.insertIndexEntry(pool, key, rid);
 }
 
 void executor::remove(BufferPool& pool, Table& table, int key) {
-  std::optional<RID> rid =
-      BTreeCursor::findRecordLocation(pool, table.indexFile(), key, true);
+  std::optional<RID> rid = table.findRID(pool, key, true);
   if (!rid.has_value()) {
     throw std::runtime_error("Key " + std::to_string(key) +
                              " not found in leaf page.");
   }
-  Page* page = pool.pinPage(rid->heap_page_id, table.heapFile());
-  page->invalidateSlot(rid->slot_id);
-  pool.unpinPage(page, table.heapFile());
+  table.invalidateHeapRecord(pool, rid.value());
   LOG_INFO("Removed record with key {} successfully.", key);
 }
 
 void executor::remove(BufferPool& pool, Table& table, int key,
                       LSNAllocator& allocator, WAL& wal) {
-  std::optional<RID> rid =
-      BTreeCursor::findRecordLocation(pool, table.indexFile(), key, true);
+  std::optional<RID> rid = table.findRID(pool, key, true);
   if (!rid.has_value()) {
     throw std::runtime_error("Key " + std::to_string(key) +
                              " not found in leaf page.");
   }
-  Page* page = pool.pinPage(rid->heap_page_id, table.heapFile());
-  wal.write(make_wal_record(
-      allocator, WALRecord::RecordType::DELETE, rid->heap_page_id,
-      DeleteRedoBody(rid->slot_id).encode()));
-  page->invalidateSlot(rid->slot_id);
-  pool.unpinPage(page, table.heapFile());
+  table.invalidateHeapRecord(pool, rid.value(), allocator, wal);
   LOG_INFO("Removed record with key {} successfully.", key);
 }
 

@@ -101,10 +101,9 @@ int BTreeCursor::findLeafPageID(BufferPool& pool, File& indexFile, int key) {
   return page_id;
 }
 
-std::optional<RID> BTreeCursor::findRecordLocation(BufferPool& pool,
-                           File& indexFile, int key,
-                           bool do_invalidate) {
-  LOG_INFO("Finding record location for key {} in index file {}.", key,
+std::optional<RID> BTreeCursor::findRID(BufferPool& pool, File& indexFile,
+                                        int key, bool do_invalidate) {
+  LOG_INFO("Finding RID for key {} in index file {}.", key,
            indexFile.getFilePath());
   // NOTE: we decided not to invalidate intermediate nodes during traversal for
   // now. we will come back to this when we start to support concurrency.
@@ -119,7 +118,7 @@ std::optional<RID> BTreeCursor::findRecordLocation(BufferPool& pool,
     return std::nullopt;
   } else {
     LOG_INFO(
-        "Found record location for key {} in leaf page ID {} of index file {}: "
+        "Found RID for key {} in leaf page ID {} of index file {}: "
         "heap page ID {}, slot ID {}.",
         key, page_id, indexFile.getFilePath(), rid->heap_page_id,
         rid->slot_id);

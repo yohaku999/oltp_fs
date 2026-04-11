@@ -18,9 +18,8 @@
  */
 class BTreeCursor {
  public:
-  static std::optional<RID> findRecordLocation(BufferPool& pool, File& indexFile,
-                                               int key,
-                                               bool do_invalidate = false);
+  static std::optional<RID> findRID(BufferPool& pool, File& indexFile, int key,
+                                    bool do_invalidate = false);
   static int findLeafPageID(BufferPool& pool, File& indexFile, int key);
   static void splitPage(BufferPool& pool, File& indexFile, Page* old_page);
   static void insertIntoIndex(BufferPool& pool, File& indexFile, int key,
