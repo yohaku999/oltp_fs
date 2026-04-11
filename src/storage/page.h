@@ -1,6 +1,5 @@
 #pragma once
 #include <optional>
-#include <ostream>
 #include <utility>
 #include <vector>
 
@@ -68,7 +67,11 @@ class Page {
   char* getSplitKeyCellStart();
   static constexpr size_t PAGE_SIZE_BYTE = 4096;
   static constexpr size_t CELL_POINTER_SIZE = sizeof(uint16_t);
-  char* page_buffer_;
+  char* data() { return page_buffer_; }
+  const char* data() const { return page_buffer_; }
+  uint16_t slotCount() const;
+  char* slotCellStartUnchecked(int slot_id);
+  const char* slotCellStartUnchecked(int slot_id) const;
   char* getSlotValueStart(int slot_id);
   std::optional<int> insertCell(const std::vector<std::byte>& serialized_cell);
   std::optional<int> insertCell(const Cell& cell);
@@ -80,9 +83,8 @@ class Page {
   }
   char* getSlotCellStart(int slot_id);
 
-  void dump(std::ostream& os);
-
  private:
+  char* page_buffer_;
   Page(char* page_buffer, bool is_leaf, uint16_t right_most_child_page_id,
        uint16_t page_id);
   Page(char* page_buffer, uint16_t page_id);

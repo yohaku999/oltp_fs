@@ -16,6 +16,53 @@
 #include "page.h"
 #include "record_cell.h"
 
+namespace {
+
+void dumpIndexPage(const Page& page, std::ostream& os) {
+  os << "=== Page " << page.getPageID() << " ("
+     << (page.isLeaf() ? "leaf" : "internal") << ") ===\n";
+  os << "parent=" << page.getParentPageID()
+    << " slotCount=" << static_cast<int>(page.slotCount());
+  if (!page.isLeaf()) {
+    os << " rightMostChild="
+       << InternalIndexPage(const_cast<Page&>(page)).rightMostChildPageId();
+  }
+  os << "\n";
+
+  if (page.isLeaf()) {
+    LeafIndexPage leaf(const_cast<Page&>(page));
+    for (int i = 0; i < page.slotCount(); ++i) {
+      const char* cell_data = page.slotCellStartUnchecked(i);
+      if (!Cell::isValid(cell_data)) {
+        os << "  [" << i << "] <invalid>\n";
+        continue;
+      }
+
+      LeafCell cell = leaf.cellAt(i);
+      os << "  [" << i << "] Leaf  key=" << cell.key()
+         << " heapPage=" << cell.heap_page_id()
+         << " slot=" << cell.slot_id() << "\n";
+    }
+  } else {
+    InternalIndexPage internal(const_cast<Page&>(page));
+    for (int i = 0; i < page.slotCount(); ++i) {
+      const char* cell_data = page.slotCellStartUnchecked(i);
+      if (!Cell::isValid(cell_data)) {
+        os << "  [" << i << "] <invalid>\n";
+        continue;
+      }
+
+      IntermediateCell cell = internal.cellAt(i);
+      os << "  [" << i << "] Inter key=" << cell.key()
+         << " childPage=" << cell.page_id() << "\n";
+    }
+  }
+
+  os << "\n";
+}
+
+}  // namespace
+
 /**
  * Traverses the B-tree to find the leaf page that may contain `key`.
  *
@@ -184,7 +231,7 @@ void BTreeCursor::dumpTree(BufferPool& pool, File& indexFile,
     }
 
     Page* page = pool.pinPage(page_id, indexFile);
-    page->dump(os);
+    dumpIndexPage(*page, os);
     pool.unpinPage(page, indexFile);
   }
 }

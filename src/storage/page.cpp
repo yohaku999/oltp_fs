@@ -6,12 +6,10 @@
 #include <cstdint>
 #include <limits>
 #include <optional>
-#include <ostream>
 #include <stdexcept>
 #include <utility>
 #include <vector>
 
-#include "index_page.h"
 #include "logging.h"
 #include "record_cell.h"
 
@@ -164,6 +162,19 @@ bool Page::isLeaf() const {
   return readValue<uint8_t>(page_buffer_ + NODE_TYPE_FLAG_OFFSET) == 1;
 }
 
+uint16_t Page::slotCount() const {
+  return readValue<uint16_t>(page_buffer_ + SLOT_COUNT_OFFSET);
+}
+
+char* Page::slotCellStartUnchecked(int slot_id) {
+  return page_buffer_ + getCellOffsetOnXthPointer(slot_id);
+}
+
+const char* Page::slotCellStartUnchecked(int slot_id) const {
+  return page_buffer_ + readValue<uint16_t>(page_buffer_ + Page::HEADDER_SIZE_BYTE +
+                                            Page::CELL_POINTER_SIZE * slot_id);
+}
+
 uint16_t Page::rightMostChildPageId() const {
   return readValue<uint16_t>(page_buffer_ + RIGHT_MOST_CHILD_POINTER_OFFSET);
 }
@@ -179,34 +190,4 @@ std::uint64_t Page::getPageLSN() const {
 
 void Page::updatePageLSN(std::uint64_t lsn) {
   std::memcpy(page_buffer_ + PAGE_LSN_OFFSET, &lsn, sizeof(std::uint64_t));
-}
-
-void Page::dump(std::ostream& os) {
-  os << "=== Page " << page_id_ << " (" << (isLeaf() ? "leaf" : "internal")
-     << ") ===\n";
-  os << "parent=" << parent_page_id_
-     << " slotCount=" << static_cast<int>(getSlotCount());
-  if (!isLeaf()) {
-   os << " rightMostChild=" << InternalIndexPage(*this).rightMostChildPageId();
-  }
-  os << "\n";
-
-  for (int i = 0; i < getSlotCount(); ++i) {
-    char* cell_data = page_buffer_ + getCellOffsetOnXthPointer(i);
-    if (!Cell::isValid(cell_data)) {
-      os << "  [" << i << "] <invalid>\n";
-      continue;
-    }
-
-    if (isLeaf()) {
-      LeafCell c = LeafIndexPage(*this).cellAt(i);
-      os << "  [" << i << "] Leaf  key=" << c.key()
-         << " heapPage=" << c.heap_page_id() << " slot=" << c.slot_id() << "\n";
-    } else {
-      IntermediateCell c = InternalIndexPage(*this).cellAt(i);
-      os << "  [" << i << "] Inter key=" << c.key()
-         << " childPage=" << c.page_id() << "\n";
-    }
-  }
-  os << "\n";
 }

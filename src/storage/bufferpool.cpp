@@ -102,7 +102,7 @@ void BufferPool::evictOnePage() {
       }
     }
     File file(victim_frame.file_path);
-    file.writePageFromBuffer(evict_page_id, victim_frame.page->page_buffer_);
+    file.writePageFromBuffer(evict_page_id, victim_frame.page->data());
   }
   frame_directory_.unregisterResidentPage(victim_frame_id);
   LOG_INFO("Evicted page ID {} from frame ID {}", evict_page_id,
