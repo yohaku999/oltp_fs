@@ -7,7 +7,6 @@
 #include <ostream>
 #include <stdexcept>
 #include <string>
-#include <utility>
 
 #include "bufferpool.h"
 #include "cell.h"
@@ -102,8 +101,9 @@ int BTreeCursor::findLeafPageID(BufferPool& pool, File& indexFile, int key) {
   return page_id;
 }
 
-std::optional<std::pair<uint16_t, uint16_t>> BTreeCursor::findRecordLocation(
-    BufferPool& pool, File& indexFile, int key, bool do_invalidate) {
+std::optional<RID> BTreeCursor::findRecordLocation(BufferPool& pool,
+                           File& indexFile, int key,
+                           bool do_invalidate) {
   LOG_INFO("Finding record location for key {} in index file {}.", key,
            indexFile.getFilePath());
   // NOTE: we decided not to invalidate intermediate nodes during traversal for
@@ -111,18 +111,20 @@ std::optional<std::pair<uint16_t, uint16_t>> BTreeCursor::findRecordLocation(
   int page_id = findLeafPageID(pool, indexFile, key);
   Page* leaf_page = pool.pinPage(page_id, indexFile);
   LeafIndexPage leaf(*leaf_page);
-  auto result = leaf.findRef(key, do_invalidate);
+  std::optional<RID> rid = leaf.findRef(key, do_invalidate);
   pool.unpinPage(leaf_page, indexFile);
-  if (!result.has_value()) {
+  if (!rid.has_value()) {
     LOG_INFO("Key {} not found in leaf page ID {} of index file {}.", key,
              page_id, indexFile.getFilePath());
+    return std::nullopt;
   } else {
     LOG_INFO(
         "Found record location for key {} in leaf page ID {} of index file {}: "
         "heap page ID {}, slot ID {}.",
-        key, page_id, indexFile.getFilePath(), result->first, result->second);
+        key, page_id, indexFile.getFilePath(), rid->heap_page_id,
+        rid->slot_id);
   }
-  return result;
+  return rid;
 }
 
 void BTreeCursor::insertIntoIndex(BufferPool& pool, File& indexFile, int key,

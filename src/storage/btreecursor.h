@@ -2,9 +2,9 @@
 #include <optional>
 #include <ostream>
 #include <string>
-#include <utility>
 
 #include "bufferpool.h"
+#include "rid.h"
 
 /**
  * BTreeCursor is an arbitration layer that coordinates BufferPool and File to
@@ -18,8 +18,9 @@
  */
 class BTreeCursor {
  public:
-  static std::optional<std::pair<uint16_t, uint16_t>> findRecordLocation(
-      BufferPool& pool, File& indexFile, int key, bool do_invalidate = false);
+  static std::optional<RID> findRecordLocation(BufferPool& pool, File& indexFile,
+                                               int key,
+                                               bool do_invalidate = false);
   static int findLeafPageID(BufferPool& pool, File& indexFile, int key);
   static void splitPage(BufferPool& pool, File& indexFile, Page* old_page);
   static void insertIntoIndex(BufferPool& pool, File& indexFile, int key,

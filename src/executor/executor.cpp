@@ -1,5 +1,6 @@
 #include "executor.h"
 
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -30,11 +31,9 @@
  * 
  */
 namespace {
-std::pair<uint16_t, uint16_t> insertIntoHeap(BufferPool& pool, File& heapFile,
-                                             const Schema& schema,
-                                             const TypedRow& row, int key,
-                                             LSNAllocator* allocator = nullptr,
-                                             WAL* wal = nullptr) {
+RID insertIntoHeap(BufferPool& pool, File& heapFile, const Schema& schema,
+                   const TypedRow& row, int key,
+                   LSNAllocator* allocator = nullptr, WAL* wal = nullptr) {
   LOG_INFO("Inserting record with key {} into heap file {}.", key,
            heapFile.getFilePath());
   RecordSerializer cell(schema, row);
@@ -68,15 +67,15 @@ std::pair<uint16_t, uint16_t> insertIntoHeap(BufferPool& pool, File& heapFile,
   LOG_INFO("Inserted record with key {} into heap page ID {} successfully.",
            key, target_page_id);
 
-  return {static_cast<uint16_t>(target_page_id),
-          static_cast<uint16_t>(inserted_slot_id.value())};
+  return RID{static_cast<uint16_t>(target_page_id),
+             static_cast<uint16_t>(inserted_slot_id.value())};
 }
 
 }  // namespace
 
 TypedRow executor::read(BufferPool& pool, Table& table, int key) {
   auto lookup = IndexLookup::fromKey(pool, table.indexFile(), key);
-  auto rid = lookup.next();
+  std::optional<RID> rid = lookup.next();
   if (!rid.has_value()) {
     throw std::runtime_error("Key " + std::to_string(key) +
                              " not found in index file.");
@@ -89,56 +88,54 @@ TypedRow executor::read(BufferPool& pool, Table& table, int key) {
 
 void executor::insert(BufferPool& pool, Table& table, int key,
                       const TypedRow& row) {
-  auto [heap_page_id, slot_id] =
-      insertIntoHeap(pool, table.heapFile(), table.schema(), row, key);
-  BTreeCursor::insertIntoIndex(pool, table.indexFile(), key, heap_page_id,
-                               slot_id);
+  RID rid = insertIntoHeap(pool, table.heapFile(), table.schema(), row, key);
+  BTreeCursor::insertIntoIndex(pool, table.indexFile(), key, rid.heap_page_id,
+                               rid.slot_id);
 }
 
 void executor::insert(BufferPool& pool, Table& table, int key,
                       const TypedRow& row, LSNAllocator& allocator, WAL& wal) {
   LOG_INFO("Inserting record with key {} into table {}.", key, table.name());
-  auto location = BTreeCursor::findRecordLocation(pool, table.indexFile(), key);
-  if (location.has_value()) {
+  std::optional<RID> existing_rid =
+      BTreeCursor::findRecordLocation(pool, table.indexFile(), key);
+  if (existing_rid.has_value()) {
     throw std::runtime_error(
         "Key " + std::to_string(key) +
         " already exists. Duplicate keys are not allowed.");
   }
 
-  auto [heap_page_id, slot_id] = insertIntoHeap(
+  RID rid = insertIntoHeap(
       pool, table.heapFile(), table.schema(), row, key, &allocator, &wal);
-  BTreeCursor::insertIntoIndex(pool, table.indexFile(), key, heap_page_id,
-                               slot_id);
+  BTreeCursor::insertIntoIndex(pool, table.indexFile(), key, rid.heap_page_id,
+                               rid.slot_id);
 }
 
 void executor::remove(BufferPool& pool, Table& table, int key) {
-  auto location =
+  std::optional<RID> rid =
       BTreeCursor::findRecordLocation(pool, table.indexFile(), key, true);
-  if (!location.has_value()) {
+  if (!rid.has_value()) {
     throw std::runtime_error("Key " + std::to_string(key) +
                              " not found in leaf page.");
   }
-  auto [page_id, slot_id] = location.value();
-  Page* page = pool.pinPage(page_id, table.heapFile());
-  page->invalidateSlot(slot_id);
+  Page* page = pool.pinPage(rid->heap_page_id, table.heapFile());
+  page->invalidateSlot(rid->slot_id);
   pool.unpinPage(page, table.heapFile());
   LOG_INFO("Removed record with key {} successfully.", key);
 }
 
 void executor::remove(BufferPool& pool, Table& table, int key,
                       LSNAllocator& allocator, WAL& wal) {
-  auto location =
+  std::optional<RID> rid =
       BTreeCursor::findRecordLocation(pool, table.indexFile(), key, true);
-  if (!location.has_value()) {
+  if (!rid.has_value()) {
     throw std::runtime_error("Key " + std::to_string(key) +
                              " not found in leaf page.");
   }
-  auto [page_id, slot_id] = location.value();
-  Page* page = pool.pinPage(page_id, table.heapFile());
+  Page* page = pool.pinPage(rid->heap_page_id, table.heapFile());
   wal.write(make_wal_record(
-      allocator, WALRecord::RecordType::DELETE, static_cast<uint16_t>(page_id),
-      DeleteRedoBody(static_cast<uint16_t>(slot_id)).encode()));
-  page->invalidateSlot(slot_id);
+      allocator, WALRecord::RecordType::DELETE, rid->heap_page_id,
+      DeleteRedoBody(rid->slot_id).encode()));
+  page->invalidateSlot(rid->slot_id);
   pool.unpinPage(page, table.heapFile());
   LOG_INFO("Removed record with key {} successfully.", key);
 }

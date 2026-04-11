@@ -1,11 +1,11 @@
 #pragma once
 
 #include <optional>
-#include <utility>
 
 #include "intermediate_cell.h"
 #include "leaf_cell.h"
 #include "page.h"
+#include "rid.h"
 
 // LeafIndexPage assume the underlying Page buffer/layout is
 // already initialized and do not own the storage.
@@ -23,8 +23,7 @@ class LeafIndexPage {
 
   LeafCell cellAt(int slot_id) const;
   bool hasKey(int key) const;
-  std::optional<std::pair<uint16_t, uint16_t>> findRef(int key,
-                                                       bool do_invalidate);
+  std::optional<RID> findRef(int key, bool do_invalidate);
 
   void transferAndCompactTo(LeafIndexPage& dst, char* separate_key);
 

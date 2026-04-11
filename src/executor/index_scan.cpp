@@ -46,22 +46,24 @@ std::optional<RID> IndexLookup::next() {
   if (mode_ == Mode::Keys) {
     while (pos_ < keys_.size()) {
       int key = keys_[pos_++];
-      auto location = BTreeCursor::findRecordLocation(pool_, indexFile_, key);
-      if (!location.has_value()) {
+      std::optional<RID> rid =
+          BTreeCursor::findRecordLocation(pool_, indexFile_, key);
+      if (!rid.has_value()) {
         continue;
       }
 
-      return RID{location->first, location->second};
+      return rid;
     }
   } else {
     while (current_key_ <= high_key_) {
       int key = current_key_++;
-      auto location = BTreeCursor::findRecordLocation(pool_, indexFile_, key);
-      if (!location.has_value()) {
+      std::optional<RID> rid =
+          BTreeCursor::findRecordLocation(pool_, indexFile_, key);
+      if (!rid.has_value()) {
         continue;
       }
 
-      return RID{location->first, location->second};
+      return rid;
     }
   }
 

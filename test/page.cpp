@@ -48,9 +48,8 @@ TEST(PageTest, InsertLeafPageAndFind) {
     LeafIndexPage leaf(*page);
     auto ref_opt = leaf.findRef(entry.key, false);
     ASSERT_TRUE(ref_opt.has_value());
-    auto [heap_page_id, slot_id_ref] = ref_opt.value();
-    EXPECT_EQ(entry.heap_page_id, heap_page_id);
-    EXPECT_EQ(entry.slot_id, slot_id_ref);
+    EXPECT_EQ(entry.heap_page_id, ref_opt->heap_page_id);
+    EXPECT_EQ(entry.slot_id, ref_opt->slot_id);
   }
 }
 
@@ -256,8 +255,8 @@ TEST(PageTest, LeafInsertInvalidateReuseSlot) {
 
   auto ref = leaf.findRef(1, false);
   ASSERT_TRUE(ref.has_value());
-  EXPECT_EQ(ref->first, 1);
-  EXPECT_EQ(ref->second, 1);
+  EXPECT_EQ(ref->heap_page_id, 1);
+  EXPECT_EQ(ref->slot_id, 1);
 }
 
 TEST(PageTest, HeapInsertInvalidateReuseSlot) {

@@ -24,8 +24,7 @@ bool LeafIndexPage::hasKey(int key) const {
   return false;
 }
 
-std::optional<std::pair<uint16_t, uint16_t>> LeafIndexPage::findRef(
-    int key, bool do_invalidate) {
+std::optional<RID> LeafIndexPage::findRef(int key, bool do_invalidate) {
   /**
    * PERFORMANCE:Same consideration as Page::findLeafRef; kept verbatim.
    */
@@ -42,7 +41,7 @@ std::optional<std::pair<uint16_t, uint16_t>> LeafIndexPage::findRef(
                   key);
         page_.invalidateSlot(idx);
       }
-      return std::make_pair(cell.heap_page_id(), cell.slot_id());
+      return RID{cell.heap_page_id(), cell.slot_id()};
     }
   }
   LOG_INFO("LeafIndexPage::findRef key {} not found in this page.", key);
