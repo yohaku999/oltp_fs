@@ -1,4 +1,4 @@
-#include "../src/storage/wal/wal.h"
+#include "storage/wal/wal.h"
 
 #include <gtest/gtest.h>
 
@@ -11,7 +11,7 @@
 #include <thread>
 #include <vector>
 
-#include "../src/storage/wal_record.h"
+#include "storage/wal/wal_record.h"
 
 class WALTest : public ::testing::Test {
  protected:

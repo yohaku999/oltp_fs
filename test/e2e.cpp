@@ -7,19 +7,19 @@ extern "C" {
 #include <pg_query.h>
 }
 
-#include "executor/executor.h"
-#include "executor/heap_fetch.h"
-#include "executor/index_scan.h"
+#include "execution/executor.h"
+#include "execution/heap_fetch.h"
+#include "execution/index_scan.h"
 #include "logging.h"
 #include "schema/schema.h"
-#include "schema/typed_row.h"
-#include "storage/btreecursor.h"
-#include "storage/bufferpool.h"
-#include "storage/page.h"
-#include "storage/record_cell.h"
-#include "storage/record_serializer.h"
+#include "tuple/typed_row.h"
+#include "storage/index/btreecursor.h"
+#include "storage/runtime/bufferpool.h"
+#include "storage/page/page.h"
+#include "storage/record/record_cell.h"
+#include "storage/record/record_serializer.h"
 #include "storage/wal/wal.h"
-#include "table/table.h"
+#include "catalog/table.h"
 
 class E2ETest : public ::testing::Test {
  protected:

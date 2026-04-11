@@ -2,7 +2,7 @@
 #include <cstdint>
 #include <cstring>
 
-#include "cell.h"
+#include "storage/page/cell.h"
 
 class LeafCell : public Cell {
  private:

@@ -3,8 +3,8 @@
 #include <ostream>
 #include <string>
 
-#include "bufferpool.h"
-#include "rid.h"
+#include "storage/runtime/bufferpool.h"
+#include "storage/index/rid.h"
 
 /**
  * BTreeCursor is an arbitration layer that coordinates BufferPool and File to

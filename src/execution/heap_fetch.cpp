@@ -1,8 +1,8 @@
 #include "heap_fetch.h"
 
-#include "../storage/bufferpool.h"
-#include "../storage/file.h"
-#include "../storage/page.h"
+#include "storage/runtime/bufferpool.h"
+#include "storage/runtime/file.h"
+#include "storage/page/page.h"
 
 HeapFetch::HeapFetch(BufferPool& pool, File& heapFile)
     : pool_(pool), heapFile_(heapFile) {}

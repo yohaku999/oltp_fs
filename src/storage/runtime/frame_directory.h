@@ -7,7 +7,7 @@
 #include <string>
 #include <unordered_set>
 
-#include "page.h"
+#include "storage/page/page.h"
 
 class FrameDirectory {
  public:

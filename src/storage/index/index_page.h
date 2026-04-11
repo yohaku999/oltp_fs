@@ -4,7 +4,7 @@
 
 #include "intermediate_cell.h"
 #include "leaf_cell.h"
-#include "page.h"
+#include "storage/page/page.h"
 #include "rid.h"
 
 // LeafIndexPage assume the underlying Page buffer/layout is

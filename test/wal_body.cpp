@@ -1,4 +1,4 @@
-#include "../src/storage/wal/wal_body.h"
+#include "storage/wal/wal_body.h"
 
 #include <gtest/gtest.h>
 

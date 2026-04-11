@@ -1,4 +1,4 @@
-#include "../src/storage/wal_record.h"
+#include "storage/wal/wal_record.h"
 
 #include <gtest/gtest.h>
 
@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <vector>
 
-#include "../src/storage/wal/wal_body.h"
+#include "storage/wal/wal_body.h"
 
 // Build a representative INSERT record and verify that serialization keeps
 // both the record metadata and raw body bytes intact across round-trip.

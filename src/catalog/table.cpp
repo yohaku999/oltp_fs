@@ -4,7 +4,7 @@
 #include <fstream>
 #include <nlohmann/json.hpp>
 
-#include "../storage/page.h"
+#include "storage/page/page.h"
 
 namespace {
 

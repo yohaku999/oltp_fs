@@ -8,12 +8,12 @@
 #include <stdexcept>
 #include <string>
 
-#include "bufferpool.h"
-#include "cell.h"
+#include "storage/runtime/bufferpool.h"
+#include "storage/page/cell.h"
 #include "index_page.h"
 #include "logging.h"
-#include "page.h"
-#include "record_cell.h"
+#include "storage/page/page.h"
+#include "storage/record/record_cell.h"
 
 namespace {
 

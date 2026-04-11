@@ -1,4 +1,4 @@
-#include "../src/storage/record_cell.h"
+#include "storage/record/record_cell.h"
 
 #include <gtest/gtest.h>
 

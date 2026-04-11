@@ -11,7 +11,7 @@
 #include <unordered_map>
 
 #include "logging.h"
-#include "page.h"
+#include "storage/page/page.h"
 
 std::unordered_map<std::string, std::weak_ptr<std::fstream>>
     File::stream_cache_;

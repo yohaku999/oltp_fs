@@ -7,8 +7,8 @@
 
 #include "file.h"
 #include "logging.h"
-#include "page.h"
-#include "wal/wal.h"
+#include "storage/page/page.h"
+#include "storage/wal/wal.h"
 
 BufferPool::BufferPool(WAL& wal)
     : buffer_(operator new(BUFFER_SIZE_BYTE)), wal_(wal) {};

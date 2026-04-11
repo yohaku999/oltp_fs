@@ -5,8 +5,8 @@
 #include <string>
 #include <utility>
 
-#include "../schema/schema.h"
-#include "../storage/file.h"
+#include "schema/schema.h"
+#include "storage/runtime/file.h"
 
 class Table {
  public:

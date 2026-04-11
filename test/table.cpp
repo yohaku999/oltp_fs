@@ -1,11 +1,11 @@
-#include "../src/table/table.h"
+#include "catalog/table.h"
 
 #include <gtest/gtest.h>
 
 #include <array>
 #include <fstream>
 
-#include "../src/storage/page.h"
+#include "storage/page/page.h"
 
 class TableTest : public ::testing::Test {
  protected:

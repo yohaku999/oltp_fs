@@ -2,7 +2,7 @@
 
 #include <variant>
 
-#include "column.h"
+#include "schema/column.h"
 
 using FieldValue =
     std::variant<std::monostate, Column::IntegerType, Column::VarcharType>;

@@ -6,9 +6,9 @@
 #include <utility>
 #include <vector>
 
-#include "../schema/schema.h"
-#include "../schema/typed_row.h"
-#include "cell.h"
+#include "schema/schema.h"
+#include "tuple/typed_row.h"
+#include "storage/page/cell.h"
 
 /**
  * Heap record binary layout.

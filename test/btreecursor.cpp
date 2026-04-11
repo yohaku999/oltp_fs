@@ -1,4 +1,4 @@
-#include "../src/storage/btreecursor.h"
+#include "storage/index/btreecursor.h"
 
 #include <gtest/gtest.h>
 
@@ -8,10 +8,10 @@
 #include <string>
 #include <vector>
 
-#include "../src/storage/bufferpool.h"
-#include "../src/storage/file.h"
-#include "../src/storage/page.h"
-#include "../src/storage/wal/wal.h"
+#include "storage/runtime/bufferpool.h"
+#include "storage/runtime/file.h"
+#include "storage/page/page.h"
+#include "storage/wal/wal.h"
 
 class BTreeCursorTest : public ::testing::Test {
  protected:

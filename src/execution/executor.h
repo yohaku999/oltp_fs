@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../schema/typed_row.h"
+#include "tuple/typed_row.h"
 
 class BufferPool;
 class LSNAllocator;

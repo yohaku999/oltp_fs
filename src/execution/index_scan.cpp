@@ -1,6 +1,6 @@
 #include "index_scan.h"
 
-#include "../storage/btreecursor.h"
+#include "storage/index/btreecursor.h"
 #include "logging.h"
 
 IndexLookup::IndexLookup(BufferPool& pool, File& indexFile,

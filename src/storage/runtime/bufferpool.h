@@ -6,7 +6,7 @@
 
 #include "file.h"
 #include "frame_directory.h"
-#include "page.h"
+#include "storage/page/page.h"
 
 class WAL;
 

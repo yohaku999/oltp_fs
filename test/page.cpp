@@ -1,4 +1,4 @@
-#include "../src/storage/page.h"
+#include "storage/page/page.h"
 
 #include <gtest/gtest.h>
 
@@ -8,10 +8,10 @@
 #include <optional>
 #include <string>
 
-#include "../src/storage/cell.h"
-#include "../src/storage/index_page.h"
-#include "../src/storage/record_cell.h"
-#include "../src/storage/record_serializer.h"
+#include "storage/page/cell.h"
+#include "storage/index/index_page.h"
+#include "storage/record/record_cell.h"
+#include "storage/record/record_serializer.h"
 
 namespace {
 

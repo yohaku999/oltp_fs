@@ -8,7 +8,7 @@
 class BufferPool;
 class File;
 
-#include "../storage/rid.h"
+#include "storage/index/rid.h"
 
 class IndexLookup {
  public:

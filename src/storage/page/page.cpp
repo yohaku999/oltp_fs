@@ -11,7 +11,7 @@
 #include <vector>
 
 #include "logging.h"
-#include "record_cell.h"
+#include "storage/record/record_cell.h"
 
 namespace {
 

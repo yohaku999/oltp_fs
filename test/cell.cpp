@@ -1,11 +1,11 @@
-#include "../src/storage/cell.h"
+#include "storage/page/cell.h"
 
 #include <gtest/gtest.h>
 
 #include <vector>
 
-#include "../src/storage/intermediate_cell.h"
-#include "../src/storage/leaf_cell.h"
+#include "storage/index/intermediate_cell.h"
+#include "storage/index/leaf_cell.h"
 
 TEST(CellTest, IntermediateCellRoundTrip) {
   IntermediateCell original(500, 77777);

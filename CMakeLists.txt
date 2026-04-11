@@ -43,27 +43,27 @@ set_target_properties(pg_query PROPERTIES
 add_dependencies(pg_query libpg_query_proj)
 
 add_library(dbfs_src
-    src/storage/bufferpool.cpp
-    src/storage/file.cpp
-    src/storage/page.cpp
-    src/storage/index_page.cpp
-    src/storage/intermediate_cell.cpp
-    src/storage/leaf_cell.cpp
-    src/storage/record_serializer.cpp
-    src/storage/btreecursor.cpp
-    src/storage/frame_directory.cpp
-    src/storage/lsn_allocator.cpp
-    src/storage/wal_record.cpp
+    src/storage/runtime/bufferpool.cpp
+    src/storage/runtime/file.cpp
+    src/storage/page/page.cpp
+    src/storage/index/index_page.cpp
+    src/storage/index/intermediate_cell.cpp
+    src/storage/index/leaf_cell.cpp
+    src/storage/record/record_serializer.cpp
+    src/storage/index/btreecursor.cpp
+    src/storage/runtime/frame_directory.cpp
+    src/storage/wal/lsn_allocator.cpp
+    src/storage/wal/wal_record.cpp
     src/storage/wal/wal_body.cpp
     src/storage/wal/wal.cpp
-    src/executor/heap_fetch.cpp
-    src/executor/executor.cpp
-    src/executor/index_scan.cpp
-    src/table/table.cpp
+    src/execution/heap_fetch.cpp
+    src/execution/executor.cpp
+    src/execution/index_scan.cpp
+    src/catalog/table.cpp
     src/logging.cpp
 )
 
-target_include_directories(dbfs_src PUBLIC src src/storage src/storage/wal)
+target_include_directories(dbfs_src PUBLIC src)
 target_link_libraries(dbfs_src PUBLIC spdlog::spdlog nlohmann_json::nlohmann_json)
 
 if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")

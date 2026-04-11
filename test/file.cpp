@@ -1,4 +1,4 @@
-#include "../src/storage/file.h"
+#include "storage/runtime/file.h"
 
 #include <gtest/gtest.h>
 
@@ -8,7 +8,7 @@
 #include <memory>
 #include <vector>
 
-#include "../src/storage/page.h"
+#include "storage/page/page.h"
 
 class FileTest : public ::testing::Test {
  protected:

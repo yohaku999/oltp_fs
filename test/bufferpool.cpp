@@ -1,4 +1,4 @@
-#include "../src/storage/bufferpool.h"
+#include "storage/runtime/bufferpool.h"
 
 #include <gtest/gtest.h>
 
@@ -10,13 +10,13 @@
 #include <set>
 #include <stdexcept>
 
-#include "../src/storage/file.h"
-#include "../src/storage/lsn_allocator.h"
-#include "../src/storage/page.h"
-#include "../src/storage/record_cell.h"
-#include "../src/storage/record_serializer.h"
-#include "../src/storage/wal/wal.h"
-#include "../src/storage/wal_record.h"
+#include "storage/runtime/file.h"
+#include "storage/wal/lsn_allocator.h"
+#include "storage/page/page.h"
+#include "storage/record/record_cell.h"
+#include "storage/record/record_serializer.h"
+#include "storage/wal/wal.h"
+#include "storage/wal/wal_record.h"
 
 namespace {
 

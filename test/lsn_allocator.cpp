@@ -1,4 +1,4 @@
-#include "../src/storage/lsn_allocator.h"
+#include "storage/wal/lsn_allocator.h"
 
 #include <gtest/gtest.h>
 

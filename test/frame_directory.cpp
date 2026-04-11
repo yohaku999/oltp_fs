@@ -1,11 +1,11 @@
-#include "../src/storage/frame_directory.h"
+#include "storage/runtime/frame_directory.h"
 
 #include <gtest/gtest.h>
 
 #include <array>
 #include <memory>
 
-#include "../src/storage/page.h"
+#include "storage/page/page.h"
 
 class FrameDirectoryTest : public ::testing::Test {
  protected:

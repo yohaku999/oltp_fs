@@ -1,4 +1,4 @@
-#include "../src/executor/executor.h"
+#include "execution/executor.h"
 
 #include <gtest/gtest.h>
 
@@ -11,12 +11,12 @@
 #include <unordered_set>
 #include <vector>
 
-#include "../src/storage/btreecursor.h"
-#include "../src/storage/bufferpool.h"
-#include "../src/storage/lsn_allocator.h"
-#include "../src/storage/wal/wal.h"
-#include "../src/storage/wal_record.h"
-#include "../src/table/table.h"
+#include "storage/index/btreecursor.h"
+#include "storage/runtime/bufferpool.h"
+#include "storage/wal/lsn_allocator.h"
+#include "storage/wal/wal.h"
+#include "storage/wal/wal_record.h"
+#include "catalog/table.h"
 
 class ExecutorTest : public ::testing::Test {
  protected:
