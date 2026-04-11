@@ -19,6 +19,16 @@
 #include "heap_fetch.h"
 #include "index_scan.h"
 
+/**
+ * - executor now operates on Table + TypedRow rather than raw File pairs
+- schema metadata is persisted in data/<table>.meta.json
+- multi-column records are supported by RecordSerializer and RecordCellView
+- E2E uses Table-backed fixtures
+- key is still passed separately from TypedRow in executor::insert/update
+- range scan still drops below executor into IndexLookup + HeapFetch directly
+ * 
+ * 
+ */
 namespace {
 std::pair<uint16_t, uint16_t> insertIntoHeap(BufferPool& pool, File& heapFile,
                                              const Schema& schema,
