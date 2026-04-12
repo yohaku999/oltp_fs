@@ -12,7 +12,6 @@
 #include "tuple/typed_row.h"
 
 class BufferPool;
-class LSNAllocator;
 class WAL;
 
 class Table {
@@ -31,10 +30,9 @@ class Table {
                              bool do_invalidate = false);
   TypedRow readRow(BufferPool& pool, RID rid) const;
   RID insertHeapRecord(BufferPool& pool, int key, const TypedRow& row,
-                       LSNAllocator& allocator, WAL& wal);
+                       WAL& wal);
   void insertIndexEntry(BufferPool& pool, int key, RID rid);
-  void invalidateHeapRecord(BufferPool& pool, RID rid, LSNAllocator& allocator,
-                            WAL& wal);
+  void invalidateHeapRecord(BufferPool& pool, RID rid, WAL& wal);
   File& indexFile() { return index_file_; }
   File& heapFile() { return heap_file_; }
 

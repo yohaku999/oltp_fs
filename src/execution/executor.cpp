@@ -6,7 +6,6 @@
 
 #include "../logging.h"
 #include "storage/runtime/bufferpool.h"
-#include "storage/wal/lsn_allocator.h"
 #include "storage/wal/wal.h"
 #include "catalog/table.h"
 
@@ -30,7 +29,7 @@ TypedRow executor::read(BufferPool& pool, Table& table, int key) {
 }
 
 void executor::insert(BufferPool& pool, Table& table, int key,
-                      const TypedRow& row, LSNAllocator& allocator, WAL& wal) {
+                      const TypedRow& row, WAL& wal) {
   LOG_INFO("Inserting record with key {} into table {}.", key, table.name());
   std::optional<RID> existing_rid = table.findRID(pool, key);
   if (existing_rid.has_value()) {
@@ -39,18 +38,17 @@ void executor::insert(BufferPool& pool, Table& table, int key,
         " already exists. Duplicate keys are not allowed.");
   }
 
-  RID rid = table.insertHeapRecord(pool, key, row, allocator, wal);
+  RID rid = table.insertHeapRecord(pool, key, row, wal);
   table.insertIndexEntry(pool, key, rid);
 }
 
-void executor::remove(BufferPool& pool, Table& table, int key,
-                      LSNAllocator& allocator, WAL& wal) {
+void executor::remove(BufferPool& pool, Table& table, int key, WAL& wal) {
   std::optional<RID> rid = table.findRID(pool, key, true);
   if (!rid.has_value()) {
     throw std::runtime_error("Key " + std::to_string(key) +
                              " not found in leaf page.");
   }
-  table.invalidateHeapRecord(pool, rid.value(), allocator, wal);
+  table.invalidateHeapRecord(pool, rid.value(), wal);
   LOG_INFO("Removed record with key {} successfully.", key);
 }
 
@@ -63,7 +61,7 @@ void executor::remove(BufferPool& pool, Table& table, int key,
  * special-case split handling.
  */
 void executor::update(BufferPool& pool, Table& table, int key,
-                      const TypedRow& row, LSNAllocator& allocator, WAL& wal) {
-  executor::remove(pool, table, key, allocator, wal);
-  executor::insert(pool, table, key, row, allocator, wal);
+                      const TypedRow& row, WAL& wal) {
+  executor::remove(pool, table, key, wal);
+  executor::insert(pool, table, key, row, wal);
 }

@@ -9,7 +9,6 @@
 
 #include "storage/runtime/bufferpool.h"
 #include "storage/page/page.h"
-#include "storage/wal/lsn_allocator.h"
 #include "storage/wal/wal.h"
 #include "storage/wal/wal_record.h"
 
@@ -121,11 +120,9 @@ TEST_F(TableTest, InitializeCreatesReadableTableBootstrap) {
 
 TEST_F(TableTest, InsertIndexFindRIDAndReadRowRoundTrip) {
   Table table = createSingleColumnTable();
-  LSNAllocator allocator(0);
 
   RID inserted = table.insertHeapRecord(
-      *pool_, 11, TypedRow{{Column::VarcharType("table-value")}}, allocator,
-      *wal_);
+      *pool_, 11, TypedRow{{Column::VarcharType("table-value")}}, *wal_);
   table.insertIndexEntry(*pool_, 11, inserted);
 
   std::optional<RID> found = table.findRID(*pool_, 11);
@@ -139,10 +136,9 @@ TEST_F(TableTest, InsertIndexFindRIDAndReadRowRoundTrip) {
 
 TEST_F(TableTest, InsertHeapRecordWithWalWritesInsertRecord) {
   Table table = createSingleColumnTable();
-  LSNAllocator allocator(0);
 
   RID inserted = table.insertHeapRecord(
-      *pool_, 11, TypedRow{{Column::VarcharType("wal")}}, allocator, *wal_);
+      *pool_, 11, TypedRow{{Column::VarcharType("wal")}}, *wal_);
   table.insertIndexEntry(*pool_, 11, inserted);
   wal_->flush();
 
@@ -159,14 +155,11 @@ TEST_F(TableTest, InsertHeapRecordWithWalWritesInsertRecord) {
 
 TEST_F(TableTest, InvalidateHeapRecordWithWalWritesDeleteRecord) {
   Table table = createSingleColumnTable();
-  LSNAllocator insert_allocator(0);
   RID inserted = table.insertHeapRecord(
-      *pool_, 22, TypedRow{{Column::VarcharType("gone")}}, insert_allocator,
-      *wal_);
+      *pool_, 22, TypedRow{{Column::VarcharType("gone")}}, *wal_);
   table.insertIndexEntry(*pool_, 22, inserted);
 
-  LSNAllocator allocator(0);
-  table.invalidateHeapRecord(*pool_, inserted, allocator, *wal_);
+  table.invalidateHeapRecord(*pool_, inserted, *wal_);
   wal_->flush();
 
   std::vector<WALRecord> records = readWalRecords(kWalPath);

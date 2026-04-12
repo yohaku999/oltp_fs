@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "lsn_allocator.h"
 #include "wal_record.h"
 
 /**
@@ -26,11 +27,13 @@ class WAL {
 
   std::uint64_t getFlushedLSN() const;
 
-  // Appends a serialized record and may trigger a batch flush.
-  void write(const WALRecord& record);
+  // Allocates an LSN, serializes the record, and may trigger a batch flush.
+  void write(WALRecord::RecordType type, uint16_t page_id,
+             const std::vector<std::byte>& body);
 
  private:
   int wal_fd_;
+  LSNAllocator allocator_;
   std::vector<std::byte> buffer_;
   // Protects buffer_, last_lsn_written_, and flushed_lsn_.
   mutable std::mutex buffer_mutex_;

@@ -11,7 +11,6 @@
 #include "storage/record/record_cell.h"
 #include "storage/record/record_serializer.h"
 #include "storage/runtime/bufferpool.h"
-#include "storage/wal/lsn_allocator.h"
 #include "storage/wal/wal.h"
 #include "storage/wal/wal_body.h"
 #include "storage/wal/wal_record.h"
@@ -93,7 +92,7 @@ TypedRow Table::readRow(BufferPool& pool, RID rid) const {
 }
 
 RID Table::insertHeapRecord(BufferPool& pool, int key, const TypedRow& row,
-                            LSNAllocator& allocator, WAL& wal) {
+                            WAL& wal) {
   LOG_INFO("Inserting record with key {} into heap file {}.", key,
            heap_file_.getFilePath());
   RecordSerializer cell(schema_, row);
@@ -114,12 +113,11 @@ RID Table::insertHeapRecord(BufferPool& pool, int key, const TypedRow& row,
     }
   }
 
-  wal.write(make_wal_record(
-      allocator, WALRecord::RecordType::INSERT,
-      static_cast<uint16_t>(target_page_id),
-      InsertRedoBody(static_cast<uint16_t>(inserted_slot_id.value()),
-                     serialized_cell)
-          .encode()));
+  wal.write(WALRecord::RecordType::INSERT,
+            static_cast<uint16_t>(target_page_id),
+            InsertRedoBody(static_cast<uint16_t>(inserted_slot_id.value()),
+                           serialized_cell)
+                .encode());
 
   pool.unpinPage(heap_page, heap_file_);
   LOG_INFO("Inserted record with key {} into heap page ID {} successfully.",
@@ -134,12 +132,10 @@ void Table::insertIndexEntry(BufferPool& pool, int key, RID rid) {
                                rid.slot_id);
 }
 
-void Table::invalidateHeapRecord(BufferPool& pool, RID rid,
-                                 LSNAllocator& allocator, WAL& wal) {
+void Table::invalidateHeapRecord(BufferPool& pool, RID rid, WAL& wal) {
   Page* page = pool.pinPage(rid.heap_page_id, heap_file_);
-  wal.write(make_wal_record(allocator, WALRecord::RecordType::DELETE,
-                            rid.heap_page_id,
-                            DeleteRedoBody(rid.slot_id).encode()));
+  wal.write(WALRecord::RecordType::DELETE, rid.heap_page_id,
+            DeleteRedoBody(rid.slot_id).encode());
   page->invalidateSlot(rid.slot_id);
   pool.unpinPage(page, heap_file_);
 }

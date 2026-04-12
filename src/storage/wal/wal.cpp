@@ -6,7 +6,8 @@
 
 #include <system_error>
 
-WAL::WAL(const std::string& wal_path) : wal_fd_(-1) {
+// TODO: add-initializer methods for inisializing and reading. lsn should be read from parsisted wal file.
+WAL::WAL(const std::string& wal_path) : wal_fd_(-1), allocator_(0) {
   int fd = ::open(wal_path.c_str(), O_CREAT | O_WRONLY, 0644);
   if (fd == -1) {
     throw std::system_error(errno, std::generic_category(),
@@ -15,7 +16,11 @@ WAL::WAL(const std::string& wal_path) : wal_fd_(-1) {
   wal_fd_ = fd;
 }
 
-void WAL::write(const WALRecord& record) {
+void WAL::write(WALRecord::RecordType type, uint16_t page_id,
+                const std::vector<std::byte>& body) {
+  const auto size = WALRecord::size_bytes(body);
+  const auto lsn = allocator_.allocate(size);
+  WALRecord record(lsn, type, page_id, body);
   std::vector<std::byte> bytes = record.serialize();
 
   {

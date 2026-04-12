@@ -122,26 +122,23 @@ TEST_F(BufferPoolTest, createNewPageWithEviction) {
 }
 
 TEST_F(BufferPoolTest, EvictionFlushesWALUpToPageLSN) {
-  LSNAllocator allocator(0);
-
   std::vector<std::byte> body = {std::byte{0x01}, std::byte{0x02}};
-  WALRecord rec =
-      make_wal_record(allocator, WALRecord::RecordType::INSERT, 1, body);
+  constexpr std::uint64_t kRecordLsn = 0;
 
   // The record stays buffered until eviction forces WAL durability.
-  wal->write(rec);
+  wal->write(WALRecord::RecordType::INSERT, 1, body);
   EXPECT_EQ(wal->getFlushedLSN(), 0u);
 
   for (size_t i = 0; i < BufferPool::MAX_FRAME_COUNT; ++i) {
     uint16_t page_id = pool->createPage(PageKind::Heap, *testFile);
     Page* page = pool->pinPage(page_id, *testFile);
     // Mark each resident page as depending on the same WAL record.
-    page->setPageLSN(rec.get_lsn());
+    page->setPageLSN(kRecordLsn);
     pool->unpinPage(page, *testFile);
   }
 
   // Allocate one more page to force eviction of a dirty page.
   (void)pool->createPage(PageKind::Heap, *testFile);
 
-  EXPECT_EQ(wal->getFlushedLSN(), rec.get_lsn());
+  EXPECT_EQ(wal->getFlushedLSN(), kRecordLsn);
 }
