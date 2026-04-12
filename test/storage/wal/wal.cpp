@@ -62,24 +62,39 @@ class WALTest : public ::testing::Test {
 };
 
 TEST_F(WALTest, FlushedLSNFollowsLastRecordLSN) {
-  WAL wal(wal_path);
+  auto wal = WAL::initializeNew(wal_path);
 
   std::vector<std::byte> body1 = {std::byte{0x01}, std::byte{0x02}};
   std::vector<std::byte> body2 = {std::byte{0x10}, std::byte{0x20},
                                   std::byte{0x30}};
 
-  wal.write(WALRecord::RecordType::INSERT, 1, body1);
-  wal.write(WALRecord::RecordType::DELETE, 2, body2);
+  wal->write(WALRecord::RecordType::INSERT, 1, body1);
+  wal->write(WALRecord::RecordType::DELETE, 2, body2);
 
   // Flush so getFlushedLSN() reflects the written records.
-  wal.flush();
+  wal->flush();
 
-  auto flushed = wal.getFlushedLSN();
+  auto flushed = wal->getFlushedLSN();
   EXPECT_EQ(flushed, WALRecord::size_bytes(body1));
 }
 
+TEST_F(WALTest, InitializeNewFailsIfWalAlreadyExists) {
+  auto wal = WAL::initializeNew(wal_path);
+  wal.reset();
+
+  EXPECT_THROW({
+    auto reopened = WAL::initializeNew(wal_path);
+  }, std::system_error);
+}
+
+TEST_F(WALTest, OpenExistingFailsIfWalDoesNotExist) {
+  EXPECT_THROW({
+    auto wal = WAL::openExisting(wal_path);
+  }, std::system_error);
+}
+
 TEST_F(WALTest, WriteOverloadAllocatesSequentialLSNsFromRecordSizes) {
-  WAL wal(wal_path);
+  auto wal = WAL::initializeNew(wal_path);
 
   std::vector<std::vector<std::byte>> bodies = {
       {std::byte{0x01}, std::byte{0x02}},
@@ -88,9 +103,9 @@ TEST_F(WALTest, WriteOverloadAllocatesSequentialLSNsFromRecordSizes) {
   };
 
   for (const auto& body : bodies) {
-    wal.write(WALRecord::RecordType::INSERT, 1, body);
+    wal->write(WALRecord::RecordType::INSERT, 1, body);
   }
-  wal.flush();
+  wal->flush();
 
   std::vector<WALRecord> records = readWalRecords();
   ASSERT_EQ(records.size(), bodies.size());
@@ -100,4 +115,32 @@ TEST_F(WALTest, WriteOverloadAllocatesSequentialLSNsFromRecordSizes) {
     EXPECT_EQ(records[i].get_lsn(), expected_lsn);
     expected_lsn += WALRecord::size_bytes(bodies[i]);
   }
+}
+
+TEST_F(WALTest, ReopenContinuesAppendingFromPersistedWalEnd) {
+  std::vector<std::byte> body1 = {std::byte{0x01}, std::byte{0x02}};
+  std::vector<std::byte> body2 = {std::byte{0x10}, std::byte{0x20},
+                                  std::byte{0x30}};
+  std::vector<std::byte> body3 = {std::byte{0xAA}, std::byte{0xBB}};
+
+  {
+    auto wal = WAL::initializeNew(wal_path);
+    wal->write(WALRecord::RecordType::INSERT, 1, body1);
+    wal->write(WALRecord::RecordType::INSERT, 1, body2);
+    wal->flush();
+  }
+
+  {
+    auto wal = WAL::openExisting(wal_path);
+    EXPECT_EQ(wal->getFlushedLSN(), WALRecord::size_bytes(body1));
+    wal->write(WALRecord::RecordType::INSERT, 1, body3);
+    wal->flush();
+  }
+
+  std::vector<WALRecord> records = readWalRecords();
+  ASSERT_EQ(records.size(), 3u);
+  EXPECT_EQ(records[0].get_lsn(), 0u);
+  EXPECT_EQ(records[1].get_lsn(), WALRecord::size_bytes(body1));
+  EXPECT_EQ(records[2].get_lsn(),
+            WALRecord::size_bytes(body1) + WALRecord::size_bytes(body2));
 }

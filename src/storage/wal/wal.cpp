@@ -4,11 +4,80 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <fstream>
 #include <system_error>
 
-// TODO: add-initializer methods for inisializing and reading. lsn should be read from parsisted wal file.
-WAL::WAL(const std::string& wal_path) : wal_fd_(-1), allocator_(0) {
-  int fd = ::open(wal_path.c_str(), O_CREAT | O_WRONLY, 0644);
+namespace {
+
+std::pair<std::uint64_t, std::uint64_t> readWalBootstrapState(
+    const std::string& wal_path) {
+  std::ifstream wal_file(wal_path, std::ios::binary | std::ios::ate);
+  if (!wal_file) {
+    throw std::system_error(errno ? errno : ENOENT, std::generic_category(),
+                            "Failed to open existing WAL file");
+  }
+
+  const auto file_size = wal_file.tellg();
+  if (file_size < 0) {
+    throw std::runtime_error("Failed to determine WAL size during bootstrap");
+  }
+
+  const auto next_lsn = static_cast<std::uint64_t>(file_size);
+  if (next_lsn == 0) {
+    return {0, 0};
+  }
+
+  wal_file.seekg(0, std::ios::beg);
+
+  std::uint64_t offset = 0;
+  std::uint64_t last_record_lsn = 0;
+
+  while (offset < next_lsn) {
+    if (next_lsn - offset < WALRecord::header_size_bytes()) {
+      throw std::runtime_error("Incomplete WAL header during bootstrap");
+    }
+
+    wal_file.read(reinterpret_cast<char*>(&last_record_lsn),
+                  sizeof(last_record_lsn));
+    uint32_t body_size = 0;
+    // We already consumed the leading LSN field, so skip only the remaining
+    // header bytes between it and body_size (record type + page id).
+    wal_file.seekg(WALRecord::body_size_offset_bytes() - sizeof(uint64_t),
+                   std::ios::cur);
+    wal_file.read(reinterpret_cast<char*>(&body_size), sizeof(body_size));
+
+    offset += WALRecord::header_size_bytes();
+    if (next_lsn - offset < body_size) {
+      throw std::runtime_error("Incomplete WAL record body during bootstrap");
+    }
+
+    wal_file.seekg(body_size, std::ios::cur);
+    offset += body_size;
+  }
+
+  return {next_lsn, last_record_lsn};
+}
+
+}  // namespace
+
+std::unique_ptr<WAL> WAL::initializeNew(const std::string& wal_path) {
+  return std::unique_ptr<WAL>(new WAL(wal_path, 0, 0,
+                                      O_CREAT | O_EXCL | O_WRONLY));
+}
+
+std::unique_ptr<WAL> WAL::openExisting(const std::string& wal_path) {
+  const auto [next_lsn, durable_lsn] = readWalBootstrapState(wal_path);
+  return std::unique_ptr<WAL>(new WAL(wal_path, next_lsn, durable_lsn,
+                                      O_WRONLY | O_APPEND));
+}
+
+WAL::WAL(const std::string& wal_path, std::uint64_t next_lsn,
+         std::uint64_t durable_lsn, int open_flags)
+    : wal_fd_(-1),
+      allocator_(next_lsn),
+      last_lsn_written_(durable_lsn),
+      flushed_lsn_(durable_lsn) {
+  int fd = ::open(wal_path.c_str(), open_flags, 0644);
   if (fd == -1) {
     throw std::system_error(errno, std::generic_category(),
                             "Failed to open WAL file");

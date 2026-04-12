@@ -45,7 +45,7 @@ class BufferPoolTest : public ::testing::Test {
     std::array<char, Page::PAGE_SIZE_BYTE> empty{};
     ofs.write(empty.data(), empty.size());
     ofs.close();
-    wal = std::make_unique<WAL>(kWalFile);
+    wal = WAL::initializeNew(kWalFile);
     pool = std::make_unique<BufferPool>(*wal);
     testFile = std::make_unique<File>(kTestFile);
   }

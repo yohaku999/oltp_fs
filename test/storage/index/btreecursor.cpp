@@ -24,7 +24,7 @@ class BTreeCursorTest : public ::testing::Test {
   void SetUp() override {
     std::remove(index_path_.c_str());
     std::remove(wal_path_.c_str());
-    wal_ = std::make_unique<WAL>(wal_path_);
+    wal_ = WAL::initializeNew(wal_path_);
     pool_ = std::make_unique<BufferPool>(*wal_);
     index_file_ = std::make_unique<File>(index_path_);
     initializeLeafPage(*index_file_);

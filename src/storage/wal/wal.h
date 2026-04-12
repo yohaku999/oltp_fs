@@ -1,8 +1,10 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <mutex>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "lsn_allocator.h"
@@ -20,7 +22,8 @@
  */
 class WAL {
  public:
-  explicit WAL(const std::string& wal_path);
+  static std::unique_ptr<WAL> initializeNew(const std::string& wal_path);
+  static std::unique_ptr<WAL> openExisting(const std::string& wal_path);
 
   // Makes buffered WAL bytes durable and advances flushed_lsn_.
   void flush();
@@ -32,6 +35,9 @@ class WAL {
              const std::vector<std::byte>& body);
 
  private:
+  WAL(const std::string& wal_path, std::uint64_t next_lsn,
+      std::uint64_t durable_lsn, int open_flags);
+
   int wal_fd_;
   LSNAllocator allocator_;
   std::vector<std::byte> buffer_;

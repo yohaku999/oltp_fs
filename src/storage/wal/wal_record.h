@@ -10,17 +10,20 @@ class WALRecord {
  public:
   enum class RecordType : uint8_t { INSERT, UPDATE, DELETE };
 
+  static constexpr std::size_t body_size_offset_bytes() {
+    return sizeof(uint64_t) + sizeof(RecordType) + sizeof(uint16_t);
+  }
+
+  static constexpr std::size_t header_size_bytes() {
+    return body_size_offset_bytes() + sizeof(uint32_t);
+  }
+
  private:
   uint64_t lsn_;
   RecordType type_;
   uint16_t page_id_;
   uint32_t body_size_;
   std::vector<std::byte> record_body_;
-
-  static constexpr std::size_t header_size_bytes() {
-    return sizeof(uint64_t) + sizeof(RecordType) + sizeof(uint16_t) +
-           sizeof(uint32_t);
-  }
 
  public:
   WALRecord(uint64_t lsn, RecordType type, uint16_t page_id,

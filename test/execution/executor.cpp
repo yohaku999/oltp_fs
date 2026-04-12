@@ -25,7 +25,7 @@ class ExecutorTest : public ::testing::Test {
   void SetUp() override {
     Table::removeBackingFilesFor(kTableName);
     std::remove(kWalPath);
-    wal_ = std::make_unique<WAL>(kWalPath);
+    wal_ = WAL::initializeNew(kWalPath);
     pool_ = std::make_unique<BufferPool>(*wal_);
   }
 

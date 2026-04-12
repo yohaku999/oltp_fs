@@ -33,7 +33,7 @@ class E2ETest : public ::testing::Test {
   void SetUp() override {
     Table::removeBackingFilesFor(kTableName);
     std::remove("e2e_test.wal");
-    wal = std::make_unique<WAL>("e2e_test.wal");
+    wal = WAL::initializeNew("e2e_test.wal");
     pool = std::make_unique<BufferPool>(*wal);
   }
 
