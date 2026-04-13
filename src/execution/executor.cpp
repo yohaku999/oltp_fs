@@ -9,6 +9,33 @@
 #include "storage/wal/wal.h"
 #include "catalog/table.h"
 
+namespace {
+
+// only avaiable for single-column integer access indexes for now
+int extractAccessKey(const Table& table, const TypedRow& row) {
+  if (!table.indexedColumnName().has_value()) {
+    throw std::runtime_error("Table has no configured indexed column: " +
+                             table.name());
+  }
+  const std::string& column_name = table.indexedColumnName().value();
+  const int column_index = table.schema().getColumnIndex(column_name);
+  if (column_index < 0) {
+    throw std::runtime_error("Access index column not found in schema: " +
+                             column_name);
+  }
+  if (row.values.size() <= static_cast<std::size_t>(column_index)) {
+    throw std::runtime_error("Row does not contain access-index column: " +
+                             column_name);
+  }
+  if (!std::holds_alternative<Column::IntegerType>(row.values[column_index])) {
+    throw std::runtime_error("Access-index column must be Integer: " +
+                             column_name);
+  }
+  return std::get<Column::IntegerType>(row.values[column_index]);
+}
+
+}  // namespace
+
 /**
  * - executor now operates on Table + TypedRow rather than raw File pairs
 - schema metadata is persisted in data/<table>.meta.json
@@ -28,8 +55,9 @@ TypedRow executor::read(BufferPool& pool, Table& table, int key) {
   return table.readRow(pool, rid.value());
 }
 
-void executor::insert(BufferPool& pool, Table& table, int key,
-                      const TypedRow& row, WAL& wal) {
+void executor::insert(BufferPool& pool, Table& table, const TypedRow& row,
+                      WAL& wal) {
+  const int key = extractAccessKey(table, row);
   LOG_INFO("Inserting record with key {} into table {}.", key, table.name());
   std::optional<RID> existing_rid = table.findRID(pool, key);
   if (existing_rid.has_value()) {
@@ -38,7 +66,7 @@ void executor::insert(BufferPool& pool, Table& table, int key,
         " already exists. Duplicate keys are not allowed.");
   }
 
-  RID rid = table.insertHeapRecord(pool, key, row, wal);
+  RID rid = table.insertHeapRecord(pool, row, wal);
   table.insertIndexEntry(pool, key, rid);
 }
 
@@ -60,8 +88,9 @@ void executor::remove(BufferPool& pool, Table& table, int key, WAL& wal) {
  * fewer page-structure assumptions) without requiring in-place updates or
  * special-case split handling.
  */
-void executor::update(BufferPool& pool, Table& table, int key,
-                      const TypedRow& row, WAL& wal) {
+void executor::update(BufferPool& pool, Table& table, const TypedRow& row,
+                      WAL& wal) {
+  const int key = extractAccessKey(table, row);
   executor::remove(pool, table, key, wal);
-  executor::insert(pool, table, key, row, wal);
+  executor::insert(pool, table, row, wal);
 }

@@ -10,12 +10,10 @@ namespace executor {
 
 TypedRow read(BufferPool& pool, Table& table, int key);
 
-void insert(BufferPool& pool, Table& table, int key, const TypedRow& row,
-            WAL& wal);
+void insert(BufferPool& pool, Table& table, const TypedRow& row, WAL& wal);
 
 void remove(BufferPool& pool, Table& table, int key, WAL& wal);
 
-void update(BufferPool& pool, Table& table, int key, const TypedRow& row,
-            WAL& wal);
+void update(BufferPool& pool, Table& table, const TypedRow& row, WAL& wal);
 
 }  // namespace executor

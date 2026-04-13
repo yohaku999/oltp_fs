@@ -7,6 +7,8 @@
 #include <fstream>
 #include <memory>
 
+#include <nlohmann/json.hpp>
+
 #include "storage/runtime/bufferpool.h"
 #include "storage/page/page.h"
 #include "storage/wal/wal.h"
@@ -35,16 +37,18 @@ class TableTest : public ::testing::Test {
 
   static Table createSingleColumnTable() {
     return Table::initialize(
-        kTableName, Schema(kTableName, std::vector<Column>{Column(
-                                           "value", Column::Type::Varchar)}));
+        kTableName,
+        Schema(std::vector<Column>{Column("id", Column::Type::Integer),
+                                   Column("value", Column::Type::Varchar)}),
+        std::string("id"));
   }
 
   static std::string singleVarcharValue(const TypedRow& row) {
-    if (row.values.size() != 1 ||
-        !std::holds_alternative<Column::VarcharType>(row.values[0])) {
-      throw std::runtime_error("Expected single varchar row.");
+    if (row.values.size() != 2 ||
+        !std::holds_alternative<Column::VarcharType>(row.values[1])) {
+      throw std::runtime_error("Expected row with integer key and varchar value.");
     }
-    return std::get<Column::VarcharType>(row.values[0]);
+    return std::get<Column::VarcharType>(row.values[1]);
   }
 
   static std::vector<WALRecord> readWalRecords(const std::string& wal_path) {
@@ -90,20 +94,36 @@ class TableTest : public ::testing::Test {
 TEST_F(TableTest, InitializeCreatesReadableTableBootstrap) {
   EXPECT_FALSE(Table::isPersisted(kTableName));
 
-  Schema schema(kTableName,
-                std::vector<Column>{Column("value", Column::Type::Varchar)});
-  Table table = Table::initialize(kTableName, schema);
+  Schema schema(std::vector<Column>{Column("id", Column::Type::Integer),
+                                    Column("value", Column::Type::Varchar)});
+  Table table = Table::initialize(kTableName, schema, std::string("id"));
 
   EXPECT_TRUE(Table::isPersisted(kTableName));
   EXPECT_EQ(table.indexFile().getRootPageID(), 0u);
   EXPECT_TRUE(table.indexFile().isPageIDUsed(0));
   EXPECT_TRUE(table.heapFile().isPageIDUsed(0));
 
+  std::ifstream meta_file("data/table_test_table.meta.json");
+  ASSERT_TRUE(meta_file.is_open());
+  nlohmann::json metadata;
+  meta_file >> metadata;
+  ASSERT_TRUE(metadata.contains("indexes"));
+  ASSERT_TRUE(metadata["indexes"].is_array());
+  ASSERT_EQ(metadata["indexes"].size(), 1u);
+  EXPECT_EQ(metadata["indexes"][0]["indexFile"].get<std::string>(),
+            "data/table_test_table.id.index");
+  EXPECT_EQ(metadata["indexes"][0]["indexedColumn"].get<std::string>(),
+            "id");
+
   Table reopened = Table::getTable(kTableName);
   EXPECT_EQ(reopened.name(), kTableName);
-  ASSERT_EQ(reopened.schema().columns().size(), 1u);
-  EXPECT_EQ(reopened.schema().columns()[0].getName(), "value");
-  EXPECT_EQ(reopened.schema().columns()[0].getType(), Column::Type::Varchar);
+  ASSERT_EQ(reopened.schema().columns().size(), 2u);
+  EXPECT_EQ(reopened.schema().columns()[0].getName(), "id");
+  EXPECT_EQ(reopened.schema().columns()[0].getType(), Column::Type::Integer);
+  EXPECT_EQ(reopened.schema().columns()[1].getName(), "value");
+  EXPECT_EQ(reopened.schema().columns()[1].getType(), Column::Type::Varchar);
+  ASSERT_TRUE(reopened.indexedColumnName().has_value());
+  EXPECT_EQ(reopened.indexedColumnName().value(), "id");
 
   std::array<char, Page::PAGE_SIZE_BYTE> index_page_buffer{};
   std::array<char, Page::PAGE_SIZE_BYTE> heap_page_buffer{};
@@ -120,9 +140,9 @@ TEST_F(TableTest, InitializeCreatesReadableTableBootstrap) {
 
 TEST_F(TableTest, InsertIndexFindRIDAndReadRowRoundTrip) {
   Table table = createSingleColumnTable();
+  TypedRow row{{Column::IntegerType(11), Column::VarcharType("table-value")}};
 
-  RID inserted = table.insertHeapRecord(
-      *pool_, 11, TypedRow{{Column::VarcharType("table-value")}}, *wal_);
+  RID inserted = table.insertHeapRecord(*pool_, row, *wal_);
   table.insertIndexEntry(*pool_, 11, inserted);
 
   std::optional<RID> found = table.findRID(*pool_, 11);
@@ -136,9 +156,9 @@ TEST_F(TableTest, InsertIndexFindRIDAndReadRowRoundTrip) {
 
 TEST_F(TableTest, InsertHeapRecordWithWalWritesInsertRecord) {
   Table table = createSingleColumnTable();
+  TypedRow row{{Column::IntegerType(11), Column::VarcharType("wal")}};
 
-  RID inserted = table.insertHeapRecord(
-      *pool_, 11, TypedRow{{Column::VarcharType("wal")}}, *wal_);
+  RID inserted = table.insertHeapRecord(*pool_, row, *wal_);
   table.insertIndexEntry(*pool_, 11, inserted);
   wal_->flush();
 
@@ -155,8 +175,8 @@ TEST_F(TableTest, InsertHeapRecordWithWalWritesInsertRecord) {
 
 TEST_F(TableTest, InvalidateHeapRecordWithWalWritesDeleteRecord) {
   Table table = createSingleColumnTable();
-  RID inserted = table.insertHeapRecord(
-      *pool_, 22, TypedRow{{Column::VarcharType("gone")}}, *wal_);
+  TypedRow row{{Column::IntegerType(22), Column::VarcharType("gone")}};
+  RID inserted = table.insertHeapRecord(*pool_, row, *wal_);
   table.insertIndexEntry(*pool_, 22, inserted);
 
   table.invalidateHeapRecord(*pool_, inserted, *wal_);

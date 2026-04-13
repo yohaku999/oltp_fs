@@ -38,16 +38,18 @@ class ExecutorTest : public ::testing::Test {
 
   static Table createSingleColumnTable() {
     return Table::initialize(
-        kTableName, Schema(kTableName, std::vector<Column>{Column(
-                                           "value", Column::Type::Varchar)}));
+        kTableName,
+        Schema(std::vector<Column>{Column("id", Column::Type::Integer),
+                                   Column("value", Column::Type::Varchar)}),
+        std::string("id"));
   }
 
   static std::string singleVarcharValue(const TypedRow& row) {
-    if (row.values.size() != 1 ||
-        !std::holds_alternative<Column::VarcharType>(row.values[0])) {
-      throw std::runtime_error("Expected single varchar row.");
+    if (row.values.size() != 2 ||
+        !std::holds_alternative<Column::VarcharType>(row.values[1])) {
+      throw std::runtime_error("Expected row with integer key and varchar value.");
     }
-    return std::get<Column::VarcharType>(row.values[0]);
+    return std::get<Column::VarcharType>(row.values[1]);
   }
 
 };
@@ -58,8 +60,9 @@ TEST_F(ExecutorTest, InsertAndGetMultipleRecords) {
       {1, "value1"}, {2, "value-two"}, {10, "value-003"}};
 
   for (const auto& record : records) {
-    executor::insert(*pool_, table, record.first,
-                     TypedRow{{Column::VarcharType(record.second)}},
+    executor::insert(*pool_, table,
+                     TypedRow{{Column::IntegerType(record.first),
+                               Column::VarcharType(record.second)}},
                      *wal_);
   }
 
@@ -72,20 +75,23 @@ TEST_F(ExecutorTest, InsertAndGetMultipleRecords) {
 
 TEST_F(ExecutorTest, InsertAndReadTypedRow) {
   Table table = createSingleColumnTable();
-  TypedRow inserted{{Column::VarcharType("typed-value")}};
-  executor::insert(*pool_, table, 11, inserted, *wal_);
+  TypedRow inserted{
+      {Column::IntegerType(11), Column::VarcharType("typed-value")}};
+  executor::insert(*pool_, table, inserted, *wal_);
 
   TypedRow restored = executor::read(*pool_, table, 11);
-  ASSERT_EQ(restored.values.size(), 1u);
-  ASSERT_TRUE(std::holds_alternative<Column::VarcharType>(restored.values[0]));
-  EXPECT_EQ(std::get<Column::VarcharType>(restored.values[0]), "typed-value");
+  ASSERT_EQ(restored.values.size(), 2u);
+  ASSERT_TRUE(std::holds_alternative<Column::VarcharType>(restored.values[1]));
+  EXPECT_EQ(std::get<Column::VarcharType>(restored.values[1]), "typed-value");
 }
 
 TEST_F(ExecutorTest, InsertDeleteThenFailToRead) {
   Table table = createSingleColumnTable();
   const int key = 99;
-  executor::insert(*pool_, table, key,
-                   TypedRow{{Column::VarcharType("transient")}}, *wal_);
+  executor::insert(*pool_, table,
+                   TypedRow{{Column::IntegerType(key),
+                             Column::VarcharType("transient")}},
+                   *wal_);
 
   executor::remove(*pool_, table, key, *wal_);
 
@@ -96,11 +102,15 @@ TEST_F(ExecutorTest, InsertDeleteThenFailToRead) {
 TEST_F(ExecutorTest, UpdateReplacesExistingValue) {
   Table table = createSingleColumnTable();
   const int key = 123;
-  executor::insert(*pool_, table, key,
-                   TypedRow{{Column::VarcharType("initial-value")}}, *wal_);
+  executor::insert(*pool_, table,
+                   TypedRow{{Column::IntegerType(key),
+                             Column::VarcharType("initial-value")}},
+                   *wal_);
 
-  executor::update(*pool_, table, key,
-                   TypedRow{{Column::VarcharType("updated-value")}}, *wal_);
+  executor::update(*pool_, table,
+                   TypedRow{{Column::IntegerType(key),
+                             Column::VarcharType("updated-value")}},
+                   *wal_);
 
   EXPECT_EQ("updated-value",
             singleVarcharValue(executor::read(*pool_, table, key)));
@@ -111,8 +121,9 @@ TEST_F(ExecutorTest, UpdateNonExistingKeyThrows) {
   const int key = 777;
   EXPECT_THROW(
       {
-        executor::update(*pool_, table, key,
-                         TypedRow{{Column::VarcharType("does-not-exist")}},
+        executor::update(*pool_, table,
+                         TypedRow{{Column::IntegerType(key),
+                                   Column::VarcharType("does-not-exist")}},
                          *wal_);
       },
       std::runtime_error);
@@ -142,8 +153,10 @@ TEST_F(ExecutorTest, InsertPageOverflow) {
       for (char& ch : payload) {
         ch = static_cast<char>('a' + (rng() % 26));
       }
-      executor::insert(*pool_, table, key,
-                       TypedRow{{Column::VarcharType(payload)}}, *wal_);
+      executor::insert(*pool_, table,
+                       TypedRow{{Column::IntegerType(key),
+                                 Column::VarcharType(payload)}},
+                       *wal_);
       expected.emplace(key, payload);
     }
 

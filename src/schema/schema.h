@@ -1,19 +1,25 @@
 #pragma once
+
 #include <stdexcept>
-#include <string>
 #include <vector>
 
 #include "column.h"
 
 class Schema {
  public:
-  Schema(std::string name, std::vector<Column> columns)
-      : name_(std::move(name)), columns_(std::move(columns)) {}
-  std::vector<Column> columns_;
-
-  const std::string& name() const { return name_; }
+  explicit Schema(std::vector<Column> columns)
+    : columns_(std::move(columns)) {}
 
   const std::vector<Column>& columns() const { return columns_; }
+
+  int getColumnIndex(const std::string& column_name) const {
+    for (std::size_t index = 0; index < columns_.size(); ++index) {
+      if (columns_[index].getName() == column_name) {
+        return static_cast<int>(index);
+      }
+    }
+    return -1;
+  }
 
   int getFixedColumnIndex(const std::string& column_name) const {
     int fixed_index = 0;
@@ -71,14 +77,5 @@ class Schema {
     return prefix_size;
   }
 
- private:
-  std::string name_;
-  const Column& getColumnByName(const std::string& column_name) const {
-    for (const auto& column : columns_) {
-      if (column.getName() == column_name) {
-        return column;
-      }
-    }
-    throw std::runtime_error("Column not found: " + column_name);
-  }
+  std::vector<Column> columns_;
 };

@@ -1,7 +1,11 @@
 #include <gtest/gtest.h>
 
 #include <filesystem>
+#include <iostream>
 #include <string>
+#include <vector>
+
+#include <nlohmann/json.hpp>
 
 extern "C" {
 #include <pg_query.h>
@@ -47,7 +51,7 @@ class E2ETest : public ::testing::Test {
 };
 
 TEST_F(E2ETest, SelectBGreaterEqual4) {
-  const std::string sql = "SELECT * FROM x where b >= 4";
+  const std::string sql = "SELECT * FROM x where id >= 4";
 
   result = pg_query_parse(sql.c_str());
   ASSERT_EQ(result.error, nullptr)
@@ -60,38 +64,49 @@ TEST_F(E2ETest, SelectBGreaterEqual4) {
 
   // Populate rows on both sides of the lower bound so the range scan can
   // prove its filtering behavior.
-  Column col_b("b", Column::Type::Varchar);
-  Schema schema("x", {col_b});
-  Table table = Table::initialize(kTableName, schema);
+  Schema schema({Column("id", Column::Type::Integer),
+                 Column("b", Column::Type::Varchar)});
+  Table table = Table::initialize(kTableName, schema, std::string("id"));
 
-  executor::insert(*pool, table, 1, TypedRow{{Column::VarcharType("row_b_1")}},
+  executor::insert(*pool, table,
+                   TypedRow{{Column::IntegerType(1), Column::VarcharType("row_b_1")}},
                    *wal);
-  executor::insert(*pool, table, 3, TypedRow{{Column::VarcharType("row_b_3")}},
+  executor::insert(*pool, table,
+                   TypedRow{{Column::IntegerType(3), Column::VarcharType("row_b_3")}},
                    *wal);
-  executor::insert(*pool, table, 4, TypedRow{{Column::VarcharType("row_b_4")}},
+  executor::insert(*pool, table,
+                   TypedRow{{Column::IntegerType(4), Column::VarcharType("row_b_4")}},
                    *wal);
-  executor::insert(*pool, table, 7, TypedRow{{Column::VarcharType("row_b_7")}},
+  executor::insert(*pool, table,
+                   TypedRow{{Column::IntegerType(7), Column::VarcharType("row_b_7")}},
                    *wal);
 
   const int LOW_KEY = 4;
   const int HIGH_KEY = 10;
 
-  IndexLookup lookup =
+  ASSERT_TRUE(table.hasIndexForColumn("id"));
+  auto lookup =
       IndexLookup::fromKeyRange(*pool, table.indexFile(), LOW_KEY, HIGH_KEY);
   HeapFetch fetcher(*pool, table.heapFile());
 
+  std::vector<Column::IntegerType> seen_ids;
   std::vector<std::string> seen;
 
   while (auto rid = lookup.next()) {
     if (!rid) break;
     char* cell_start = fetcher.fetch(rid->heap_page_id, rid->slot_id);
     TypedRow row = RecordCellView(cell_start).getTypedRow(table.schema());
-    ASSERT_EQ(row.values.size(), 1u);
-    ASSERT_TRUE(std::holds_alternative<Column::VarcharType>(row.values[0]));
-    seen.push_back(std::get<Column::VarcharType>(row.values[0]));
+    ASSERT_EQ(row.values.size(), 2u);
+    ASSERT_TRUE(std::holds_alternative<Column::IntegerType>(row.values[0]));
+    ASSERT_TRUE(std::holds_alternative<Column::VarcharType>(row.values[1]));
+    seen_ids.push_back(std::get<Column::IntegerType>(row.values[0]));
+    seen.push_back(std::get<Column::VarcharType>(row.values[1]));
   }
 
+  ASSERT_EQ(seen_ids.size(), 2u);
   ASSERT_EQ(seen.size(), 2u);
+  EXPECT_EQ(seen_ids[0], 4);
+  EXPECT_EQ(seen_ids[1], 7);
   EXPECT_EQ(seen[0], std::string("row_b_4"));
   EXPECT_EQ(seen[1], std::string("row_b_7"));
 }
@@ -105,30 +120,30 @@ TEST_F(E2ETest, SelectRangeWithMultiColumnRows) {
   ASSERT_NE(result.parse_tree, nullptr);
   ASSERT_GT(std::strlen(result.parse_tree), 0u);
 
-  Schema schema("x", {Column("id", Column::Type::Integer),
-                      Column("name", Column::Type::Varchar)});
-  Table table = Table::initialize(kTableName, schema);
+  Schema schema({Column("id", Column::Type::Integer),
+                 Column("name", Column::Type::Varchar)});
+  Table table = Table::initialize(kTableName, schema, std::string("id"));
 
   executor::insert(
-      *pool, table, 1,
+      *pool, table,
       TypedRow{{Column::IntegerType(1), Column::VarcharType("row_1")}},
       *wal);
   executor::insert(
-      *pool, table, 3,
+      *pool, table,
       TypedRow{{Column::IntegerType(3), Column::VarcharType("row_3")}},
       *wal);
   executor::insert(
-      *pool, table, 4,
+      *pool, table,
       TypedRow{{Column::IntegerType(4), Column::VarcharType("row_4")}},
       *wal);
   executor::insert(
-      *pool, table, 7,
+      *pool, table,
       TypedRow{{Column::IntegerType(7), Column::VarcharType("row_7")}},
       *wal);
 
   // The range [4, 10] should return only the final two inserted rows.
-  IndexLookup lookup =
-      IndexLookup::fromKeyRange(*pool, table.indexFile(), 4, 10);
+  ASSERT_TRUE(table.hasIndexForColumn("id"));
+  auto lookup = IndexLookup::fromKeyRange(*pool, table.indexFile(), 4, 10);
   HeapFetch fetcher(*pool, table.heapFile());
 
   std::vector<TypedRow> seen_rows;
