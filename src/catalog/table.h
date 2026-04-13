@@ -33,12 +33,6 @@ class Table {
   const std::optional<std::string>& indexedColumnName() const {
     return indexed_column_name_;
   }
-  std::optional<RID> findRID(BufferPool& pool, int key,
-                             bool do_invalidate = false);
-  TypedRow readRow(BufferPool& pool, RID rid) const;
-  RID insertHeapRecord(BufferPool& pool, const TypedRow& row, WAL& wal);
-  void insertIndexEntry(BufferPool& pool, int key, RID rid);
-  void invalidateHeapRecord(BufferPool& pool, RID rid, WAL& wal);
   File& indexFile() { return index_file_; }
   File& heapFile() { return heap_file_; }
 

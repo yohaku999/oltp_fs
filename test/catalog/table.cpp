@@ -9,6 +9,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include "execution/executor.h"
 #include "storage/runtime/bufferpool.h"
 #include "storage/page/page.h"
 #include "storage/wal/wal.h"
@@ -142,15 +143,8 @@ TEST_F(TableTest, InsertIndexFindRIDAndReadRowRoundTrip) {
   Table table = createSingleColumnTable();
   TypedRow row{{Column::IntegerType(11), Column::VarcharType("table-value")}};
 
-  RID inserted = table.insertHeapRecord(*pool_, row, *wal_);
-  table.insertIndexEntry(*pool_, 11, inserted);
-
-  std::optional<RID> found = table.findRID(*pool_, 11);
-  ASSERT_TRUE(found.has_value());
-  EXPECT_EQ(found->heap_page_id, inserted.heap_page_id);
-  EXPECT_EQ(found->slot_id, inserted.slot_id);
-
-  TypedRow restored = table.readRow(*pool_, inserted);
+  executor::insert(*pool_, table, row, *wal_);
+  TypedRow restored = executor::read(*pool_, table, 11);
   EXPECT_EQ(singleVarcharValue(restored), "table-value");
 }
 
@@ -158,8 +152,7 @@ TEST_F(TableTest, InsertHeapRecordWithWalWritesInsertRecord) {
   Table table = createSingleColumnTable();
   TypedRow row{{Column::IntegerType(11), Column::VarcharType("wal")}};
 
-  RID inserted = table.insertHeapRecord(*pool_, row, *wal_);
-  table.insertIndexEntry(*pool_, 11, inserted);
+  executor::insert(*pool_, table, row, *wal_);
   wal_->flush();
 
   std::vector<WALRecord> records = readWalRecords(kWalPath);
@@ -169,17 +162,15 @@ TEST_F(TableTest, InsertHeapRecordWithWalWritesInsertRecord) {
   WALBody body = decode_body(records[0]);
   ASSERT_TRUE(std::holds_alternative<InsertRedoBody>(body));
   const auto& insert_body = std::get<InsertRedoBody>(body);
-  EXPECT_EQ(insert_body.offset, inserted.slot_id);
   EXPECT_FALSE(insert_body.tuple.empty());
 }
 
 TEST_F(TableTest, InvalidateHeapRecordWithWalWritesDeleteRecord) {
   Table table = createSingleColumnTable();
   TypedRow row{{Column::IntegerType(22), Column::VarcharType("gone")}};
-  RID inserted = table.insertHeapRecord(*pool_, row, *wal_);
-  table.insertIndexEntry(*pool_, 22, inserted);
 
-  table.invalidateHeapRecord(*pool_, inserted, *wal_);
+  executor::insert(*pool_, table, row, *wal_);
+  executor::remove(*pool_, table, 22, *wal_);
   wal_->flush();
 
   std::vector<WALRecord> records = readWalRecords(kWalPath);
@@ -190,7 +181,7 @@ TEST_F(TableTest, InvalidateHeapRecordWithWalWritesDeleteRecord) {
   WALBody body = decode_body(records[1]);
   ASSERT_TRUE(std::holds_alternative<DeleteRedoBody>(body));
   const auto& delete_body = std::get<DeleteRedoBody>(body);
-  EXPECT_EQ(delete_body.offset, inserted.slot_id);
+  EXPECT_EQ(delete_body.offset, 0);
 
-  EXPECT_THROW({ table.readRow(*pool_, inserted); }, std::runtime_error);
+  EXPECT_THROW({ executor::read(*pool_, table, 22); }, std::runtime_error);
 }

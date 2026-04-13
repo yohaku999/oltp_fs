@@ -5,8 +5,14 @@
 #include <string>
 
 #include "../logging.h"
+#include "storage/index/btreecursor.h"
+#include "storage/page/page.h"
+#include "storage/record/record_cell.h"
+#include "storage/record/record_serializer.h"
 #include "storage/runtime/bufferpool.h"
 #include "storage/wal/wal.h"
+#include "storage/wal/wal_body.h"
+#include "storage/wal/wal_record.h"
 #include "catalog/table.h"
 
 namespace {
@@ -47,36 +53,77 @@ int extractAccessKey(const Table& table, const TypedRow& row) {
  * 
  */
 TypedRow executor::read(BufferPool& pool, Table& table, int key) {
-  std::optional<RID> rid = table.findRID(pool, key);
+  std::optional<RID> rid = BTreeCursor::findRID(pool, table.indexFile(), key);
   if (!rid.has_value()) {
     throw std::runtime_error("Key " + std::to_string(key) +
                              " not found in index file.");
   }
-  return table.readRow(pool, rid.value());
+
+  Page* page = pool.pinPage(rid->heap_page_id, table.heapFile());
+  TypedRow row =
+      RecordCellView(page->getSlotCellStart(rid->slot_id)).getTypedRow(
+          table.schema());
+  pool.unpinPage(page, table.heapFile());
+  return row;
 }
 
 void executor::insert(BufferPool& pool, Table& table, const TypedRow& row,
                       WAL& wal) {
   const int key = extractAccessKey(table, row);
   LOG_INFO("Inserting record with key {} into table {}.", key, table.name());
-  std::optional<RID> existing_rid = table.findRID(pool, key);
+  std::optional<RID> existing_rid =
+      BTreeCursor::findRID(pool, table.indexFile(), key);
   if (existing_rid.has_value()) {
     throw std::runtime_error(
         "Key " + std::to_string(key) +
         " already exists. Duplicate keys are not allowed.");
   }
 
-  RID rid = table.insertHeapRecord(pool, row, wal);
-  table.insertIndexEntry(pool, key, rid);
+  RecordSerializer cell(table.schema(), row);
+  const std::vector<std::byte>& serialized_cell = cell.serializedBytes();
+
+  int target_page_id = table.heapFile().getMaxPageID();
+  Page* heap_page = pool.pinPage(target_page_id, table.heapFile());
+  auto inserted_slot_id = heap_page->insertCell(serialized_cell);
+  if (!inserted_slot_id.has_value()) {
+    pool.unpinPage(heap_page, table.heapFile());
+    target_page_id = pool.createPage(PageKind::Heap, table.heapFile());
+    heap_page = pool.pinPage(target_page_id, table.heapFile());
+    inserted_slot_id = heap_page->insertCell(serialized_cell);
+    if (!inserted_slot_id.has_value()) {
+      throw std::runtime_error(
+          "Failed to insert record cell into a new heap page due to "
+          "insufficient space.");
+    }
+  }
+
+  wal.write(WALRecord::RecordType::INSERT,
+            static_cast<uint16_t>(target_page_id),
+            InsertRedoBody(static_cast<uint16_t>(inserted_slot_id.value()),
+                           serialized_cell)
+                .encode());
+
+  pool.unpinPage(heap_page, table.heapFile());
+
+  BTreeCursor::insertIntoIndex(pool, table.indexFile(), key,
+                               static_cast<uint16_t>(target_page_id),
+                               static_cast<uint16_t>(inserted_slot_id.value()));
 }
 
 void executor::remove(BufferPool& pool, Table& table, int key, WAL& wal) {
-  std::optional<RID> rid = table.findRID(pool, key, true);
+  std::optional<RID> rid =
+      BTreeCursor::findRID(pool, table.indexFile(), key, true);
   if (!rid.has_value()) {
     throw std::runtime_error("Key " + std::to_string(key) +
                              " not found in leaf page.");
   }
-  table.invalidateHeapRecord(pool, rid.value(), wal);
+
+  Page* page = pool.pinPage(rid->heap_page_id, table.heapFile());
+  wal.write(WALRecord::RecordType::DELETE, rid->heap_page_id,
+            DeleteRedoBody(rid->slot_id).encode());
+  page->invalidateSlot(rid->slot_id);
+  pool.unpinPage(page, table.heapFile());
+
   LOG_INFO("Removed record with key {} successfully.", key);
 }
 
