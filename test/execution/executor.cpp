@@ -19,50 +19,42 @@
 class ExecutorTest : public ::testing::Test {
  protected:
   static constexpr const char* kTableName = "executor_test_table";
-  static constexpr const char* kE2ETableName = "x";
   static constexpr const char* kWalPath = "executor_test_table.wal";
   std::unique_ptr<BufferPool> pool_;
   std::unique_ptr<WAL> wal_;
+  std::unique_ptr<Table> table_;
 
   void SetUp() override {
     Table::removeBackingFilesFor(kTableName);
-    Table::removeBackingFilesFor(kE2ETableName);
     std::remove(kWalPath);
     wal_ = WAL::initializeNew(kWalPath);
     pool_ = std::make_unique<BufferPool>(*wal_);
-  }
-
-  void TearDown() override {
-    pool_.reset();
-    wal_.reset();
-    Table::removeBackingFilesFor(kTableName);
-    Table::removeBackingFilesFor(kE2ETableName);
-    std::remove(kWalPath);
-  }
-
-  static Table createSingleColumnTable() {
-    return Table::initialize(
+    // All tests share the same indexed integer/varchar table and seed rows so
+    // point reads and parser-driven reads exercise one consistent fixture.
+    table_ = std::make_unique<Table>(Table::initialize(
         kTableName,
         Schema(std::vector<Column>{Column("id", Column::Type::Integer),
                                    Column("value", Column::Type::Varchar)}),
-        std::string("id"));
+        std::string("id")));
+    for (const auto& [key, value] : std::vector<std::pair<int, std::string>>{
+             {101, "row_101"},
+             {103, "row_103"},
+             {104, "row_104"},
+             {107, "row_107"}}) {
+      executor::insert(*pool_, *table_,
+                       TypedRow{{Column::IntegerType(key),
+                                 Column::VarcharType(value)}},
+                       *wal_);
+    }
   }
 
-        static Table createE2EProjectionTable() {
-          return Table::initialize(
-          kE2ETableName,
-          Schema(std::vector<Column>{Column("id", Column::Type::Integer),
-                     Column("b", Column::Type::Varchar)}),
-          std::string("id"));
-        }
-
-        static Table createE2ESeqScanTable() {
-          return Table::initialize(
-          kE2ETableName,
-          Schema(std::vector<Column>{Column("id", Column::Type::Integer),
-                     Column("name", Column::Type::Varchar)}),
-          std::string("id"));
-        }
+  void TearDown() override {
+    table_.reset();
+    pool_.reset();
+    wal_.reset();
+    Table::removeBackingFilesFor(kTableName);
+    std::remove(kWalPath);
+  }
 
   static std::string singleVarcharValue(const TypedRow& row) {
     if (row.values.size() != 2 ||
@@ -75,7 +67,7 @@ class ExecutorTest : public ::testing::Test {
 };
 
 TEST_F(ExecutorTest, InsertAndGetMultipleRecords) {
-  Table table = createSingleColumnTable();
+  Table& table = *table_;
   std::vector<std::pair<int, std::string>> records = {
       {1, "value1"}, {2, "value-two"}, {10, "value-003"}};
 
@@ -94,7 +86,7 @@ TEST_F(ExecutorTest, InsertAndGetMultipleRecords) {
 }
 
 TEST_F(ExecutorTest, InsertAndReadTypedRow) {
-  Table table = createSingleColumnTable();
+  Table& table = *table_;
   TypedRow inserted{
       {Column::IntegerType(11), Column::VarcharType("typed-value")}};
   executor::insert(*pool_, table, inserted, *wal_);
@@ -106,104 +98,49 @@ TEST_F(ExecutorTest, InsertAndReadTypedRow) {
 }
 
 TEST_F(ExecutorTest, ReadSelectUsesIndexedPredicatePath) {
-  Table table = createSingleColumnTable();
-  executor::insert(*pool_, table,
-                   TypedRow{{Column::IntegerType(11),
-                             Column::VarcharType("indexed-value")}},
-                   *wal_);
-  executor::insert(*pool_, table,
-                   TypedRow{{Column::IntegerType(12),
-                             Column::VarcharType("other-value")}},
-                   *wal_);
-
-  SelectParser parser("SELECT value FROM executor_test_table WHERE id = 11");
+  SelectParser parser("SELECT value FROM executor_test_table WHERE id = 104");
   std::vector<TypedRow> rows = executor::read(*pool_, parser);
 
   ASSERT_EQ(rows.size(), 1u);
   ASSERT_EQ(rows[0].values.size(), 1u);
   ASSERT_TRUE(std::holds_alternative<Column::VarcharType>(rows[0].values[0]));
-  EXPECT_EQ(std::get<Column::VarcharType>(rows[0].values[0]), "indexed-value");
+  EXPECT_EQ(std::get<Column::VarcharType>(rows[0].values[0]), "row_104");
 }
 
 TEST_F(ExecutorTest, ReadSelectFallsBackToSeqScanForNonIndexedPredicate) {
-  Table table = createSingleColumnTable();
-  executor::insert(*pool_, table,
-                   TypedRow{{Column::IntegerType(11),
-                             Column::VarcharType("alpha")}},
-                   *wal_);
-  executor::insert(*pool_, table,
-                   TypedRow{{Column::IntegerType(12),
-                             Column::VarcharType("beta")}},
-                   *wal_);
-
   SelectParser parser(
-      "SELECT value FROM executor_test_table WHERE value = 'beta'");
+      "SELECT value FROM executor_test_table WHERE value = 'row_104'");
   std::vector<TypedRow> rows = executor::read(*pool_, parser);
 
   ASSERT_EQ(rows.size(), 1u);
   ASSERT_EQ(rows[0].values.size(), 1u);
   ASSERT_TRUE(std::holds_alternative<Column::VarcharType>(rows[0].values[0]));
-  EXPECT_EQ(std::get<Column::VarcharType>(rows[0].values[0]), "beta");
+  EXPECT_EQ(std::get<Column::VarcharType>(rows[0].values[0]), "row_104");
 }
 
 TEST_F(ExecutorTest, ReadSelectProjectsIndexedRowForE2ECase) {
-  Table table = createE2EProjectionTable();
-  executor::insert(*pool_, table,
-                   TypedRow{{Column::IntegerType(1),
-                             Column::VarcharType("row_b_1")}},
-                   *wal_);
-  executor::insert(*pool_, table,
-                   TypedRow{{Column::IntegerType(3),
-                             Column::VarcharType("row_b_3")}},
-                   *wal_);
-  executor::insert(*pool_, table,
-                   TypedRow{{Column::IntegerType(4),
-                             Column::VarcharType("row_b_4")}},
-                   *wal_);
-  executor::insert(*pool_, table,
-                   TypedRow{{Column::IntegerType(7),
-                             Column::VarcharType("row_b_7")}},
-                   *wal_);
-
-  SelectParser parser("SELECT b FROM x WHERE id = 4");
+  SelectParser parser("SELECT value FROM executor_test_table WHERE id = 104");
   std::vector<TypedRow> rows = executor::read(*pool_, parser);
 
   ASSERT_EQ(rows.size(), 1u);
   ASSERT_EQ(rows[0].values.size(), 1u);
   ASSERT_TRUE(std::holds_alternative<Column::VarcharType>(rows[0].values[0]));
-  EXPECT_EQ(std::get<Column::VarcharType>(rows[0].values[0]), "row_b_4");
+  EXPECT_EQ(std::get<Column::VarcharType>(rows[0].values[0]), "row_104");
 }
 
 TEST_F(ExecutorTest, ReadSelectUsesSeqScanForE2ECase) {
-  Table table = createE2ESeqScanTable();
-  executor::insert(*pool_, table,
-                   TypedRow{{Column::IntegerType(1),
-                             Column::VarcharType("row_1")}},
-                   *wal_);
-  executor::insert(*pool_, table,
-                   TypedRow{{Column::IntegerType(3),
-                             Column::VarcharType("row_3")}},
-                   *wal_);
-  executor::insert(*pool_, table,
-                   TypedRow{{Column::IntegerType(4),
-                             Column::VarcharType("row_4")}},
-                   *wal_);
-  executor::insert(*pool_, table,
-                   TypedRow{{Column::IntegerType(7),
-                             Column::VarcharType("row_7")}},
-                   *wal_);
-
-  SelectParser parser("SELECT name FROM x WHERE name = 'row_4'");
+  SelectParser parser(
+      "SELECT value FROM executor_test_table WHERE value = 'row_104'");
   std::vector<TypedRow> rows = executor::read(*pool_, parser);
 
   ASSERT_EQ(rows.size(), 1u);
   ASSERT_EQ(rows[0].values.size(), 1u);
   ASSERT_TRUE(std::holds_alternative<Column::VarcharType>(rows[0].values[0]));
-  EXPECT_EQ(std::get<Column::VarcharType>(rows[0].values[0]), "row_4");
+  EXPECT_EQ(std::get<Column::VarcharType>(rows[0].values[0]), "row_104");
 }
 
 TEST_F(ExecutorTest, InsertDeleteThenFailToRead) {
-  Table table = createSingleColumnTable();
+  Table& table = *table_;
   const int key = 99;
   executor::insert(*pool_, table,
                    TypedRow{{Column::IntegerType(key),
@@ -217,7 +154,7 @@ TEST_F(ExecutorTest, InsertDeleteThenFailToRead) {
 }
 
 TEST_F(ExecutorTest, UpdateReplacesExistingValue) {
-  Table table = createSingleColumnTable();
+  Table& table = *table_;
   const int key = 123;
   executor::insert(*pool_, table,
                    TypedRow{{Column::IntegerType(key),
@@ -234,7 +171,7 @@ TEST_F(ExecutorTest, UpdateReplacesExistingValue) {
 }
 
 TEST_F(ExecutorTest, UpdateNonExistingKeyThrows) {
-  Table table = createSingleColumnTable();
+  Table& table = *table_;
   const int key = 777;
   EXPECT_THROW(
       {
@@ -248,12 +185,16 @@ TEST_F(ExecutorTest, UpdateNonExistingKeyThrows) {
 
 TEST_F(ExecutorTest, InsertPageOverflow) {
   try {
-    Table table = createSingleColumnTable();
+    Table& table = *table_;
     std::mt19937 rng(0xC0FFEE);
     std::uniform_int_distribution<int> key_dist(1, 1'000'000);
     std::uniform_int_distribution<int> len_dist(16, 96);
     std::unordered_set<int> used_keys;
     std::unordered_map<int, std::string> expected;
+
+    for (int key : {101, 103, 104, 107}) {
+      used_keys.insert(key);
+    }
 
     const size_t max_attempts = 1000;
 
