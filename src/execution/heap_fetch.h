@@ -1,16 +1,28 @@
 #pragma once
 
+#include <memory>
+#include <optional>
 #include <cstdint>
 
 class BufferPool;
 class File;
+class Schema;
 
-class HeapFetch {
+class RidOperator;
+
+#include "execution/operator.h"
+
+class HeapFetchOperator : public Operator {
  public:
-  HeapFetch(BufferPool& pool, File& heapFile);
-  char* fetch(uint16_t heap_page_id, uint16_t slot_id);
+  HeapFetchOperator(std::unique_ptr<RidOperator> child, BufferPool& pool,
+                    File& heap_file, const Schema& schema);
+  void open() override;
+  std::optional<TypedRow> next() override;
+  void close() override;
 
  private:
+  std::unique_ptr<RidOperator> child_;
   BufferPool& pool_;
-  File& heapFile_;
+  File& heap_file_;
+  const Schema& schema_;
 };

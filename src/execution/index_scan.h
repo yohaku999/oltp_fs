@@ -2,24 +2,30 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <vector>
 
 class BufferPool;
 class File;
 
-#include "storage/index/rid.h"
+#include "execution/rid_operator.h"
 
-class IndexScan {
+class IndexScanOperator : public RidOperator {
  public:
-  IndexScan(BufferPool& pool, File& indexFile, std::vector<int> keys);
-  static IndexScan fromKey(BufferPool& pool, File& indexFile, int key);
-  static IndexScan fromKeys(BufferPool& pool, File& indexFile,
-                              std::vector<int> keys);
-  static IndexScan fromKeyRange(BufferPool& pool, File& indexFile,
-                                  int low_key, int high_key);
+  IndexScanOperator(BufferPool& pool, File& index_file,
+                    std::vector<int> keys);
+  static std::unique_ptr<IndexScanOperator> fromKey(BufferPool& pool,
+                                                    File& index_file,
+                                                    int key);
+  static std::unique_ptr<IndexScanOperator> fromKeys(
+      BufferPool& pool, File& index_file, std::vector<int> keys);
+  static std::unique_ptr<IndexScanOperator> fromKeyRange(
+      BufferPool& pool, File& index_file, int low_key, int high_key);
 
-  std::optional<RID> next();
+  void open() override;
+  std::optional<RID> next() override;
+  void close() override;
 
  private:
   enum class Mode { Keys, Range };

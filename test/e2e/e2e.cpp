@@ -85,23 +85,23 @@ TEST_F(E2ETest, SelectBGreaterEqual4) {
   const int HIGH_KEY = 10;
 
   ASSERT_TRUE(table.hasIndexForColumn("id"));
-  auto lookup =
-      IndexLookup::fromKeyRange(*pool, table.indexFile(), LOW_KEY, HIGH_KEY);
-  HeapFetch fetcher(*pool, table.heapFile());
+  auto scan =
+      IndexScanOperator::fromKeyRange(*pool, table.indexFile(), LOW_KEY, HIGH_KEY);
+  HeapFetchOperator fetcher(std::move(scan), *pool, table.heapFile(),
+                            table.schema());
+  fetcher.open();
 
   std::vector<Column::IntegerType> seen_ids;
   std::vector<std::string> seen;
 
-  while (auto rid = lookup.next()) {
-    if (!rid) break;
-    char* cell_start = fetcher.fetch(rid->heap_page_id, rid->slot_id);
-    TypedRow row = RecordCellView(cell_start).getTypedRow(table.schema());
-    ASSERT_EQ(row.values.size(), 2u);
-    ASSERT_TRUE(std::holds_alternative<Column::IntegerType>(row.values[0]));
-    ASSERT_TRUE(std::holds_alternative<Column::VarcharType>(row.values[1]));
-    seen_ids.push_back(std::get<Column::IntegerType>(row.values[0]));
-    seen.push_back(std::get<Column::VarcharType>(row.values[1]));
+  while (auto row = fetcher.next()) {
+    ASSERT_EQ(row->values.size(), 2u);
+    ASSERT_TRUE(std::holds_alternative<Column::IntegerType>(row->values[0]));
+    ASSERT_TRUE(std::holds_alternative<Column::VarcharType>(row->values[1]));
+    seen_ids.push_back(std::get<Column::IntegerType>(row->values[0]));
+    seen.push_back(std::get<Column::VarcharType>(row->values[1]));
   }
+  fetcher.close();
 
   ASSERT_EQ(seen_ids.size(), 2u);
   ASSERT_EQ(seen.size(), 2u);
@@ -112,18 +112,12 @@ TEST_F(E2ETest, SelectBGreaterEqual4) {
 }
 
 TEST_F(E2ETest, SelectRangeWithMultiColumnRows) {
-  const std::string sql = "SELECT * FROM x where id >= 4";
-
-  result = pg_query_parse(sql.c_str());
-  ASSERT_EQ(result.error, nullptr)
-      << "parse error: " << (result.error ? result.error->message : "");
-  ASSERT_NE(result.parse_tree, nullptr);
-  ASSERT_GT(std::strlen(result.parse_tree), 0u);
-
+  // initialize table
   Schema schema({Column("id", Column::Type::Integer),
                  Column("name", Column::Type::Varchar)});
   Table table = Table::initialize(kTableName, schema, std::string("id"));
 
+  // insert
   executor::insert(
       *pool, table,
       TypedRow{{Column::IntegerType(1), Column::VarcharType("row_1")}},
@@ -141,27 +135,71 @@ TEST_F(E2ETest, SelectRangeWithMultiColumnRows) {
       TypedRow{{Column::IntegerType(7), Column::VarcharType("row_7")}},
       *wal);
 
+  // parse query
+  const std::string sql = "SELECT * FROM x where id >= 4";
+
+  result = pg_query_parse(sql.c_str());
+  ASSERT_EQ(result.error, nullptr)
+      << "parse error: " << (result.error ? result.error->message : "");
+  ASSERT_NE(result.parse_tree, nullptr);
+  ASSERT_GT(std::strlen(result.parse_tree), 0u);
+
+  // parse
+  nlohmann::json parse_tree = nlohmann::json::parse(result.parse_tree);
+  std::string table_name =
+      parse_tree.at("stmts")
+          .at(0)
+          .at("stmt")
+          .at("SelectStmt")
+          .at("fromClause")
+          .at(0)
+          .at("RangeVar")
+          .at("relname")
+          .get<std::string>();
+  // この辺の条件が複雑なった倍のも対応できるような設計を考える。
+  // std::where_column_name = parse_tree.at("stmts")
+  //                            .at(0)
+  //                            .at("stmt")
+  //                            .at("SelectStmt")
+  //                            .at("whereClause")
+  //                            .at(0)
+  //                            .at("A_Expr")
+  //                            .at("lexpr")
+  //                            .at("ColumnRef")
+  //                            .at("fields")
+  //                            .at(0)
+  //                            .get<std::string>();
+  // std::string where_condition = parse_tree.at("stmts")
+  //                            .at(0)
+  //                            .at("stmt")
+  //                            .at("SelectStmt")
+  //                            .at("whereClause")
+  //                            .at("A_Expr");
+
+  // execute
   // The range [4, 10] should return only the final two inserted rows.
-  ASSERT_TRUE(table.hasIndexForColumn("id"));
-  auto lookup = IndexLookup::fromKeyRange(*pool, table.indexFile(), 4, 10);
-  HeapFetch fetcher(*pool, table.heapFile());
+  table = Table::getTable(table_name);
+  if(table.hasIndexForColumn("id")){
+    auto scan = IndexScanOperator::fromKeyRange(*pool, table.indexFile(), 4, 10);
+    HeapFetchOperator fetcher(std::move(scan), *pool, table.heapFile(),
+                              table.schema());
+    fetcher.open();
 
-  std::vector<TypedRow> seen_rows;
+    std::vector<TypedRow> seen_rows;
 
-  while (auto rid = lookup.next()) {
-    if (!rid) {
-      break;
+    while (auto row = fetcher.next()) {
+      seen_rows.push_back(*row);
     }
-    char* cell_start = fetcher.fetch(rid->heap_page_id, rid->slot_id);
-    seen_rows.push_back(RecordCellView(cell_start).getTypedRow(table.schema()));
+    fetcher.close();
+
+    ASSERT_EQ(seen_rows.size(), 2u);
+    ASSERT_EQ(seen_rows[0].values.size(), 2u);
+    ASSERT_EQ(seen_rows[1].values.size(), 2u);
+
+    EXPECT_EQ(std::get<Column::IntegerType>(seen_rows[0].values[0]), 4);
+    EXPECT_EQ(std::get<Column::VarcharType>(seen_rows[0].values[1]), "row_4");
+    EXPECT_EQ(std::get<Column::IntegerType>(seen_rows[1].values[0]), 7);
+    EXPECT_EQ(std::get<Column::VarcharType>(seen_rows[1].values[1]), "row_7");
   }
-
-  ASSERT_EQ(seen_rows.size(), 2u);
-  ASSERT_EQ(seen_rows[0].values.size(), 2u);
-  ASSERT_EQ(seen_rows[1].values.size(), 2u);
-
-  EXPECT_EQ(std::get<Column::IntegerType>(seen_rows[0].values[0]), 4);
-  EXPECT_EQ(std::get<Column::VarcharType>(seen_rows[0].values[1]), "row_4");
-  EXPECT_EQ(std::get<Column::IntegerType>(seen_rows[1].values[0]), 7);
-  EXPECT_EQ(std::get<Column::VarcharType>(seen_rows[1].values[1]), "row_7");
+  
 }
