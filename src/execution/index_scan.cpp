@@ -1,49 +1,118 @@
 #include "index_scan.h"
 
+#include <limits>
+#include <stdexcept>
+
 #include "storage/index/btreecursor.h"
 #include "logging.h"
 
+namespace {
+
+int exclusiveLowerToInclusive(int value) {
+  if (value == std::numeric_limits<int>::max()) {
+    return value;
+  }
+  return value + 1;
+}
+
+int exclusiveUpperToInclusive(int value) {
+  if (value == std::numeric_limits<int>::min()) {
+    return value;
+  }
+  return value - 1;
+}
+
+}  // namespace
+
 IndexScanOperator::IndexScanOperator(BufferPool& pool, File& index_file,
-                                     std::vector<int> keys)
+                                     DiscreteIntegerIndexPredicates
+                                         discrete_integer_predicates)
     : pool_(pool),
       indexFile_(index_file),
-      keys_(std::move(keys)),
       pos_(0),
-      mode_(Mode::Keys) {}
-
-std::unique_ptr<IndexScanOperator> IndexScanOperator::fromKey(
-    BufferPool& pool, File& index_file, int key) {
-  std::vector<int> keys;
-  keys.push_back(key);
-  return std::make_unique<IndexScanOperator>(pool, index_file,
-                                             std::move(keys));
+      mode_(Mode::Keys) {
+  initializeFromPredicates(discrete_integer_predicates.predicates);
 }
 
-std::unique_ptr<IndexScanOperator> IndexScanOperator::fromKeys(
-    BufferPool& pool, File& index_file, std::vector<int> keys) {
-  return std::make_unique<IndexScanOperator>(pool, index_file,
-                                             std::move(keys));
+void IndexScanOperator::initializeFromPredicates(
+    const std::vector<ComparisonPredicate>& predicates) {
+  if (predicates.empty()) {
+    throw std::runtime_error("Index scan requires one or two predicates.");
+  }
+
+  int low_key = std::numeric_limits<int>::min();
+  int high_key = std::numeric_limits<int>::max();
+
+  if (predicates.size() == 1) {
+    const auto& predicate = predicates[0];
+    const int value = std::get<Column::IntegerType>(predicate.value);
+    switch (predicate.op) {
+      case ComparisonPredicate::Op::Eq:
+        keys_.push_back(value);
+        mode_ = Mode::Keys;
+        return;
+      case ComparisonPredicate::Op::Gt:
+        low_key = exclusiveLowerToInclusive(value);
+        break;
+      case ComparisonPredicate::Op::Ge:
+        low_key = value;
+        break;
+      case ComparisonPredicate::Op::Lt:
+        high_key = exclusiveUpperToInclusive(value);
+        break;
+      case ComparisonPredicate::Op::Le:
+        high_key = value;
+        break;
+    }
+
+    setDiscreteIntegerRange(low_key, high_key);
+    return;
+  }
+
+  if (predicates.size() != 2) {
+    throw std::logic_error(
+        "Index scan requires one predicate or exactly two range predicates. Should be merged beforehand.");
+  }
+
+  for (const auto& predicate : predicates) {
+    const int value = std::get<Column::IntegerType>(predicate.value);
+    switch (predicate.op) {
+      case ComparisonPredicate::Op::Eq:
+        throw std::logic_error("Equality predicates must be merged before index scan initialization.");
+      case ComparisonPredicate::Op::Gt:
+        low_key = exclusiveLowerToInclusive(value);
+        break;
+      case ComparisonPredicate::Op::Ge:
+        low_key = value;
+        break;
+      case ComparisonPredicate::Op::Lt:
+        high_key = exclusiveUpperToInclusive(value);
+        break;
+      case ComparisonPredicate::Op::Le:
+        high_key = value;
+        break;
+    }
+  }
+
+  setDiscreteIntegerRange(low_key, high_key);
 }
 
-std::unique_ptr<IndexScanOperator> IndexScanOperator::fromKeyRange(
-    BufferPool& pool, File& index_file, int low_key, int high_key) {
-  LOG_INFO("Starting index scan for keys in range [{}, {}]", low_key, high_key);
-  auto lookup =
-      std::make_unique<IndexScanOperator>(pool, index_file, std::vector<int>{});
-  lookup->mode_ = Mode::Range;
+void IndexScanOperator::setDiscreteIntegerRange(int low_key, int high_key) {
+  LOG_INFO("Starting discrete integer index scan for keys in range [{}, {}]",
+           low_key, high_key);
+  mode_ = Mode::Range;
 
   if (low_key <= high_key) {
-    lookup->low_key_ = low_key;
-    lookup->high_key_ = high_key;
-    lookup->current_key_ = low_key;
+    low_key_ = low_key;
+    high_key_ = high_key;
+    current_key_ = low_key;
   } else {
-    // Represent an empty range so next() immediately returns std::nullopt.
-    lookup->low_key_ = low_key;
-    lookup->high_key_ = high_key;
-    lookup->current_key_ = high_key + 1;
+    low_key_ = low_key;
+    high_key_ = high_key;
+    current_key_ = high_key + 1;
   }
-  LOG_INFO("Finished index scan for keys in range [{}, {}]", low_key, high_key);
-  return lookup;
+  LOG_INFO("Finished discrete integer index scan for keys in range [{}, {}]",
+           low_key, high_key);
 }
 
 void IndexScanOperator::open() {

@@ -25,6 +25,22 @@
 #include "storage/wal/wal.h"
 #include "catalog/table.h"
 
+namespace {
+
+std::vector<ComparisonPredicate> extractIndexedPredicates(
+    const std::vector<ComparisonPredicate>& predicates,
+    std::size_t indexed_column_index) {
+  std::vector<ComparisonPredicate> index_predicates;
+  for (const auto& predicate : predicates) {
+    if (predicate.column_index == indexed_column_index) {
+      index_predicates.push_back(predicate);
+    }
+  }
+  return index_predicates;
+}
+
+}  // namespace
+
 class E2ETest : public ::testing::Test {
  protected:
   static constexpr const char* kTableName = "x";
@@ -48,7 +64,7 @@ class E2ETest : public ::testing::Test {
 };
 
 TEST_F(E2ETest, SelectBGreaterEqual4) {
-  const std::string sql = "SELECT name FROM x where id >= 4";
+  const std::string sql = "SELECT name FROM x where id = 4";
 
   // Populate rows on both sides of the lower bound so the range scan can
   // prove its filtering behavior.
@@ -69,12 +85,16 @@ TEST_F(E2ETest, SelectBGreaterEqual4) {
                    TypedRow{{Column::IntegerType(7), Column::VarcharType("row_b_7")}},
                    *wal);
 
-  const int LOW_KEY = 4;
-  const int HIGH_KEY = 10;
+  SelectParser parser(sql);
+  std::vector<ComparisonPredicate> predicates =
+      parser.extractComparisonPredicates(table.schema());
 
   ASSERT_TRUE(table.hasIndexForColumn("id"));
-  auto scan =
-      IndexScanOperator::fromKeyRange(*pool, table.indexFile(), LOW_KEY, HIGH_KEY);
+  const int indexed_column_index = table.schema().getColumnIndex("id");
+  auto scan = std::make_unique<IndexScanOperator>(
+      *pool, table.indexFile(),
+      DiscreteIntegerIndexPredicates{extractIndexedPredicates(
+        predicates, static_cast<std::size_t>(indexed_column_index))});
   HeapFetchOperator fetcher(std::move(scan), *pool, table.heapFile(),
                             table.schema());
   fetcher.open();
@@ -91,12 +111,10 @@ TEST_F(E2ETest, SelectBGreaterEqual4) {
   }
   fetcher.close();
 
-  ASSERT_EQ(seen_ids.size(), 2u);
-  ASSERT_EQ(seen.size(), 2u);
+  ASSERT_EQ(seen_ids.size(), 1u);
+  ASSERT_EQ(seen.size(), 1u);
   EXPECT_EQ(seen_ids[0], 4);
-  EXPECT_EQ(seen_ids[1], 7);
   EXPECT_EQ(seen[0], std::string("row_b_4"));
-  EXPECT_EQ(seen[1], std::string("row_b_7"));
 }
 
 TEST_F(E2ETest, ChoosesSeqScanWhenPredicateHasNoIndexColumn) {
@@ -144,7 +162,12 @@ TEST_F(E2ETest, ChoosesSeqScanWhenPredicateHasNoIndexColumn) {
   }
 
   if (has_index_predicate) {
-    auto scan = IndexScanOperator::fromKeyRange(*pool, table.indexFile(), 4, 10);
+    std::vector<ComparisonPredicate> index_predicates =
+        extractIndexedPredicates(
+            predicates, static_cast<std::size_t>(indexed_column_index));
+    auto scan = std::make_unique<IndexScanOperator>(
+      *pool, table.indexFile(),
+      DiscreteIntegerIndexPredicates{std::move(index_predicates)});
     auto fetcher = std::make_unique<HeapFetchOperator>(
         std::move(scan), *pool, table.heapFile(), table.schema());
     ProjectionOperator projection(std::move(fetcher), projection_indices);

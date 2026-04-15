@@ -2,26 +2,27 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <optional>
 #include <vector>
 
 class BufferPool;
 class File;
 
+#include "execution/comparison_predicate.h"
 #include "execution/rid_operator.h"
+
+// This scan only supports predicates over a discrete integer index key.
+// Range predicates are executed as repeated point lookups over the integer
+// key space, so callers must pass predicates already normalized for a single
+// indexed integer column.
+struct DiscreteIntegerIndexPredicates {
+  std::vector<ComparisonPredicate> predicates;
+};
 
 class IndexScanOperator : public RidOperator {
  public:
   IndexScanOperator(BufferPool& pool, File& index_file,
-                    std::vector<int> keys);
-  static std::unique_ptr<IndexScanOperator> fromKey(BufferPool& pool,
-                                                    File& index_file,
-                                                    int key);
-  static std::unique_ptr<IndexScanOperator> fromKeys(
-      BufferPool& pool, File& index_file, std::vector<int> keys);
-  static std::unique_ptr<IndexScanOperator> fromKeyRange(
-      BufferPool& pool, File& index_file, int low_key, int high_key);
+                    DiscreteIntegerIndexPredicates discrete_integer_predicates);
 
   void open() override;
   std::optional<RID> next() override;
@@ -29,6 +30,10 @@ class IndexScanOperator : public RidOperator {
 
  private:
   enum class Mode { Keys, Range };
+
+  void initializeFromPredicates(
+      const std::vector<ComparisonPredicate>& predicates);
+  void setDiscreteIntegerRange(int low_key, int high_key);
 
   BufferPool& pool_;
   File& indexFile_;
