@@ -1,10 +1,19 @@
 #include "executor.h"
 
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include "../logging.h"
+#include "execution/filter_operator.h"
+#include "execution/heap_fetch.h"
+#include "execution/index_scan.h"
+#include "execution/operator.h"
+#include "execution/projection_operator.h"
+#include "execution/select_parser.h"
+#include "execution/seq_scan_operator.h"
 #include "storage/index/btreecursor.h"
 #include "storage/page/page.h"
 #include "storage/record/record_cell.h"
@@ -40,6 +49,49 @@ int extractAccessKey(const Table& table, const TypedRow& row) {
   return std::get<Column::IntegerType>(row.values[column_index]);
 }
 
+std::vector<ComparisonPredicate> extractIndexedPredicates(
+    const std::vector<ComparisonPredicate>& predicates,
+    std::size_t indexed_column_index) {
+  std::vector<ComparisonPredicate> index_predicates;
+  for (const auto& predicate : predicates) {
+    if (predicate.column_index == indexed_column_index) {
+      index_predicates.push_back(predicate);
+    }
+  }
+  return index_predicates;
+}
+
+std::unique_ptr<Operator> buildReadSource(
+    BufferPool& pool, Table& table,
+    const std::vector<ComparisonPredicate>& predicates) {
+  const std::optional<std::string>& indexed_column_name =
+      table.indexedColumnName();
+  if (!indexed_column_name.has_value()) {
+    return std::make_unique<SeqScanOperator>(pool, table.heapFile(),
+                                             table.schema());
+  }
+
+  const int indexed_column_index =
+      table.schema().getColumnIndex(indexed_column_name.value());
+  if (indexed_column_index < 0) {
+    return std::make_unique<SeqScanOperator>(pool, table.heapFile(),
+                                             table.schema());
+  }
+
+  std::vector<ComparisonPredicate> index_predicates = extractIndexedPredicates(
+      predicates, static_cast<std::size_t>(indexed_column_index));
+  if (index_predicates.empty()) {
+    return std::make_unique<SeqScanOperator>(pool, table.heapFile(),
+                                             table.schema());
+  }
+
+  auto scan = std::make_unique<IndexScanOperator>(
+      pool, table.indexFile(),
+      DiscreteIntegerIndexPredicates{std::move(index_predicates)});
+  return std::make_unique<HeapFetchOperator>(std::move(scan), pool,
+                                             table.heapFile(), table.schema());
+}
+
 }  // namespace
 
 /**
@@ -65,6 +117,27 @@ TypedRow executor::read(BufferPool& pool, Table& table, int key) {
           table.schema());
   pool.unpinPage(page, table.heapFile());
   return row;
+}
+
+std::vector<TypedRow> executor::read(BufferPool& pool,
+                                     const SelectParser& parser) {
+  Table table = Table::getTable(parser.extractTableName());
+  std::vector<std::size_t> projection_indices =
+      parser.extractProjectionIndices(table.schema());
+  std::vector<ComparisonPredicate> predicates =
+      parser.extractComparisonPredicates(table.schema());
+
+  std::unique_ptr<Operator> source = buildReadSource(pool, table, predicates);
+  auto filter = std::make_unique<FilterOperator>(std::move(source), predicates);
+  ProjectionOperator projection(std::move(filter), projection_indices);
+  projection.open();
+
+  std::vector<TypedRow> rows;
+  while (std::optional<TypedRow> row = projection.next()) {
+    rows.push_back(*row);
+  }
+  projection.close();
+  return rows;
 }
 
 void executor::insert(BufferPool& pool, Table& table, const TypedRow& row,

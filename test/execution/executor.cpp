@@ -10,6 +10,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "execution/select_parser.h"
 #include "storage/index/btreecursor.h"
 #include "storage/runtime/bufferpool.h"
 #include "storage/wal/wal.h"
@@ -18,12 +19,14 @@
 class ExecutorTest : public ::testing::Test {
  protected:
   static constexpr const char* kTableName = "executor_test_table";
+  static constexpr const char* kE2ETableName = "x";
   static constexpr const char* kWalPath = "executor_test_table.wal";
   std::unique_ptr<BufferPool> pool_;
   std::unique_ptr<WAL> wal_;
 
   void SetUp() override {
     Table::removeBackingFilesFor(kTableName);
+    Table::removeBackingFilesFor(kE2ETableName);
     std::remove(kWalPath);
     wal_ = WAL::initializeNew(kWalPath);
     pool_ = std::make_unique<BufferPool>(*wal_);
@@ -33,6 +36,7 @@ class ExecutorTest : public ::testing::Test {
     pool_.reset();
     wal_.reset();
     Table::removeBackingFilesFor(kTableName);
+    Table::removeBackingFilesFor(kE2ETableName);
     std::remove(kWalPath);
   }
 
@@ -43,6 +47,22 @@ class ExecutorTest : public ::testing::Test {
                                    Column("value", Column::Type::Varchar)}),
         std::string("id"));
   }
+
+        static Table createE2EProjectionTable() {
+          return Table::initialize(
+          kE2ETableName,
+          Schema(std::vector<Column>{Column("id", Column::Type::Integer),
+                     Column("b", Column::Type::Varchar)}),
+          std::string("id"));
+        }
+
+        static Table createE2ESeqScanTable() {
+          return Table::initialize(
+          kE2ETableName,
+          Schema(std::vector<Column>{Column("id", Column::Type::Integer),
+                     Column("name", Column::Type::Varchar)}),
+          std::string("id"));
+        }
 
   static std::string singleVarcharValue(const TypedRow& row) {
     if (row.values.size() != 2 ||
@@ -83,6 +103,103 @@ TEST_F(ExecutorTest, InsertAndReadTypedRow) {
   ASSERT_EQ(restored.values.size(), 2u);
   ASSERT_TRUE(std::holds_alternative<Column::VarcharType>(restored.values[1]));
   EXPECT_EQ(std::get<Column::VarcharType>(restored.values[1]), "typed-value");
+}
+
+TEST_F(ExecutorTest, ReadSelectUsesIndexedPredicatePath) {
+  Table table = createSingleColumnTable();
+  executor::insert(*pool_, table,
+                   TypedRow{{Column::IntegerType(11),
+                             Column::VarcharType("indexed-value")}},
+                   *wal_);
+  executor::insert(*pool_, table,
+                   TypedRow{{Column::IntegerType(12),
+                             Column::VarcharType("other-value")}},
+                   *wal_);
+
+  SelectParser parser("SELECT value FROM executor_test_table WHERE id = 11");
+  std::vector<TypedRow> rows = executor::read(*pool_, parser);
+
+  ASSERT_EQ(rows.size(), 1u);
+  ASSERT_EQ(rows[0].values.size(), 1u);
+  ASSERT_TRUE(std::holds_alternative<Column::VarcharType>(rows[0].values[0]));
+  EXPECT_EQ(std::get<Column::VarcharType>(rows[0].values[0]), "indexed-value");
+}
+
+TEST_F(ExecutorTest, ReadSelectFallsBackToSeqScanForNonIndexedPredicate) {
+  Table table = createSingleColumnTable();
+  executor::insert(*pool_, table,
+                   TypedRow{{Column::IntegerType(11),
+                             Column::VarcharType("alpha")}},
+                   *wal_);
+  executor::insert(*pool_, table,
+                   TypedRow{{Column::IntegerType(12),
+                             Column::VarcharType("beta")}},
+                   *wal_);
+
+  SelectParser parser(
+      "SELECT value FROM executor_test_table WHERE value = 'beta'");
+  std::vector<TypedRow> rows = executor::read(*pool_, parser);
+
+  ASSERT_EQ(rows.size(), 1u);
+  ASSERT_EQ(rows[0].values.size(), 1u);
+  ASSERT_TRUE(std::holds_alternative<Column::VarcharType>(rows[0].values[0]));
+  EXPECT_EQ(std::get<Column::VarcharType>(rows[0].values[0]), "beta");
+}
+
+TEST_F(ExecutorTest, ReadSelectProjectsIndexedRowForE2ECase) {
+  Table table = createE2EProjectionTable();
+  executor::insert(*pool_, table,
+                   TypedRow{{Column::IntegerType(1),
+                             Column::VarcharType("row_b_1")}},
+                   *wal_);
+  executor::insert(*pool_, table,
+                   TypedRow{{Column::IntegerType(3),
+                             Column::VarcharType("row_b_3")}},
+                   *wal_);
+  executor::insert(*pool_, table,
+                   TypedRow{{Column::IntegerType(4),
+                             Column::VarcharType("row_b_4")}},
+                   *wal_);
+  executor::insert(*pool_, table,
+                   TypedRow{{Column::IntegerType(7),
+                             Column::VarcharType("row_b_7")}},
+                   *wal_);
+
+  SelectParser parser("SELECT b FROM x WHERE id = 4");
+  std::vector<TypedRow> rows = executor::read(*pool_, parser);
+
+  ASSERT_EQ(rows.size(), 1u);
+  ASSERT_EQ(rows[0].values.size(), 1u);
+  ASSERT_TRUE(std::holds_alternative<Column::VarcharType>(rows[0].values[0]));
+  EXPECT_EQ(std::get<Column::VarcharType>(rows[0].values[0]), "row_b_4");
+}
+
+TEST_F(ExecutorTest, ReadSelectUsesSeqScanForE2ECase) {
+  Table table = createE2ESeqScanTable();
+  executor::insert(*pool_, table,
+                   TypedRow{{Column::IntegerType(1),
+                             Column::VarcharType("row_1")}},
+                   *wal_);
+  executor::insert(*pool_, table,
+                   TypedRow{{Column::IntegerType(3),
+                             Column::VarcharType("row_3")}},
+                   *wal_);
+  executor::insert(*pool_, table,
+                   TypedRow{{Column::IntegerType(4),
+                             Column::VarcharType("row_4")}},
+                   *wal_);
+  executor::insert(*pool_, table,
+                   TypedRow{{Column::IntegerType(7),
+                             Column::VarcharType("row_7")}},
+                   *wal_);
+
+  SelectParser parser("SELECT name FROM x WHERE name = 'row_4'");
+  std::vector<TypedRow> rows = executor::read(*pool_, parser);
+
+  ASSERT_EQ(rows.size(), 1u);
+  ASSERT_EQ(rows[0].values.size(), 1u);
+  ASSERT_TRUE(std::holds_alternative<Column::VarcharType>(rows[0].values[0]));
+  EXPECT_EQ(std::get<Column::VarcharType>(rows[0].values[0]), "row_4");
 }
 
 TEST_F(ExecutorTest, InsertDeleteThenFailToRead) {
