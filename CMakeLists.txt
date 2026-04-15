@@ -59,12 +59,13 @@ add_library(dbfs_src
     src/execution/heap_fetch.cpp
     src/execution/executor.cpp
     src/execution/index_scan.cpp
+    src/execution/select_parser.cpp
     src/catalog/table.cpp
     src/logging.cpp
 )
 
 target_include_directories(dbfs_src PUBLIC src)
-target_link_libraries(dbfs_src PUBLIC spdlog::spdlog nlohmann_json::nlohmann_json)
+target_link_libraries(dbfs_src PUBLIC spdlog::spdlog nlohmann_json::nlohmann_json pg_query)
 
 if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     target_compile_options(dbfs_src PUBLIC
@@ -96,6 +97,9 @@ target_link_libraries(executor_test dbfs_src GTest::gtest_main)
 
 add_executable(projection_operator_test test/execution/projection_operator.cpp)
 target_link_libraries(projection_operator_test dbfs_src GTest::gtest_main)
+
+add_executable(filter_operator_test test/execution/filter_operator.cpp)
+target_link_libraries(filter_operator_test dbfs_src GTest::gtest_main)
 
 add_executable(table_test test/catalog/table.cpp)
 target_link_libraries(table_test dbfs_src GTest::gtest_main)
@@ -130,5 +134,6 @@ add_test(NAME LSNAllocatorTest COMMAND lsn_allocator_test)
 add_test(NAME WALTest COMMAND wal_test)
 add_test(NAME ExecutorTest COMMAND executor_test)
 add_test(NAME ProjectionOperatorTest COMMAND projection_operator_test)
+add_test(NAME FilterOperatorTest COMMAND filter_operator_test)
 add_test(NAME TableTest COMMAND table_test)
 add_test(NAME E2ESelectTest COMMAND e2e_test)

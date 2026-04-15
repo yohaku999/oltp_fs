@@ -7,13 +7,11 @@
 
 #include <nlohmann/json.hpp>
 
-extern "C" {
-#include <pg_query.h>
-}
-
 #include "execution/executor.h"
 #include "execution/heap_fetch.h"
 #include "execution/index_scan.h"
+#include "execution/projection_operator.h"
+#include "execution/select_parser.h"
 #include "logging.h"
 #include "schema/schema.h"
 #include "tuple/typed_row.h"
@@ -32,8 +30,6 @@ class E2ETest : public ::testing::Test {
   std::unique_ptr<BufferPool> pool;
   std::unique_ptr<WAL> wal;
 
-  PgQueryParseResult result;
-
   void SetUp() override {
     Table::removeBackingFilesFor(kTableName);
     std::remove("e2e_test.wal");
@@ -46,21 +42,11 @@ class E2ETest : public ::testing::Test {
     wal.reset();
     Table::removeBackingFilesFor(kTableName);
     std::remove("e2e_test.wal");
-    pg_query_free_parse_result(result);
   }
 };
 
 TEST_F(E2ETest, SelectBGreaterEqual4) {
-  const std::string sql = "SELECT * FROM x where id >= 4";
-
-  result = pg_query_parse(sql.c_str());
-  ASSERT_EQ(result.error, nullptr)
-      << "parse error: " << (result.error ? result.error->message : "");
-
-  // This test only needs parsing to succeed; it does not depend on the exact
-  // AST shape produced by libpg_query.
-  ASSERT_NE(result.parse_tree, nullptr);
-  ASSERT_GT(std::strlen(result.parse_tree), 0u);
+  const std::string sql = "SELECT name FROM x where id >= 4";
 
   // Populate rows on both sides of the lower bound so the range scan can
   // prove its filtering behavior.
@@ -136,26 +122,11 @@ TEST_F(E2ETest, SelectRangeWithMultiColumnRows) {
       *wal);
 
   // parse query
-  const std::string sql = "SELECT * FROM x where id >= 4";
-
-  result = pg_query_parse(sql.c_str());
-  ASSERT_EQ(result.error, nullptr)
-      << "parse error: " << (result.error ? result.error->message : "");
-  ASSERT_NE(result.parse_tree, nullptr);
-  ASSERT_GT(std::strlen(result.parse_tree), 0u);
-
-  // parse
-  nlohmann::json parse_tree = nlohmann::json::parse(result.parse_tree);
-  std::string table_name =
-      parse_tree.at("stmts")
-          .at(0)
-          .at("stmt")
-          .at("SelectStmt")
-          .at("fromClause")
-          .at(0)
-          .at("RangeVar")
-          .at("relname")
-          .get<std::string>();
+  const std::string sql = "SELECT name FROM x where id >= 4";
+    SelectParser parser(sql);
+    std::string table_name = parser.extractTableName();
+    std::vector<std::size_t> projection_indices =
+      parser.extractProjectionIndices(table.schema());
   // この辺の条件が複雑なった倍のも対応できるような設計を考える。
   // std::where_column_name = parse_tree.at("stmts")
   //                            .at(0)
@@ -181,25 +152,24 @@ TEST_F(E2ETest, SelectRangeWithMultiColumnRows) {
   table = Table::getTable(table_name);
   if(table.hasIndexForColumn("id")){
     auto scan = IndexScanOperator::fromKeyRange(*pool, table.indexFile(), 4, 10);
-    HeapFetchOperator fetcher(std::move(scan), *pool, table.heapFile(),
-                              table.schema());
-    fetcher.open();
+    auto fetcher = std::make_unique<HeapFetchOperator>(
+        std::move(scan), *pool, table.heapFile(), table.schema());
+    ProjectionOperator projection(std::move(fetcher), projection_indices);
+    projection.open();
 
     std::vector<TypedRow> seen_rows;
 
-    while (auto row = fetcher.next()) {
+    while (auto row = projection.next()) {
       seen_rows.push_back(*row);
     }
-    fetcher.close();
+    projection.close();
 
     ASSERT_EQ(seen_rows.size(), 2u);
-    ASSERT_EQ(seen_rows[0].values.size(), 2u);
-    ASSERT_EQ(seen_rows[1].values.size(), 2u);
+    ASSERT_EQ(seen_rows[0].values.size(), 1u);
+    ASSERT_EQ(seen_rows[1].values.size(), 1u);
 
-    EXPECT_EQ(std::get<Column::IntegerType>(seen_rows[0].values[0]), 4);
-    EXPECT_EQ(std::get<Column::VarcharType>(seen_rows[0].values[1]), "row_4");
-    EXPECT_EQ(std::get<Column::IntegerType>(seen_rows[1].values[0]), 7);
-    EXPECT_EQ(std::get<Column::VarcharType>(seen_rows[1].values[1]), "row_7");
+    EXPECT_EQ(std::get<Column::VarcharType>(seen_rows[0].values[0]), "row_4");
+    EXPECT_EQ(std::get<Column::VarcharType>(seen_rows[1].values[0]), "row_7");
   }
   
 }
