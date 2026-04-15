@@ -94,6 +94,9 @@ target_link_libraries(btreecursor_test dbfs_src GTest::gtest_main)
 add_executable(executor_test test/execution/executor.cpp)
 target_link_libraries(executor_test dbfs_src GTest::gtest_main)
 
+add_executable(projection_operator_test test/execution/projection_operator.cpp)
+target_link_libraries(projection_operator_test dbfs_src GTest::gtest_main)
+
 add_executable(table_test test/catalog/table.cpp)
 target_link_libraries(table_test dbfs_src GTest::gtest_main)
 
@@ -126,5 +129,6 @@ add_test(NAME WALRecordTest COMMAND wal_record_test)
 add_test(NAME LSNAllocatorTest COMMAND lsn_allocator_test)
 add_test(NAME WALTest COMMAND wal_test)
 add_test(NAME ExecutorTest COMMAND executor_test)
+add_test(NAME ProjectionOperatorTest COMMAND projection_operator_test)
 add_test(NAME TableTest COMMAND table_test)
 add_test(NAME E2ESelectTest COMMAND e2e_test)
