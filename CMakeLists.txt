@@ -56,9 +56,11 @@ add_library(dbfs_src
     src/storage/wal/wal_record.cpp
     src/storage/wal/wal_body.cpp
     src/storage/wal/wal.cpp
+    src/execution/comparison_predicate_parser.cpp
     src/execution/heap_fetch.cpp
     src/execution/executor.cpp
     src/execution/index_scan.cpp
+    src/execution/seq_scan_operator.cpp
     src/execution/select_parser.cpp
     src/catalog/table.cpp
     src/logging.cpp

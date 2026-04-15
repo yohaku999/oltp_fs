@@ -8,9 +8,11 @@
 #include <nlohmann/json.hpp>
 
 #include "execution/executor.h"
+#include "execution/filter_operator.h"
 #include "execution/heap_fetch.h"
 #include "execution/index_scan.h"
 #include "execution/projection_operator.h"
+#include "execution/seq_scan_operator.h"
 #include "execution/select_parser.h"
 #include "logging.h"
 #include "schema/schema.h"
@@ -97,7 +99,7 @@ TEST_F(E2ETest, SelectBGreaterEqual4) {
   EXPECT_EQ(seen[1], std::string("row_b_7"));
 }
 
-TEST_F(E2ETest, SelectRangeWithMultiColumnRows) {
+TEST_F(E2ETest, ChoosesSeqScanWhenPredicateHasNoIndexColumn) {
   // initialize table
   Schema schema({Column("id", Column::Type::Integer),
                  Column("name", Column::Type::Varchar)});
@@ -122,35 +124,26 @@ TEST_F(E2ETest, SelectRangeWithMultiColumnRows) {
       *wal);
 
   // parse query
-  const std::string sql = "SELECT name FROM x where id >= 4";
-    SelectParser parser(sql);
-    std::string table_name = parser.extractTableName();
-    std::vector<std::size_t> projection_indices =
+  SelectParser parser("SELECT name FROM x where name = 'row_4'");
+  std::string table_name = parser.extractTableName();
+  std::vector<std::size_t> projection_indices =
       parser.extractProjectionIndices(table.schema());
-  // この辺の条件が複雑なった倍のも対応できるような設計を考える。
-  // std::where_column_name = parse_tree.at("stmts")
-  //                            .at(0)
-  //                            .at("stmt")
-  //                            .at("SelectStmt")
-  //                            .at("whereClause")
-  //                            .at(0)
-  //                            .at("A_Expr")
-  //                            .at("lexpr")
-  //                            .at("ColumnRef")
-  //                            .at("fields")
-  //                            .at(0)
-  //                            .get<std::string>();
-  // std::string where_condition = parse_tree.at("stmts")
-  //                            .at(0)
-  //                            .at("stmt")
-  //                            .at("SelectStmt")
-  //                            .at("whereClause")
-  //                            .at("A_Expr");
-
-  // execute
-  // The range [4, 10] should return only the final two inserted rows.
+  std::vector<ComparisonPredicate> predicates =
+      parser.extractComparisonPredicates(table.schema());
   table = Table::getTable(table_name);
-  if(table.hasIndexForColumn("id")){
+  const int indexed_column_index =
+      table.indexedColumnName().has_value()
+          ? table.schema().getColumnIndex(table.indexedColumnName().value())
+          : -1;
+  bool has_index_predicate = false;
+  for (const auto& predicate : predicates) {
+    if (static_cast<int>(predicate.column_index) == indexed_column_index) {
+      has_index_predicate = true;
+      break;
+    }
+  }
+
+  if (has_index_predicate) {
     auto scan = IndexScanOperator::fromKeyRange(*pool, table.indexFile(), 4, 10);
     auto fetcher = std::make_unique<HeapFetchOperator>(
         std::move(scan), *pool, table.heapFile(), table.schema());
@@ -165,11 +158,22 @@ TEST_F(E2ETest, SelectRangeWithMultiColumnRows) {
     projection.close();
 
     ASSERT_EQ(seen_rows.size(), 2u);
-    ASSERT_EQ(seen_rows[0].values.size(), 1u);
-    ASSERT_EQ(seen_rows[1].values.size(), 1u);
+  } else {
+    auto scan = std::make_unique<SeqScanOperator>(*pool, table.heapFile(),
+                                                  table.schema());
+    auto filter = std::make_unique<FilterOperator>(std::move(scan), predicates);
+    ProjectionOperator projection(std::move(filter), projection_indices);
+    projection.open();
 
+    std::vector<TypedRow> seen_rows;
+    while (auto row = projection.next()) {
+      seen_rows.push_back(*row);
+    }
+    projection.close();
+
+    ASSERT_EQ(seen_rows.size(), 1u);
+    ASSERT_EQ(seen_rows[0].values.size(), 1u);
     EXPECT_EQ(std::get<Column::VarcharType>(seen_rows[0].values[0]), "row_4");
-    EXPECT_EQ(std::get<Column::VarcharType>(seen_rows[1].values[0]), "row_7");
   }
   
 }

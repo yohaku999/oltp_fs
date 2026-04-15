@@ -11,6 +11,8 @@ extern "C" {
 
 class Schema;
 
+#include "execution/comparison_predicate.h"
+
 class SelectParser {
  public:
   explicit SelectParser(std::string sql);
@@ -24,6 +26,8 @@ class SelectParser {
 
   std::string extractTableName() const;
   std::vector<std::size_t> extractProjectionIndices(const Schema& schema) const;
+  std::vector<ComparisonPredicate> extractComparisonPredicates(
+      const Schema& schema) const;
 
  private:
   PgQueryParseResult result_{};

@@ -3,6 +3,7 @@
 #include <stdexcept>
 #include <utility>
 
+#include "execution/comparison_predicate_parser.h"
 #include "schema/schema.h"
 
 SelectParser::SelectParser(std::string sql) {
@@ -71,4 +72,16 @@ std::vector<std::size_t> SelectParser::extractProjectionIndices(
   }
 
   return projection_indices;
+}
+
+std::vector<ComparisonPredicate> SelectParser::extractComparisonPredicates(
+    const Schema& schema) const {
+  const auto& select_stmt =
+      parse_tree_.at("stmts").at(0).at("stmt").at("SelectStmt");
+  if (!select_stmt.contains("whereClause")) {
+    return {};
+  }
+
+  return ComparisonPredicateParser::parse(select_stmt.at("whereClause"),
+                                          schema);
 }

@@ -7,14 +7,8 @@
 #include <utility>
 #include <vector>
 
+#include "execution/comparison_predicate.h"
 #include "execution/operator.h"
-
-struct ComparisonPredicate {
-  std::size_t column_index;
-  enum class Op { Eq, Gt, Ge, Lt, Le };
-  Op op;
-  FieldValue value;
-};
 
 class FilterOperator : public Operator {
  public:
