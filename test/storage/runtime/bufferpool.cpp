@@ -17,12 +17,12 @@
 #include "storage/record/record_serializer.h"
 #include "storage/wal/wal.h"
 #include "storage/wal/wal_record.h"
+#include "schema/schema.h"
 
 namespace {
 
 RecordSerializer serializeSingleVarcharRecord(const std::string& value) {
   static const Schema schema{
-      "single_varchar_record",
       std::vector<Column>{Column("value", Column::Type::Varchar)}};
   TypedRow row{{value}};
   return RecordSerializer(schema, row);

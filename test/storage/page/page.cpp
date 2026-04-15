@@ -17,7 +17,6 @@ namespace {
 
 RecordSerializer serializeSingleVarcharRecord(const std::string& value) {
   static const Schema schema{
-      "single_varchar_record",
       std::vector<Column>{Column("value", Column::Type::Varchar)}};
   TypedRow row{{value}};
   return RecordSerializer(schema, row);
@@ -277,7 +276,6 @@ TEST(PageTest, HeapInsertInvalidateReuseSlot) {
 
   char* cell_start = page->getSlotCellStart(second_slot.value());
   static const Schema schema{
-      "single_varchar_record",
       std::vector<Column>{Column("value", Column::Type::Varchar)}};
   TypedRow row = RecordCellView(cell_start).getTypedRow(schema);
   ASSERT_EQ(row.values.size(), 1u);
