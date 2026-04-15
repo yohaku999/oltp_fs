@@ -18,7 +18,7 @@ class ProjectionOperator : public Operator {
 
   void open() override { child_->open(); }
 
-  std::optional<TypedRow> next() {
+  std::optional<TypedRow> next() override {
     std::optional<TypedRow> row = child_->next();
     if (!row.has_value()) {
       return std::nullopt;
