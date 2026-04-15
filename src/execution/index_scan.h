@@ -10,13 +10,13 @@ class File;
 
 #include "storage/index/rid.h"
 
-class IndexLookup {
+class IndexScan {
  public:
-  IndexLookup(BufferPool& pool, File& indexFile, std::vector<int> keys);
-  static IndexLookup fromKey(BufferPool& pool, File& indexFile, int key);
-  static IndexLookup fromKeys(BufferPool& pool, File& indexFile,
+  IndexScan(BufferPool& pool, File& indexFile, std::vector<int> keys);
+  static IndexScan fromKey(BufferPool& pool, File& indexFile, int key);
+  static IndexScan fromKeys(BufferPool& pool, File& indexFile,
                               std::vector<int> keys);
-  static IndexLookup fromKeyRange(BufferPool& pool, File& indexFile,
+  static IndexScan fromKeyRange(BufferPool& pool, File& indexFile,
                                   int low_key, int high_key);
 
   std::optional<RID> next();

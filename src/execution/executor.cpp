@@ -48,7 +48,7 @@ int extractAccessKey(const Table& table, const TypedRow& row) {
 - multi-column records are supported by RecordSerializer and RecordCellView
 - E2E uses Table-backed fixtures
 - key is still passed separately from TypedRow in executor::insert/update
-- range scan still drops below executor into IndexLookup + HeapFetch directly
+- range scan still drops below executor into IndexScan + HeapFetch directly
  * 
  * 
  */

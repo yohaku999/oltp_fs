@@ -3,7 +3,7 @@
 #include "storage/index/btreecursor.h"
 #include "logging.h"
 
-IndexLookup::IndexLookup(BufferPool& pool, File& indexFile,
+IndexScan::IndexScan(BufferPool& pool, File& indexFile,
                          std::vector<int> keys)
     : pool_(pool),
       indexFile_(indexFile),
@@ -11,21 +11,21 @@ IndexLookup::IndexLookup(BufferPool& pool, File& indexFile,
       pos_(0),
       mode_(Mode::Keys) {}
 
-IndexLookup IndexLookup::fromKey(BufferPool& pool, File& indexFile, int key) {
+IndexScan IndexScan::fromKey(BufferPool& pool, File& indexFile, int key) {
   std::vector<int> keys;
   keys.push_back(key);
-  return IndexLookup(pool, indexFile, std::move(keys));
+  return IndexScan(pool, indexFile, std::move(keys));
 }
 
-IndexLookup IndexLookup::fromKeys(BufferPool& pool, File& indexFile,
+IndexScan IndexScan::fromKeys(BufferPool& pool, File& indexFile,
                                   std::vector<int> keys) {
-  return IndexLookup(pool, indexFile, std::move(keys));
+  return IndexScan(pool, indexFile, std::move(keys));
 }
 
-IndexLookup IndexLookup::fromKeyRange(BufferPool& pool, File& indexFile,
+IndexScan IndexScan::fromKeyRange(BufferPool& pool, File& indexFile,
                                       int low_key, int high_key) {
   LOG_INFO("Starting index scan for keys in range [{}, {}]", low_key, high_key);
-  IndexLookup lookup(pool, indexFile, std::vector<int>{});
+  IndexScan lookup(pool, indexFile, std::vector<int>{});
   lookup.mode_ = Mode::Range;
 
   if (low_key <= high_key) {
@@ -42,7 +42,7 @@ IndexLookup IndexLookup::fromKeyRange(BufferPool& pool, File& indexFile,
   return lookup;
 }
 
-std::optional<RID> IndexLookup::next() {
+std::optional<RID> IndexScan::next() {
   if (mode_ == Mode::Keys) {
     while (pos_ < keys_.size()) {
       int key = keys_[pos_++];
