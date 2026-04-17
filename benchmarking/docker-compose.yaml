@@ -22,12 +22,12 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      BENCHBASE_PROFILE: ${BENCHBASE_PROFILE}
+      BENCHBASE_PROFILE: ${BENCHBASE_PROFILE:-postgres}
     entrypoint:
       - /bin/sh
       - -lc
       - |
-        cd /benchbase/profiles/$${BENCHBASE_PROFILE}
+        cd /benchbase/profiles/$${BENCHBASE_PROFILE:-postgres}
         exec java -cp "benchbase.jar:/benchbase/user-jars/*" com.oltpbenchmark.DBWorkload "$@"
       - --
     volumes:
