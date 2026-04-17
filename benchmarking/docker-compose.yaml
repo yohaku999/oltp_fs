@@ -1,0 +1,28 @@
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-postgres:latest}
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-benchbase}
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${POSTGRES_USER:-admin} -d ${POSTGRES_DB:-benchbase}
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    ports:
+      - ${POSTGRES_PORT:-5432}:5432
+
+  benchbase:
+    image: ${BENCHBASE_IMAGE:-benchbase.azurecr.io/benchbase}
+    platform: ${BENCHBASE_PLATFORM:-linux/amd64}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      BENCHBASE_PROFILE: ${BENCHBASE_PROFILE:-postgres}
+    volumes:
+      - ./results:/benchbase/results
+      - ./config:/benchbase/user-config:ro

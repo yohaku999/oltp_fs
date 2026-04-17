@@ -4,65 +4,64 @@ This directory contains helper configuration, scripts, results, and notebooks
 for benchmarking **dbfs** and comparing it against **PostgreSQL** using
 [BenchBase](https://github.com/cmu-db/benchbase), focusing on the **TPC-C** workload.
 
-BenchBase itself (jar and configs) is assumed to be available in your
-environment (or documented separately as a "build environment"). This
-README does **not** describe how to build BenchBase; it only explains how
-to wire an existing BenchBase distribution to PostgreSQL (and later dbfs).
+The PostgreSQL baseline flow is docker compose based. PostgreSQL and BenchBase
+both run in containers, and BenchBase reaches PostgreSQL through the compose
+service name `postgres`.
 
-## 1. Requirements (high level)
+Repository-managed benchmark configs are mounted into the BenchBase container
+under `/benchbase/user-config` so they do not overwrite BenchBase's built-in
+`/benchbase/config` directory.
 
-- Docker
-  - Used to run a `postgres:latest` container for baseline measurements.
-- A pre-built BenchBase distribution with the `postgres` profile
-  - Exposed via an environment variable like `BENCHBASE_HOME`, or any
-    other convention you prefer.
-- Python and Jupyter
-  - Used to analyze and visualize results under `notebooks/`.
+## 1. Requirements
 
-Details of Docker commands and BenchBase invocations will be added as the
-scripts and configs in this directory are implemented.
+- Docker with `docker compose`
+- Python and Jupyter if you want to analyze output files under `results/`
 
 ## 2. Directory layout
 
+- `docker-compose.yaml`
+  - Docker compose definition for the PostgreSQL baseline flow.
 - `config/`
-  - BenchBase configuration files for TPC-C.
-  - Example (planned):
-    - `postgres_tpcc_local.xml` – TPC-C config for PostgreSQL (Docker).
-    - `dbfs_tpcc_local.xml` – TPC-C config for dbfs (future work).
+  - BenchBase configuration files.
+  - Example:
+    - `postgres_tpcc_docker.xml` – repo-managed TPCC config for the
+      compose-based PostgreSQL baseline.
+    - `dbfs_tpcc_docker.xml` – future config for the compose-based dbfs flow.
 - `scripts/`
-  - Shell scripts that orchestrate benchmark runs.
-  - Example (planned):
-    - `run_postgres_tpcc_docker.sh` – start a PostgreSQL container,
-      run BenchBase TPC-C with a config from `config/`, and store
-      results under `results/`.
+  - Shell wrappers around the benchmark flow.
+  - Example:
+    - `run_postgres_tpcc_docker.sh` – start PostgreSQL with docker compose,
+      wait for readiness, and run BenchBase TPCC. By default it uses
+      `config/postgres_tpcc_docker.xml`, and you can switch only the
+      benchmark target config with `-c <path>`.
     - `run_dbfs_tpcc.sh` – run TPC-C against dbfs once a dbfs
       server/JDBC driver is available.
 - `results/`
   - Raw outputs produced by BenchBase runs.
-  - Recommended structure (example):
+  - Recommended structure:
     - `results/tpcc/postgres/<run-label>/...`
     - `results/tpcc/dbfs/<run-label>/...`
 - `notebooks/`
   - Jupyter notebooks for analysis and visualization.
-  - Example (planned):
-    - `tpcc_baseline_analysis.ipynb` – analyze PostgreSQL baseline runs.
-    - `tpcc_dbfs_comparison.ipynb` – compare PostgreSQL vs dbfs for TPC-C.
 
-## 3. Typical workflow (conceptual)
+## 3. Typical workflow
 
-1. Ensure the following are available:
-   - Docker and the `postgres:latest` image (or another supported tag).
-   - A ready-to-run BenchBase distribution (e.g., via `BENCHBASE_HOME`).
-2. Use a script from `scripts/` (to be added) to:
-   - start a PostgreSQL container for benchmarking,
-   - run BenchBase TPC-C with a config from `config/`, and
-   - write results into a new subdirectory under `results/`.
-3. Open a notebook from `notebooks/` in Jupyter and point it at the
-   corresponding `results/` subdirectory to visualize TPS, latency
-   distributions, and other metrics.
-4. Once dbfs is wired into BenchBase (via a server/JDBC driver), run
-   equivalent TPC-C configurations against dbfs and analyze the results
-   side-by-side with the PostgreSQL baseline.
+1. Ensure Docker is available.
+2. Run `scripts/run_postgres_tpcc_docker.sh`.
+3. Inspect results under `results/tpcc/postgres/<run-label>/`.
+4. Open notebooks as needed to visualize throughput and latency.
 
-Sections describing concrete Docker commands, BenchBase CLI invocations,
-and notebook usage will be filled in as the implementation proceeds.
+If you want to keep the same compose environment and change only the
+BenchBase config file, place another XML file under `config/` and run:
+
+`./benchmarking/scripts/run_postgres_tpcc_docker.sh -c benchmarking/config/your_config.xml`
+
+The PostgreSQL TPCC config in this repository uses:
+
+- host: `postgres`
+- port: `5432`
+- database: `benchbase`
+- user: `admin`
+- password: `password`
+
+Those values match the compose services defined in `docker-compose.yaml`.

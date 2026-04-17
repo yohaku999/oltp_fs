@@ -1,95 +1,62 @@
 #!/usr/bin/env bash
 
-# Run BenchBase TPC-C against a PostgreSQL Docker container.
-#
-# This script is intentionally minimal and focuses on wiring pieces together.
-# It assumes that:
-#   - Docker is installed and usable.
-#   - A BenchBase distribution with the `postgres` profile is available and
-#     exposed via $BENCHBASE_HOME (directory containing benchbase.jar).
-#   - A BenchBase config file for PostgreSQL TPC-C exists at
-#       benchmarking/config/postgres_tpcc_local.xml
-#     (you are expected to derive it from BenchBase's official
-#      config/postgres/sample_tpcc_config.xml).
-#
-# Usage (environment variables):
-#   BENCHBASE_HOME=...</path/to/benchbase-postgres>
-#   WAREHOUSES=<number of warehouses>    # required
-#   THREADS=<number of client threads>    # required
-#   DURATION=<benchmark duration seconds> # required
-#   RESULTS_ROOT=benchmarking/results     # optional; default shown below
-#
-# Then run:
-#   ./benchmarking/scripts/run_postgres_tpcc_docker.sh
-#
-# NOTE: This is a starting point; you can customize container name,
-# ports, database name, and how BenchBase is invoked.
+# Run BenchBase TPC-C via docker compose:
+#   - PostgreSQL as one compose service
+#   - BenchBase as another compose service
 
 set -euo pipefail
 
-# ---- Configuration knobs -------------------------------------------------
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+BENCHMARKING_ROOT="${REPO_ROOT}/benchmarking"
+RESULTS_ROOT="${BENCHMARKING_ROOT}/results"
+COMPOSE_FILE="${BENCHMARKING_ROOT}/docker-compose.yaml"
+CONFIG_ROOT="${BENCHMARKING_ROOT}/config"
+BENCHBASE_CONFIG_PATH="${CONFIG_ROOT}/postgres_tpcc_docker.xml"
 
-CONTAINER_NAME=${CONTAINER_NAME:-"dbfs-benchbase-postgres"}
-POSTGRES_IMAGE=${POSTGRES_IMAGE:-"postgres:latest"}
-POSTGRES_PORT=${POSTGRES_PORT:-5432}
-POSTGRES_DB=${POSTGRES_DB:-"tpcc"}
-POSTGRES_USER=${POSTGRES_USER:-"postgres"}
-POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-"postgres"}
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -c|--config)
+      BENCHBASE_CONFIG_PATH="$2"
+      shift 2
+      ;;
+    -h|--help)
+      echo "Usage: $0 [-c|--config <path>]"
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      echo "Usage: $0 [-c|--config <path>]" >&2
+      exit 1
+      ;;
+  esac
+done
 
-BENCHBASE_HOME=${BENCHBASE_HOME:-}
-CONFIG_PATH=${CONFIG_PATH:-"benchmarking/config/postgres_tpcc_local.xml"}
+if [[ "${BENCHBASE_CONFIG_PATH}" != /* ]]; then
+  BENCHBASE_CONFIG_PATH="$(cd "$(dirname "${BENCHBASE_CONFIG_PATH}")" && pwd)/$(basename "${BENCHBASE_CONFIG_PATH}")"
+fi
 
-# Require core benchmark parameters to be explicit (no hard-coded defaults).
-: "${WAREHOUSES:?Set WAREHOUSES (number of TPC-C warehouses)}"
-: "${THREADS:?Set THREADS (number of client threads)}"
-: "${DURATION:?Set DURATION (benchmark duration in seconds)}"
+if [[ "${BENCHBASE_CONFIG_PATH}" != "${CONFIG_ROOT}"/* ]]; then
+  echo "Config path must be under ${CONFIG_ROOT}" >&2
+  exit 1
+fi
 
-RESULTS_ROOT=${RESULTS_ROOT:-"benchmarking/results"}
-WORKLOAD_NAME="tpcc"
-ENGINE_NAME="postgres"
+CONTAINER_CONFIG="/benchbase/user-config/${BENCHBASE_CONFIG_PATH#"${CONFIG_ROOT}/"}"
+
+WORKLOAD="tpcc"
+ENGINE="postgres"
 RUN_LABEL=${RUN_LABEL:-"$(date +%Y%m%d-%H%M%S)"}
-RESULTS_DIR="${RESULTS_ROOT}/${WORKLOAD_NAME}/${ENGINE_NAME}/${RUN_LABEL}"
+RESULTS_SUBDIR="${WORKLOAD}/${ENGINE}/${RUN_LABEL}"
 
-# ---- Sanity checks --------------------------------------------------------
+mkdir -p "${RESULTS_ROOT}"
 
-if [[ -z "${BENCHBASE_HOME}" ]]; then
-  echo "ERROR: BENCHBASE_HOME is not set. It must point to a directory containing benchbase.jar." >&2
-  exit 1
-fi
+compose_cmd=(docker compose -f "${COMPOSE_FILE}")
 
-if [[ ! -f "${BENCHBASE_HOME}/benchbase.jar" ]]; then
-  echo "ERROR: benchbase.jar not found under BENCHBASE_HOME=${BENCHBASE_HOME}" >&2
-  exit 1
-fi
+echo "Starting PostgreSQL compose service..."
+"${compose_cmd[@]}" up -d postgres
 
-if [[ ! -f "${CONFIG_PATH}" ]]; then
-  echo "ERROR: BenchBase config file not found at ${CONFIG_PATH}." >&2
-  echo "       Please create it based on BenchBase's sample_tpcc_config.xml." >&2
-  exit 1
-fi
-
-mkdir -p "${RESULTS_DIR}"
-
-# ---- Start PostgreSQL container (if not already running) ------------------
-
-if ! docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
-  echo "Starting PostgreSQL container '${CONTAINER_NAME}' using image ${POSTGRES_IMAGE}..."
-  docker run -d --rm \
-    --name "${CONTAINER_NAME}" \
-    -e POSTGRES_DB="${POSTGRES_DB}" \
-    -e POSTGRES_USER="${POSTGRES_USER}" \
-    -e POSTGRES_PASSWORD="${POSTGRES_PASSWORD}" \
-    -p "${POSTGRES_PORT}:5432" \
-    "${POSTGRES_IMAGE}" >/dev/null
-else
-  echo "PostgreSQL container '${CONTAINER_NAME}' already running; reusing it."
-fi
-
-# ---- Wait for PostgreSQL to become ready ---------------------------------
-
-echo "Waiting for PostgreSQL to accept connections on port ${POSTGRES_PORT}..."
+echo "Waiting for PostgreSQL compose service to become ready..."
 for i in {1..60}; do
-  if docker exec "${CONTAINER_NAME}" pg_isready -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" >/dev/null 2>&1; then
+  if "${compose_cmd[@]}" exec -T postgres pg_isready -U admin -d benchbase >/dev/null 2>&1; then
     echo "PostgreSQL is ready."
     break
   fi
@@ -100,33 +67,25 @@ for i in {1..60}; do
   fi
 done
 
-# ---- Run BenchBase TPC-C --------------------------------------------------
+RESULTS_DIR_CONTAINER="/benchbase/results/${RESULTS_SUBDIR}"
 
-JDBC_URL="jdbc:postgresql://localhost:${POSTGRES_PORT}/${POSTGRES_DB}"
+echo "Running BenchBase compose service..."
+echo "  Workload:   ${WORKLOAD}"
+echo "  Config:     ${CONTAINER_CONFIG}"
+echo "  Results:    ${RESULTS_DIR_CONTAINER} (mounted to ${RESULTS_ROOT})"
 
-echo "Running BenchBase TPC-C against ${JDBC_URL}..."
+"${compose_cmd[@]}" run --rm benchbase \
+  -b "${WORKLOAD}" \
+  -c "${CONTAINER_CONFIG}" \
+  --create=true \
+  --load=true \
+  --execute=true \
+  -d "${RESULTS_DIR_CONTAINER}"
 
-echo "  WAREHOUSES=${WAREHOUSES} THREADS=${THREADS} DURATION=${DURATION}s"
+HOST_RESULTS_DIR="${RESULTS_ROOT}/${RESULTS_SUBDIR}"
 
-eval_java_cmd=(
-  java
-  -jar "${BENCHBASE_HOME}/benchbase.jar"
-  -b "${WORKLOAD_NAME}"
-  -c "${CONFIG_PATH}"
-  --create=true
-  --load=true
-  --execute=true
-  -d "${RESULTS_DIR}"
-)
+echo "BenchBase run completed. Results should be under:"
+echo "  ${HOST_RESULTS_DIR}"
 
-# The actual scale factor, threads, and duration are normally specified
-# inside the BenchBase config file. If you want to override them via
-# command-line options, you can extend this script to add the appropriate
-# flags here.
-
-"${eval_java_cmd[@]}"
-
-echo "BenchBase run completed. Results should be under: ${RESULTS_DIR}"
-
-echo "NOTE: This script does not stop the PostgreSQL container automatically."
-echo "      You can stop it manually with: docker stop ${CONTAINER_NAME}"
+echo "NOTE: PostgreSQL remains running as a compose service."
+echo "      You can stop it manually with: docker compose -f ${COMPOSE_FILE} down"
