@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <parameters>
-    <type>DBFS</type>
+    <type>POSTGRES</type>
     <driver>dev.yohaku.dbfs.jdbc.DbfsDriver</driver>
     <url>jdbc:dbfs://dbfs:25432/benchbase</url>
     <username>admin</username>

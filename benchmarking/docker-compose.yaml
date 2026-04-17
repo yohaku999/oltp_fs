@@ -16,13 +16,21 @@ services:
       - ${POSTGRES_PORT:-5432}:5432
 
   benchbase:
-    image: ${BENCHBASE_IMAGE:-benchbase.azurecr.io/benchbase}
-    platform: ${BENCHBASE_PLATFORM:-linux/amd64}
+    image: benchbase.azurecr.io/benchbase
+    platform: linux/amd64
     depends_on:
       postgres:
         condition: service_healthy
     environment:
-      BENCHBASE_PROFILE: ${BENCHBASE_PROFILE:-postgres}
+      BENCHBASE_PROFILE: ${BENCHBASE_PROFILE}
+    entrypoint:
+      - /bin/sh
+      - -lc
+      - |
+        cd /benchbase/profiles/$${BENCHBASE_PROFILE}
+        exec java -cp "benchbase.jar:/benchbase/user-jars/*" com.oltpbenchmark.DBWorkload "$@"
+      - --
     volumes:
       - ./results:/benchbase/results
-      - ./config:/benchbase/user-config:ro
+      - ./benchbase-config:/benchbase/benchbase-config:ro
+      - ../dbfs-jdbc/target:/benchbase/user-jars:ro

@@ -9,7 +9,7 @@ both run in containers, and BenchBase reaches PostgreSQL through the compose
 service name `postgres`.
 
 Repository-managed benchmark configs are mounted into the BenchBase container
-under `/benchbase/user-config` so they do not overwrite BenchBase's built-in
+under `/benchbase/benchbase-config` so they do not overwrite BenchBase's built-in
 `/benchbase/config` directory.
 
 ## 1. Requirements
@@ -21,7 +21,7 @@ under `/benchbase/user-config` so they do not overwrite BenchBase's built-in
 
 - `docker-compose.yaml`
   - Docker compose definition for the PostgreSQL baseline flow.
-- `config/`
+- `benchbase-config/`
   - BenchBase configuration files.
   - Example:
     - `postgres_tpcc_docker.xml` – repo-managed TPCC config for the
@@ -46,14 +46,14 @@ under `/benchbase/user-config` so they do not overwrite BenchBase's built-in
 ## 3. Typical workflow
 
 1. Ensure Docker is available.
-2. Run `scripts/run_postgres_tpcc_docker.sh -c ../config/postgres_tpcc_docker.xml`
+2. Run `scripts/run_postgres_tpcc_docker.sh -c ../benchbase-config/postgres_tpcc_docker.xml`
 3. Inspect results under `results/tpcc/postgres/<run-label>/`.
 4. Open notebooks as needed to visualize throughput and latency.
 
 If you want to keep the same compose environment and change only the
-BenchBase config file, place another XML file under `config/` and run:
+ BenchBase config file, place another XML file under `benchbase-config/` and run:
 
-`./benchmarking/scripts/run_postgres_tpcc_docker.sh -c benchmarking/config/your_config.xml`
+`./benchmarking/scripts/run_postgres_tpcc_docker.sh -c benchmarking/benchbase-config/your_config.xml`
 
 The PostgreSQL TPCC config in this repository uses:
 

@@ -10,7 +10,8 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BENCHMARKING_ROOT="${REPO_ROOT}/benchmarking"
 RESULTS_ROOT="${BENCHMARKING_ROOT}/results"
 COMPOSE_FILE="${BENCHMARKING_ROOT}/docker-compose.yaml"
-CONFIG_ROOT="${BENCHMARKING_ROOT}/config"
+CONFIG_ROOT="${BENCHMARKING_ROOT}/benchbase-config"
+DBFS_JDBC_ROOT="${REPO_ROOT}/dbfs-jdbc"
 BENCHBASE_CONFIG_PATH=""
 
 usage() {
@@ -55,7 +56,12 @@ if [[ "${BENCHBASE_CONFIG_PATH}" != "${CONFIG_ROOT}"/* ]]; then
   exit 1
 fi
 
-CONTAINER_CONFIG="/benchbase/user-config/${BENCHBASE_CONFIG_PATH#"${CONFIG_ROOT}/"}"
+if grep -q '<driver>dev.yohaku.dbfs.jdbc.DbfsDriver</driver>' "${BENCHBASE_CONFIG_PATH}"; then
+  echo "Building dbfs-jdbc jar for BenchBase classpath..."
+  (cd "${DBFS_JDBC_ROOT}" && mvn -q -DskipTests package)
+fi
+
+CONTAINER_CONFIG="/benchbase/benchbase-config/${BENCHBASE_CONFIG_PATH#"${CONFIG_ROOT}/"}"
 
 WORKLOAD="tpcc"
 ENGINE="postgres"
@@ -102,5 +108,5 @@ HOST_RESULTS_DIR="${RESULTS_ROOT}/${RESULTS_SUBDIR}"
 echo "BenchBase run completed. Results should be under:"
 echo "  ${HOST_RESULTS_DIR}"
 
-echo "NOTE: PostgreSQL remains running as a compose service."
+echo "NOTE: RBMS remains running as a compose service."
 echo "      You can stop it manually with: docker compose -f ${COMPOSE_FILE} down"
