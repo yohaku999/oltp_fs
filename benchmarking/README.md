@@ -31,8 +31,7 @@ under `/benchbase/user-config` so they do not overwrite BenchBase's built-in
   - Shell wrappers around the benchmark flow.
   - Example:
     - `run_postgres_tpcc_docker.sh` – start PostgreSQL with docker compose,
-      wait for readiness, and run BenchBase TPCC. By default it uses
-      `config/postgres_tpcc_docker.xml`, and you can switch only the
+      wait for readiness, and run BenchBase TPCC. You must pass the
       benchmark target config with `-c <path>`.
     - `run_dbfs_tpcc.sh` – run TPC-C against dbfs once a dbfs
       server/JDBC driver is available.
@@ -47,7 +46,7 @@ under `/benchbase/user-config` so they do not overwrite BenchBase's built-in
 ## 3. Typical workflow
 
 1. Ensure Docker is available.
-2. Run `scripts/run_postgres_tpcc_docker.sh`.
+2. Run `scripts/run_postgres_tpcc_docker.sh -c ../config/postgres_tpcc_docker.xml`
 3. Inspect results under `results/tpcc/postgres/<run-label>/`.
 4. Open notebooks as needed to visualize throughput and latency.
 

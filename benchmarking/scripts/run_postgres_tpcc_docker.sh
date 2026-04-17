@@ -11,25 +11,40 @@ BENCHMARKING_ROOT="${REPO_ROOT}/benchmarking"
 RESULTS_ROOT="${BENCHMARKING_ROOT}/results"
 COMPOSE_FILE="${BENCHMARKING_ROOT}/docker-compose.yaml"
 CONFIG_ROOT="${BENCHMARKING_ROOT}/config"
-BENCHBASE_CONFIG_PATH="${CONFIG_ROOT}/postgres_tpcc_docker.xml"
+BENCHBASE_CONFIG_PATH=""
+
+usage() {
+  echo "Usage: $0 --config <path>" >&2
+}
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -c|--config)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing argument for $1" >&2
+        usage
+        exit 1
+      fi
       BENCHBASE_CONFIG_PATH="$2"
       shift 2
       ;;
     -h|--help)
-      echo "Usage: $0 [-c|--config <path>]"
+      echo "Usage: $0 --config <path>"
       exit 0
       ;;
     *)
       echo "Unknown option: $1" >&2
-      echo "Usage: $0 [-c|--config <path>]" >&2
+      usage
       exit 1
       ;;
   esac
 done
+
+if [[ -z "${BENCHBASE_CONFIG_PATH}" ]]; then
+  echo "Config path is required." >&2
+  usage
+  exit 1
+fi
 
 if [[ "${BENCHBASE_CONFIG_PATH}" != /* ]]; then
   BENCHBASE_CONFIG_PATH="$(cd "$(dirname "${BENCHBASE_CONFIG_PATH}")" && pwd)/$(basename "${BENCHBASE_CONFIG_PATH}")"
