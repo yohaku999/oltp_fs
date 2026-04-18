@@ -5,30 +5,11 @@
 
 #include "schema/schema.h"
 
-CreateTableParser::CreateTableParser(std::string sql) {
-  result_ = pg_query_parse(sql.c_str());
-  if (result_.error != nullptr) {
-    const std::string message = result_.error->message != nullptr
-                                    ? result_.error->message
-                                    : "unknown parse error";
-    pg_query_free_parse_result(result_);
-    throw std::runtime_error("parse error: " + message);
-  }
-
-  try {
-    parse_tree_ = nlohmann::json::parse(result_.parse_tree);
-  } catch (...) {
-    pg_query_free_parse_result(result_);
-    throw;
-  }
-}
-
-CreateTableParser::~CreateTableParser() { pg_query_free_parse_result(result_); }
+CreateTableParser::CreateTableParser(std::string sql)
+    : PgQueryJsonParser(std::move(sql)) {}
 
 std::string CreateTableParser::extractTableName() const {
-  return parse_tree_.at("stmts")
-      .at(0)
-      .at("stmt")
+  return statementNode()
       .at("CreateStmt")
       .at("relation")
       .at("relname")
@@ -36,11 +17,8 @@ std::string CreateTableParser::extractTableName() const {
 }
 
 Schema CreateTableParser::extractSchema() const {
-  const auto& column_definitions = parse_tree_.at("stmts")
-                                      .at(0)
-                                      .at("stmt")
-                                      .at("CreateStmt")
-                                      .at("tableElts");
+  const auto& column_definitions =
+      statementNode().at("CreateStmt").at("tableElts");
 
   std::vector<Column> columns;
   for (const auto& column_definition : column_definitions) {

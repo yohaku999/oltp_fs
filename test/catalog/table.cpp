@@ -10,6 +10,7 @@
 #include <nlohmann/json.hpp>
 
 #include "execution/executor.h"
+#include "execution/insert_parser.h"
 #include "storage/runtime/bufferpool.h"
 #include "storage/page/page.h"
 #include "storage/wal/wal.h"
@@ -151,18 +152,21 @@ TEST_F(TableTest, InitializeCreatesReadableTableBootstrap) {
 
 TEST_F(TableTest, InsertIndexFindRIDAndReadRowRoundTrip) {
   Table table = createSingleColumnTable();
-  TypedRow row{{Column::IntegerType(11), Column::VarcharType("table-value")}};
 
-  executor::insert(*pool_, table, row, *wal_);
+  executor::insert(
+      *pool_, table,
+      InsertParser("INSERT INTO table_test_table VALUES (11, 'table-value')"),
+      *wal_);
   TypedRow restored = executor::read(*pool_, table, 11);
   EXPECT_EQ(singleVarcharValue(restored), "table-value");
 }
 
 TEST_F(TableTest, InsertHeapRecordWithWalWritesInsertRecord) {
   Table table = createSingleColumnTable();
-  TypedRow row{{Column::IntegerType(11), Column::VarcharType("wal")}};
 
-  executor::insert(*pool_, table, row, *wal_);
+  executor::insert(*pool_, table,
+                   InsertParser("INSERT INTO table_test_table VALUES (11, 'wal')"),
+                   *wal_);
   wal_->flush();
 
   std::vector<WALRecord> records = readWalRecords(kWalPath);
@@ -177,9 +181,10 @@ TEST_F(TableTest, InsertHeapRecordWithWalWritesInsertRecord) {
 
 TEST_F(TableTest, InvalidateHeapRecordWithWalWritesDeleteRecord) {
   Table table = createSingleColumnTable();
-  TypedRow row{{Column::IntegerType(22), Column::VarcharType("gone")}};
 
-  executor::insert(*pool_, table, row, *wal_);
+  executor::insert(*pool_, table,
+                   InsertParser("INSERT INTO table_test_table VALUES (22, 'gone')"),
+                   *wal_);
   executor::remove(*pool_, table, 22, *wal_);
   wal_->flush();
 

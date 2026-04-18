@@ -3,33 +3,14 @@
 #include <stdexcept>
 #include <utility>
 
-#include "execution/comparison_predicate_parser.h"
+#include "execution/parser_ast_helpers.h"
 #include "schema/schema.h"
 
-SelectParser::SelectParser(std::string sql) {
-  result_ = pg_query_parse(sql.c_str());
-  if (result_.error != nullptr) {
-    const std::string message = result_.error->message != nullptr
-                                    ? result_.error->message
-                                    : "unknown parse error";
-    pg_query_free_parse_result(result_);
-    throw std::runtime_error("parse error: " + message);
-  }
-
-  try {
-    parse_tree_ = nlohmann::json::parse(result_.parse_tree);
-  } catch (...) {
-    pg_query_free_parse_result(result_);
-    throw;
-  }
-}
-
-SelectParser::~SelectParser() { pg_query_free_parse_result(result_); }
+SelectParser::SelectParser(std::string sql)
+    : PgQueryJsonParser(std::move(sql)) {}
 
 std::string SelectParser::extractTableName() const {
-  return parse_tree_.at("stmts")
-      .at(0)
-      .at("stmt")
+  return statementNode()
       .at("SelectStmt")
       .at("fromClause")
       .at(0)
@@ -40,11 +21,7 @@ std::string SelectParser::extractTableName() const {
 
 std::vector<std::size_t> SelectParser::extractProjectionIndices(
     const Schema& schema) const {
-  const auto& targets = parse_tree_.at("stmts")
-                            .at(0)
-                            .at("stmt")
-                            .at("SelectStmt")
-                            .at("targetList");
+  const auto& targets = statementNode().at("SelectStmt").at("targetList");
 
   std::vector<std::size_t> projection_indices;
   for (const auto& target : targets) {
@@ -76,12 +53,5 @@ std::vector<std::size_t> SelectParser::extractProjectionIndices(
 
 std::vector<ComparisonPredicate> SelectParser::extractComparisonPredicates(
     const Schema& schema) const {
-  const auto& select_stmt =
-      parse_tree_.at("stmts").at(0).at("stmt").at("SelectStmt");
-  if (!select_stmt.contains("whereClause")) {
-    return {};
-  }
-
-  return ComparisonPredicateParser::parse(select_stmt.at("whereClause"),
-                                          schema);
+  return parseWhereClausePredicates(statementNode().at("SelectStmt"), schema);
 }

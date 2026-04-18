@@ -13,9 +13,11 @@
 #include "execution/operator.h"
 #include "execution/projection_operator.h"
 #include "execution/select_parser.h"
+#include "execution/insert_parser.h"
 #include "execution/create_table_parser.h"
 #include "execution/seq_scan_operator.h"
 #include "execution/drop_table_parser.h"
+#include "execution/update_parser.h"
 #include "storage/index/btreecursor.h"
 #include "storage/page/page.h"
 #include "storage/record/record_cell.h"
@@ -166,8 +168,9 @@ void executor::drop_table(const DropTableParser& parser) {
   Table::removeBackingFilesFor(parser.extractTableName());
 }
 
-void executor::insert(BufferPool& pool, Table& table, const TypedRow& row,
+void executor::insert(BufferPool& pool, Table& table, const InsertParser& parser,
                       WAL& wal) {
+  const TypedRow row = parser.extractRow();
   const int key = extractAccessKey(table, row);
   File& index_file = requireIndexFile(table);
   LOG_INFO("Inserting record with key {} into table {}.", key, table.name());
@@ -236,9 +239,10 @@ void executor::remove(BufferPool& pool, Table& table, int key, WAL& wal) {
  * fewer page-structure assumptions) without requiring in-place updates or
  * special-case split handling.
  */
-void executor::update(BufferPool& pool, Table& table, const TypedRow& row,
-                      WAL& wal) {
-  const int key = extractAccessKey(table, row);
-  executor::remove(pool, table, key, wal);
-  executor::insert(pool, table, row, wal);
+void executor::update(BufferPool& pool, Table& table, const UpdateParser& parser, WAL& wal) {
+  // maybe it is high time we implement real update operation.
+  // const int key = extractAccessKey(table, row);
+  // executor::remove(pool, table, key, wal);
+  // executor::insert(pool, table, parser, wal);
+  throw std::runtime_error("Update operation is not supported yet.");
 }

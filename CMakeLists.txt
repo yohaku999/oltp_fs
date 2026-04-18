@@ -56,9 +56,12 @@ add_library(dbfs_src
     src/storage/wal/wal_record.cpp
     src/storage/wal/wal_body.cpp
     src/storage/wal/wal.cpp
-    src/execution/comparison_predicate_parser.cpp
+    src/execution/parser_ast_helpers.cpp
+    src/execution/pg_query_json_parser.cpp
     src/execution/create_table_parser.cpp
     src/execution/drop_table_parser.cpp
+    src/execution/insert_parser.cpp
+    src/execution/update_parser.cpp
     src/execution/heap_fetch.cpp
     src/execution/executor.cpp
     src/execution/index_scan.cpp

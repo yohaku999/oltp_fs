@@ -10,13 +10,15 @@
 #include <unordered_set>
 #include <vector>
 
+#include "catalog/table.h"
 #include "execution/create_table_parser.h"
 #include "execution/drop_table_parser.h"
+#include "execution/insert_parser.h"
 #include "execution/select_parser.h"
+#include "execution/update_parser.h"
 #include "storage/index/btreecursor.h"
 #include "storage/runtime/bufferpool.h"
 #include "storage/wal/wal.h"
-#include "catalog/table.h"
 
 class ExecutorTest : public ::testing::Test {
  protected:
@@ -31,21 +33,20 @@ class ExecutorTest : public ::testing::Test {
     std::remove(kWalPath);
     wal_ = WAL::initializeNew(kWalPath);
     pool_ = std::make_unique<BufferPool>(*wal_);
-    // All tests share the same indexed integer/varchar table and seed rows so
-    // point reads and parser-driven reads exercise one consistent fixture.
     table_ = std::make_unique<Table>(Table::initialize(
-      kTableName,
-      Schema(std::vector<Column>{Column("id", Column::Type::Integer),
-                     Column("value", Column::Type::Varchar)})));
+        kTableName,
+        Schema(std::vector<Column>{Column("id", Column::Type::Integer),
+                                   Column("value", Column::Type::Varchar)})));
     table_->createIndex("id");
+
     for (const auto& [key, value] : std::vector<std::pair<int, std::string>>{
              {101, "row_101"},
              {103, "row_103"},
              {104, "row_104"},
              {107, "row_107"}}) {
       executor::insert(*pool_, *table_,
-                       TypedRow{{Column::IntegerType(key),
-                                 Column::VarcharType(value)}},
+                       InsertParser("INSERT INTO executor_test_table VALUES (" +
+                                    std::to_string(key) + ", '" + value + "')"),
                        *wal_);
     }
   }
@@ -65,7 +66,6 @@ class ExecutorTest : public ::testing::Test {
     }
     return std::get<Column::VarcharType>(row.values[1]);
   }
-
 };
 
 TEST_F(ExecutorTest, InsertAndGetMultipleRecords) {
@@ -75,8 +75,9 @@ TEST_F(ExecutorTest, InsertAndGetMultipleRecords) {
 
   for (const auto& record : records) {
     executor::insert(*pool_, table,
-                     TypedRow{{Column::IntegerType(record.first),
-                               Column::VarcharType(record.second)}},
+                     InsertParser("INSERT INTO executor_test_table VALUES (" +
+                                  std::to_string(record.first) + ", '" +
+                                  record.second + "')"),
                      *wal_);
   }
 
@@ -89,9 +90,10 @@ TEST_F(ExecutorTest, InsertAndGetMultipleRecords) {
 
 TEST_F(ExecutorTest, InsertAndReadTypedRow) {
   Table& table = *table_;
-  TypedRow inserted{
-      {Column::IntegerType(11), Column::VarcharType("typed-value")}};
-  executor::insert(*pool_, table, inserted, *wal_);
+  executor::insert(*pool_, table,
+                   InsertParser(
+                       "INSERT INTO executor_test_table VALUES (11, 'typed-value')"),
+                   *wal_);
 
   TypedRow restored = executor::read(*pool_, table, 11);
   ASSERT_EQ(restored.values.size(), 2u);
@@ -145,13 +147,12 @@ TEST_F(ExecutorTest, InsertDeleteThenFailToRead) {
   Table& table = *table_;
   const int key = 99;
   executor::insert(*pool_, table,
-                   TypedRow{{Column::IntegerType(key),
-                             Column::VarcharType("transient")}},
+                   InsertParser(
+                       "INSERT INTO executor_test_table VALUES (99, 'transient')"),
                    *wal_);
 
   executor::remove(*pool_, table, key, *wal_);
 
-  // Once a record is removed, executor::read should no longer surface it.
   EXPECT_THROW({ executor::read(*pool_, table, key); }, std::runtime_error);
 }
 
@@ -159,14 +160,15 @@ TEST_F(ExecutorTest, UpdateReplacesExistingValue) {
   Table& table = *table_;
   const int key = 123;
   executor::insert(*pool_, table,
-                   TypedRow{{Column::IntegerType(key),
-                             Column::VarcharType("initial-value")}},
+                   InsertParser("INSERT INTO executor_test_table VALUES (123, "
+                                "'initial-value')"),
                    *wal_);
 
-  executor::update(*pool_, table,
-                   TypedRow{{Column::IntegerType(key),
-                             Column::VarcharType("updated-value")}},
-                   *wal_);
+  executor::update(
+      *pool_, table,
+      UpdateParser("UPDATE executor_test_table SET value = 'updated-value' "
+                   "WHERE id = 123"),
+      *wal_);
 
   EXPECT_EQ("updated-value",
             singleVarcharValue(executor::read(*pool_, table, key)));
@@ -177,10 +179,12 @@ TEST_F(ExecutorTest, UpdateNonExistingKeyThrows) {
   const int key = 777;
   EXPECT_THROW(
       {
-        executor::update(*pool_, table,
-                         TypedRow{{Column::IntegerType(key),
-                                   Column::VarcharType("does-not-exist")}},
-                         *wal_);
+        executor::update(
+            *pool_, table,
+            UpdateParser("UPDATE executor_test_table SET value = "
+                         "'does-not-exist' WHERE id = " +
+                         std::to_string(key)),
+            *wal_);
       },
       std::runtime_error);
 }
@@ -214,15 +218,13 @@ TEST_F(ExecutorTest, InsertPageOverflow) {
         ch = static_cast<char>('a' + (rng() % 26));
       }
       executor::insert(*pool_, table,
-                       TypedRow{{Column::IntegerType(key),
-                                 Column::VarcharType(payload)}},
+                       InsertParser("INSERT INTO executor_test_table VALUES (" +
+                                    std::to_string(key) + ", '" + payload + "')"),
                        *wal_);
       expected.emplace(key, payload);
     }
 
     std::cout << "Start Verifying inserted records..." << std::endl;
-    // The overflow path only succeeds if every inserted record remains
-    // retrievable after the heap and index span many pages.
     for (const auto& [key, value] : expected) {
       std::string restored =
           singleVarcharValue(executor::read(*pool_, table, key));
