@@ -11,6 +11,7 @@
 #include "execution/heap_fetch.h"
 #include "execution/index_scan.h"
 #include "execution/operator.h"
+#include "execution/orderby_operator.h"
 #include "execution/projection_operator.h"
 #include "execution/create_index_parser.h"
 #include "execution/select_parser.h"
@@ -187,12 +188,19 @@ std::vector<TypedRow> executor::read(BufferPool& pool,
   Table table = Table::getTable(parser.extractTableName());
   std::vector<std::size_t> projection_indices =
       parser.extractProjectionIndices(table.schema());
+  std::vector<OrderBySpec> order_by_specs =
+    parser.extractOrderBySpecs(table.schema());
   std::vector<ComparisonPredicate> predicates =
       parser.extractComparisonPredicates(table.schema());
 
   std::unique_ptr<Operator> source = buildReadSource(pool, table, predicates);
-  auto filter = std::make_unique<FilterOperator>(std::move(source), predicates);
-  ProjectionOperator projection(std::move(filter), projection_indices);
+  std::unique_ptr<Operator> pipeline =
+    std::make_unique<FilterOperator>(std::move(source), predicates);
+  if (!order_by_specs.empty()) {
+  pipeline = std::make_unique<OrderByOperator>(std::move(pipeline),
+                         std::move(order_by_specs));
+  }
+  ProjectionOperator projection(std::move(pipeline), projection_indices);
   projection.open();
 
   std::vector<TypedRow> rows;

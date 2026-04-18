@@ -6,6 +6,7 @@
 class Schema;
 
 #include "execution/comparison_predicate.h"
+#include "execution/order_by_spec.h"
 #include "execution/pg_query_json_parser.h"
 
 class SelectParser : private PgQueryJsonParser {
@@ -15,6 +16,7 @@ class SelectParser : private PgQueryJsonParser {
 
   std::string extractTableName() const;
   std::vector<std::size_t> extractProjectionIndices(const Schema& schema) const;
+    std::vector<OrderBySpec> extractOrderBySpecs(const Schema& schema) const;
   std::vector<ComparisonPredicate> extractComparisonPredicates(
       const Schema& schema) const;
 };

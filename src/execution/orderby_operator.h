@@ -1,27 +1,31 @@
 #pragma once
 
-#include <cstdint>
+#include <cstddef>
+#include <memory>
 #include <optional>
+#include <utility>
+#include <vector>
 
 #include "execution/operator.h"
-
-class BufferPool;
-class File;
-class Schema;
+#include "execution/order_by_spec.h"
 
 class OrderByOperator : public Operator {
  public:
-  OrderByOperator(BufferPool& pool, File& heap_file, const Schema& schema);
+  OrderByOperator(std::unique_ptr<Operator> child,
+                  std::vector<OrderBySpec> order_by_specs)
+      : child_(std::move(child)),
+        order_by_specs_(std::move(order_by_specs)) {}
 
   void open() override;
   std::optional<TypedRow> next() override;
   void close() override;
 
  private:
-  BufferPool& pool_;
-  File& heap_file_;
-  const Schema& schema_;
-  uint16_t current_page_id_ = 0;
-  uint16_t current_slot_id_ = 0;
-  bool is_open_ = false;
+  void materializeAndSort();
+
+  std::unique_ptr<Operator> child_;
+  std::vector<OrderBySpec> order_by_specs_;
+  std::vector<TypedRow> sorted_rows_;
+  std::size_t next_index_ = 0;
+  bool materialized_ = false;
 };

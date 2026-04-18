@@ -66,6 +66,7 @@ add_library(dbfs_src
     src/execution/heap_fetch.cpp
     src/execution/executor.cpp
     src/execution/index_scan.cpp
+    src/execution/orderby_operator.cpp
     src/execution/seq_scan_operator.cpp
     src/execution/select_parser.cpp
     src/catalog/table_metadata.cpp
@@ -110,6 +111,9 @@ target_link_libraries(projection_operator_test dbfs_src GTest::gtest_main)
 add_executable(filter_operator_test test/execution/filter_operator.cpp)
 target_link_libraries(filter_operator_test dbfs_src GTest::gtest_main)
 
+add_executable(orderby_operator_test test/execution/orderby_operator.cpp)
+target_link_libraries(orderby_operator_test dbfs_src GTest::gtest_main)
+
 add_executable(table_test test/catalog/table.cpp)
 target_link_libraries(table_test dbfs_src GTest::gtest_main)
 
@@ -141,4 +145,5 @@ add_test(NAME WALTest COMMAND wal_test)
 add_test(NAME ExecutorTest COMMAND executor_test)
 add_test(NAME ProjectionOperatorTest COMMAND projection_operator_test)
 add_test(NAME FilterOperatorTest COMMAND filter_operator_test)
+add_test(NAME OrderByOperatorTest COMMAND orderby_operator_test)
 add_test(NAME TableTest COMMAND table_test)

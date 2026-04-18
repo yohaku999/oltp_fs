@@ -144,6 +144,42 @@ TEST_F(ExecutorTest, ReadSelectUsesSeqScanForE2ECase) {
   EXPECT_EQ(std::get<Column::VarcharType>(rows[0].values[0]), "row_104");
 }
 
+TEST_F(ExecutorTest, ReadSelectAppliesDefaultAscendingOrderBy) {
+  SelectParser parser(
+      "SELECT id FROM executor_test_table ORDER BY id");
+  std::vector<TypedRow> rows = executor::read(*pool_, parser);
+
+  ASSERT_EQ(rows.size(), 4u);
+  EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[0]), 101);
+  EXPECT_EQ(std::get<Column::IntegerType>(rows[1].values[0]), 103);
+  EXPECT_EQ(std::get<Column::IntegerType>(rows[2].values[0]), 104);
+  EXPECT_EQ(std::get<Column::IntegerType>(rows[3].values[0]), 107);
+}
+
+TEST_F(ExecutorTest, ReadSelectAppliesDescendingOrderByBeforeProjection) {
+  SelectParser parser(
+      "SELECT id FROM executor_test_table ORDER BY value DESC");
+  std::vector<TypedRow> rows = executor::read(*pool_, parser);
+
+  ASSERT_EQ(rows.size(), 4u);
+  EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[0]), 107);
+  EXPECT_EQ(std::get<Column::IntegerType>(rows[1].values[0]), 104);
+  EXPECT_EQ(std::get<Column::IntegerType>(rows[2].values[0]), 103);
+  EXPECT_EQ(std::get<Column::IntegerType>(rows[3].values[0]), 101);
+}
+
+TEST_F(ExecutorTest, ReadSelectAppliesExplicitAscendingOrderBy) {
+  SelectParser parser(
+      "SELECT id FROM executor_test_table ORDER BY id ASC");
+  std::vector<TypedRow> rows = executor::read(*pool_, parser);
+
+  ASSERT_EQ(rows.size(), 4u);
+  EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[0]), 101);
+  EXPECT_EQ(std::get<Column::IntegerType>(rows[1].values[0]), 103);
+  EXPECT_EQ(std::get<Column::IntegerType>(rows[2].values[0]), 104);
+  EXPECT_EQ(std::get<Column::IntegerType>(rows[3].values[0]), 107);
+}
+
 TEST_F(ExecutorTest, InsertDeleteThenFailToRead) {
   Table& table = *table_;
   const int key = 99;

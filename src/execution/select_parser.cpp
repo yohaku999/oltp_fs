@@ -51,6 +51,46 @@ std::vector<std::size_t> SelectParser::extractProjectionIndices(
   return projection_indices;
 }
 
+std::vector<OrderBySpec> SelectParser::extractOrderBySpecs(
+    const Schema& schema) const {
+  const auto& select_stmt = statementNode().at("SelectStmt");
+  if (!select_stmt.contains("sortClause")) {
+    return {};
+  }
+
+  const auto& sort_clause = select_stmt.at("sortClause");
+  std::vector<OrderBySpec> order_by_specs;
+  order_by_specs.reserve(sort_clause.size());
+  for (const auto& entry : sort_clause) {
+    const auto& sort_by = entry.at("SortBy");
+    const auto& fields = sort_by.at("node")
+                             .at("ColumnRef")
+                             .at("fields");
+    const std::string column_name =
+        fields.at(0).at("String").at("sval").get<std::string>();
+    const int column_index = schema.getColumnIndex(column_name);
+    if (column_index < 0) {
+      throw std::runtime_error("Unknown ORDER BY column: " + column_name);
+    }
+
+    const std::string direction =
+        sort_by.value("sortby_dir", "SORTBY_DEFAULT");
+    OrderByDirection order_by_direction;
+    if (direction == "SORTBY_DEFAULT" || direction == "SORTBY_ASC") {
+      order_by_direction = OrderByDirection::Asc;
+    } else if (direction == "SORTBY_DESC") {
+      order_by_direction = OrderByDirection::Desc;
+    } else {
+      throw std::runtime_error("Unsupported ORDER BY direction: " + direction);
+    }
+
+    order_by_specs.push_back(OrderBySpec{static_cast<std::size_t>(column_index),
+                                         order_by_direction});
+  }
+
+  return order_by_specs;
+}
+
 std::vector<ComparisonPredicate> SelectParser::extractComparisonPredicates(
     const Schema& schema) const {
   return parseWhereClausePredicates(statementNode().at("SelectStmt"), schema);
