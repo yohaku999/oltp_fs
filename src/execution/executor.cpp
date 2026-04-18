@@ -73,6 +73,49 @@ File& requireIndexFile(Table& table) {
   return index_file->get();
 }
 
+void insertRow(BufferPool& pool, Table& table, const TypedRow& row, WAL& wal) {
+  const int key = extractAccessKey(table, row);
+  File& index_file = requireIndexFile(table);
+  LOG_INFO("Inserting record with key {} into table {}.", key, table.name());
+  std::optional<RID> existing_rid =
+      BTreeCursor::findRID(pool, index_file, key);
+  if (existing_rid.has_value()) {
+    throw std::runtime_error(
+        "Key " + std::to_string(key) +
+        " already exists. Duplicate keys are not allowed.");
+  }
+
+  RecordSerializer cell(table.schema(), row);
+  const std::vector<std::byte>& serialized_cell = cell.serializedBytes();
+
+  int target_page_id = table.heapFile().getMaxPageID();
+  Page* heap_page = pool.pinPage(target_page_id, table.heapFile());
+  auto inserted_slot_id = heap_page->insertCell(serialized_cell);
+  if (!inserted_slot_id.has_value()) {
+    pool.unpinPage(heap_page, table.heapFile());
+    target_page_id = pool.createPage(PageKind::Heap, table.heapFile());
+    heap_page = pool.pinPage(target_page_id, table.heapFile());
+    inserted_slot_id = heap_page->insertCell(serialized_cell);
+    if (!inserted_slot_id.has_value()) {
+      throw std::runtime_error(
+          "Failed to insert record cell into a new heap page due to "
+          "insufficient space.");
+    }
+  }
+
+  wal.write(WALRecord::RecordType::INSERT,
+            static_cast<uint16_t>(target_page_id),
+            InsertRedoBody(static_cast<uint16_t>(inserted_slot_id.value()),
+                           serialized_cell)
+                .encode());
+
+  pool.unpinPage(heap_page, table.heapFile());
+
+  BTreeCursor::insertIntoIndex(pool, index_file, key,
+                               static_cast<uint16_t>(target_page_id),
+                               static_cast<uint16_t>(inserted_slot_id.value()));
+}
+
 std::unique_ptr<Operator> buildReadSource(
     BufferPool& pool, Table& table,
     const std::vector<ComparisonPredicate>& predicates) {
@@ -171,46 +214,7 @@ void executor::drop_table(const DropTableParser& parser) {
 void executor::insert(BufferPool& pool, Table& table, const InsertParser& parser,
                       WAL& wal) {
   const TypedRow row = parser.extractRow();
-  const int key = extractAccessKey(table, row);
-  File& index_file = requireIndexFile(table);
-  LOG_INFO("Inserting record with key {} into table {}.", key, table.name());
-  std::optional<RID> existing_rid =
-      BTreeCursor::findRID(pool, index_file, key);
-  if (existing_rid.has_value()) {
-    throw std::runtime_error(
-        "Key " + std::to_string(key) +
-        " already exists. Duplicate keys are not allowed.");
-  }
-
-  RecordSerializer cell(table.schema(), row);
-  const std::vector<std::byte>& serialized_cell = cell.serializedBytes();
-
-  int target_page_id = table.heapFile().getMaxPageID();
-  Page* heap_page = pool.pinPage(target_page_id, table.heapFile());
-  auto inserted_slot_id = heap_page->insertCell(serialized_cell);
-  if (!inserted_slot_id.has_value()) {
-    pool.unpinPage(heap_page, table.heapFile());
-    target_page_id = pool.createPage(PageKind::Heap, table.heapFile());
-    heap_page = pool.pinPage(target_page_id, table.heapFile());
-    inserted_slot_id = heap_page->insertCell(serialized_cell);
-    if (!inserted_slot_id.has_value()) {
-      throw std::runtime_error(
-          "Failed to insert record cell into a new heap page due to "
-          "insufficient space.");
-    }
-  }
-
-  wal.write(WALRecord::RecordType::INSERT,
-            static_cast<uint16_t>(target_page_id),
-            InsertRedoBody(static_cast<uint16_t>(inserted_slot_id.value()),
-                           serialized_cell)
-                .encode());
-
-  pool.unpinPage(heap_page, table.heapFile());
-
-  BTreeCursor::insertIntoIndex(pool, index_file, key,
-                               static_cast<uint16_t>(target_page_id),
-                               static_cast<uint16_t>(inserted_slot_id.value()));
+  insertRow(pool, table, row, wal);
 }
 
 void executor::remove(BufferPool& pool, Table& table, int key, WAL& wal) {
@@ -240,9 +244,9 @@ void executor::remove(BufferPool& pool, Table& table, int key, WAL& wal) {
  * special-case split handling.
  */
 void executor::update(BufferPool& pool, Table& table, const UpdateParser& parser, WAL& wal) {
-  // maybe it is high time we implement real update operation.
-  // const int key = extractAccessKey(table, row);
-  // executor::remove(pool, table, key, wal);
-  // executor::insert(pool, table, parser, wal);
-  throw std::runtime_error("Update operation is not supported yet.");
+  const int key = parser.extractTargetKey(table.schema());
+  TypedRow original_row = executor::read(pool, table, key);
+  TypedRow updated_row = parser.extractUpdatedRow(table.schema(), original_row);
+  executor::remove(pool, table, key, wal);
+  insertRow(pool, table, updated_row, wal);
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 #include "tuple/typed_row.h"
 #include "execution/pg_query_json_parser.h"
@@ -13,4 +14,11 @@ class UpdateParser : private PgQueryJsonParser {
   ~UpdateParser() = default;
 
   std::string extractTableName() const;
+
+  int extractTargetKey(const Schema& schema) const;
+  TypedRow extractUpdatedRow(const Schema& schema,
+                             const TypedRow& original_row) const;
+
+ private:
+  const nlohmann::json& updateStatement() const;
 };

@@ -3,15 +3,58 @@
 #include <stdexcept>
 #include <utility>
 
+#include "execution/parser_ast_helpers.h"
+#include "schema/schema.h"
 #include "tuple/typed_row.h"
 
 UpdateParser::UpdateParser(std::string sql)
     : PgQueryJsonParser(std::move(sql)) {}
 
+const nlohmann::json& UpdateParser::updateStatement() const {
+    return statementNode().at("UpdateStmt");
+}
+
 std::string UpdateParser::extractTableName() const {
-  return statementNode()
-      .at("UpdateStmt")
+    return updateStatement()
       .at("relation")
       .at("relname")
       .get<std::string>();
+}
+
+int UpdateParser::extractTargetKey(const Schema& schema) const {
+    const std::vector<ComparisonPredicate> predicates =
+            parseWhereClausePredicates(updateStatement(), schema);
+    if (predicates.size() != 1 ||
+            predicates[0].op != ComparisonPredicate::Op::Eq ||
+            !std::holds_alternative<Column::IntegerType>(predicates[0].value)) {
+        throw std::runtime_error(
+                "UPDATE currently requires a single equality predicate on the key.");
+    }
+
+    return std::get<Column::IntegerType>(predicates[0].value);
+}
+
+TypedRow UpdateParser::extractUpdatedRow(const Schema& schema,
+                                                                                const TypedRow& original_row) const {
+    if (schema.columns().size() != original_row.values.size()) {
+        throw std::runtime_error(
+                "Schema column count and original row value count must match.");
+    }
+
+    TypedRow updated_row = original_row;
+    const auto& target_list = updateStatement().at("targetList");
+    for (const auto& target : target_list) {
+        const auto& res_target = target.at("ResTarget");
+        const std::string column_name = res_target.at("name").get<std::string>();
+        const int column_index = schema.getColumnIndex(column_name);
+        if (column_index < 0) {
+            throw std::runtime_error("Unknown UPDATE column: " + column_name);
+        }
+
+        updated_row.values[static_cast<std::size_t>(column_index)] =
+                parseConstFieldValue(res_target.at("val"),
+                                                         schema.columns().at(column_index).getType());
+    }
+
+    return updated_row;
 }
