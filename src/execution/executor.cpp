@@ -15,6 +15,7 @@
 #include "execution/select_parser.h"
 #include "execution/create_table_parser.h"
 #include "execution/seq_scan_operator.h"
+#include "execution/drop_table_parser.h"
 #include "storage/index/btreecursor.h"
 #include "storage/page/page.h"
 #include "storage/record/record_cell.h"
@@ -159,6 +160,10 @@ std::vector<TypedRow> executor::read(BufferPool& pool,
 void executor::create_table(const CreateTableParser& parser) {
   Table::initialize(parser.extractTableName(),
                     parser.extractSchema());
+}
+
+void executor::drop_table(const DropTableParser& parser) {
+  Table::removeBackingFilesFor(parser.extractTableName());
 }
 
 void executor::insert(BufferPool& pool, Table& table, const TypedRow& row,

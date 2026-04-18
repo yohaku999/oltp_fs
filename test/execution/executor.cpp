@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "execution/create_table_parser.h"
+#include "execution/drop_table_parser.h"
 #include "execution/select_parser.h"
 #include "storage/index/btreecursor.h"
 #include "storage/runtime/bufferpool.h"
@@ -243,7 +244,7 @@ TEST_F(ExecutorTest, InsertPageOverflow) {
   }
 }
 
-TEST_F(ExecutorTest, CreateTable) {
+TEST_F(ExecutorTest, CreateAndDropTable) {
   const std::string new_table_name = "new_table";
   Table::removeBackingFilesFor(new_table_name);
   CreateTableParser parser("CREATE TABLE new_table (id INTEGER, name VARCHAR)");
@@ -256,6 +257,6 @@ TEST_F(ExecutorTest, CreateTable) {
   EXPECT_EQ(new_table.schema().columns()[0].getType(), Column::Type::Integer);
   EXPECT_EQ(new_table.schema().columns()[1].getName(), "name");
   EXPECT_EQ(new_table.schema().columns()[1].getType(), Column::Type::Varchar);
-  Table::removeBackingFilesFor(new_table_name);
+  executor::drop_table(DropTableParser("DROP TABLE new_table"));
+  EXPECT_FALSE(Table::isPersisted(new_table_name));
 }
-
