@@ -37,11 +37,12 @@ class TableTest : public ::testing::Test {
   }
 
   static Table createSingleColumnTable() {
-    return Table::initialize(
+    Table table = Table::initialize(
         kTableName,
         Schema(std::vector<Column>{Column("id", Column::Type::Integer),
-                                   Column("value", Column::Type::Varchar)}),
-        std::string("id"));
+                                   Column("value", Column::Type::Varchar)}));
+    table.createIndex("id");
+    return table;
   }
 
   static std::string singleVarcharValue(const TypedRow& row) {
@@ -97,11 +98,9 @@ TEST_F(TableTest, InitializeCreatesReadableTableBootstrap) {
 
   Schema schema(std::vector<Column>{Column("id", Column::Type::Integer),
                                     Column("value", Column::Type::Varchar)});
-  Table table = Table::initialize(kTableName, schema, std::string("id"));
+  Table table = Table::initialize(kTableName, schema);
 
   EXPECT_TRUE(Table::isPersisted(kTableName));
-  EXPECT_EQ(table.indexFile().getRootPageID(), 0u);
-  EXPECT_TRUE(table.indexFile().isPageIDUsed(0));
   EXPECT_TRUE(table.heapFile().isPageIDUsed(0));
 
   std::ifstream meta_file("data/table_test_table.meta.json");
@@ -110,11 +109,7 @@ TEST_F(TableTest, InitializeCreatesReadableTableBootstrap) {
   meta_file >> metadata;
   ASSERT_TRUE(metadata.contains("indexes"));
   ASSERT_TRUE(metadata["indexes"].is_array());
-  ASSERT_EQ(metadata["indexes"].size(), 1u);
-  EXPECT_EQ(metadata["indexes"][0]["indexFile"].get<std::string>(),
-            "data/table_test_table.id.index");
-  EXPECT_EQ(metadata["indexes"][0]["indexedColumn"].get<std::string>(),
-            "id");
+  EXPECT_TRUE(metadata["indexes"].empty());
 
   Table reopened = Table::getTable(kTableName);
   EXPECT_EQ(reopened.name(), kTableName);
@@ -123,16 +118,31 @@ TEST_F(TableTest, InitializeCreatesReadableTableBootstrap) {
   EXPECT_EQ(reopened.schema().columns()[0].getType(), Column::Type::Integer);
   EXPECT_EQ(reopened.schema().columns()[1].getName(), "value");
   EXPECT_EQ(reopened.schema().columns()[1].getType(), Column::Type::Varchar);
-  ASSERT_TRUE(reopened.indexedColumnName().has_value());
-  EXPECT_EQ(reopened.indexedColumnName().value(), "id");
+  EXPECT_FALSE(reopened.indexedColumnName().has_value());
+
+  table.createIndex("id");
+  EXPECT_TRUE(table.hasIndexForColumn("id"));
+  ASSERT_TRUE(table.indexFile().has_value());
+  EXPECT_EQ(table.indexFile()->get().getRootPageID(), 0u);
+  EXPECT_TRUE(table.indexFile()->get().isPageIDUsed(0));
+
+  std::ifstream indexed_meta_file("data/table_test_table.meta.json");
+  ASSERT_TRUE(indexed_meta_file.is_open());
+  indexed_meta_file >> metadata;
+  ASSERT_EQ(metadata["indexes"].size(), 1u);
+  EXPECT_EQ(metadata["indexes"][0]["indexFile"].get<std::string>(),
+            "data/table_test_table.id.index");
+  EXPECT_EQ(metadata["indexes"][0]["indexedColumn"].get<std::string>(),
+            "id");
+
+  Table indexed_reopened = Table::getTable(kTableName);
+  ASSERT_TRUE(indexed_reopened.indexedColumnName().has_value());
+  EXPECT_EQ(indexed_reopened.indexedColumnName().value(), "id");
+    ASSERT_TRUE(indexed_reopened.indexFile().has_value());
 
   std::array<char, Page::PAGE_SIZE_BYTE> index_page_buffer{};
-  std::array<char, Page::PAGE_SIZE_BYTE> heap_page_buffer{};
-
   EXPECT_NO_THROW(
-      table.indexFile().readPageIntoBuffer(0, index_page_buffer.data()));
-  EXPECT_NO_THROW(
-      table.heapFile().readPageIntoBuffer(0, heap_page_buffer.data()));
+      table.indexFile()->get().readPageIntoBuffer(0, index_page_buffer.data()));
 
   Page index_root = Page::wrapExisting(index_page_buffer.data(), 0);
   EXPECT_TRUE(index_root.isLeaf());

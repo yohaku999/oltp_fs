@@ -10,6 +10,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "execution/create_table_parser.h"
 #include "execution/select_parser.h"
 #include "storage/index/btreecursor.h"
 #include "storage/runtime/bufferpool.h"
@@ -32,10 +33,10 @@ class ExecutorTest : public ::testing::Test {
     // All tests share the same indexed integer/varchar table and seed rows so
     // point reads and parser-driven reads exercise one consistent fixture.
     table_ = std::make_unique<Table>(Table::initialize(
-        kTableName,
-        Schema(std::vector<Column>{Column("id", Column::Type::Integer),
-                                   Column("value", Column::Type::Varchar)}),
-        std::string("id")));
+      kTableName,
+      Schema(std::vector<Column>{Column("id", Column::Type::Integer),
+                     Column("value", Column::Type::Varchar)})));
+    table_->createIndex("id");
     for (const auto& [key, value] : std::vector<std::pair<int, std::string>>{
              {101, "row_101"},
              {103, "row_103"},
@@ -227,7 +228,7 @@ TEST_F(ExecutorTest, InsertPageOverflow) {
       if (restored != value) {
         std::cout << "Mismatch detected for key=" << key
                   << ". Dumping B+tree index state..." << std::endl;
-        BTreeCursor::dumpTree(*pool_, table.indexFile(), std::cout);
+        BTreeCursor::dumpTree(*pool_, table.indexFile()->get(), std::cout);
       }
       EXPECT_EQ(value, restored) << "mismatch for key=" << key;
     }
@@ -237,8 +238,24 @@ TEST_F(ExecutorTest, InsertPageOverflow) {
     std::cout << "Dumping B+tree index state after test failure..."
               << std::endl;
     Table table = Table::getTable(kTableName);
-    BTreeCursor::dumpTree(*pool_, table.indexFile(), std::cout);
+    BTreeCursor::dumpTree(*pool_, table.indexFile()->get(), std::cout);
     throw;
   }
+}
+
+TEST_F(ExecutorTest, CreateTable) {
+  const std::string new_table_name = "new_table";
+  Table::removeBackingFilesFor(new_table_name);
+  CreateTableParser parser("CREATE TABLE new_table (id INTEGER, name VARCHAR)");
+  executor::create_table(parser);
+
+  Table new_table = Table::getTable(new_table_name);
+  ASSERT_EQ(new_table.name(), new_table_name);
+  ASSERT_EQ(new_table.schema().columns().size(), 2u);
+  EXPECT_EQ(new_table.schema().columns()[0].getName(), "id");
+  EXPECT_EQ(new_table.schema().columns()[0].getType(), Column::Type::Integer);
+  EXPECT_EQ(new_table.schema().columns()[1].getName(), "name");
+  EXPECT_EQ(new_table.schema().columns()[1].getType(), Column::Type::Varchar);
+  Table::removeBackingFilesFor(new_table_name);
 }
 

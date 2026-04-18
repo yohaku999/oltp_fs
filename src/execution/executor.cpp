@@ -13,6 +13,7 @@
 #include "execution/operator.h"
 #include "execution/projection_operator.h"
 #include "execution/select_parser.h"
+#include "execution/create_table_parser.h"
 #include "execution/seq_scan_operator.h"
 #include "storage/index/btreecursor.h"
 #include "storage/page/page.h"
@@ -61,6 +62,14 @@ std::vector<ComparisonPredicate> extractIndexedPredicates(
   return index_predicates;
 }
 
+File& requireIndexFile(Table& table) {
+  const auto index_file = table.indexFile();
+  if (!index_file.has_value()) {
+    throw std::runtime_error("Table has no index file: " + table.name());
+  }
+  return index_file->get();
+}
+
 std::unique_ptr<Operator> buildReadSource(
     BufferPool& pool, Table& table,
     const std::vector<ComparisonPredicate>& predicates) {
@@ -85,8 +94,14 @@ std::unique_ptr<Operator> buildReadSource(
                                              table.schema());
   }
 
+  const auto index_file = table.indexFile();
+  if (!index_file.has_value()) {
+    return std::make_unique<SeqScanOperator>(pool, table.heapFile(),
+                                             table.schema());
+  }
+
   auto scan = std::make_unique<IndexScanOperator>(
-      pool, table.indexFile(),
+      pool, index_file->get(),
       DiscreteIntegerIndexPredicates{std::move(index_predicates)});
   return std::make_unique<HeapFetchOperator>(std::move(scan), pool,
                                              table.heapFile(), table.schema());
@@ -105,7 +120,8 @@ std::unique_ptr<Operator> buildReadSource(
  * 
  */
 TypedRow executor::read(BufferPool& pool, Table& table, int key) {
-  std::optional<RID> rid = BTreeCursor::findRID(pool, table.indexFile(), key);
+  File& index_file = requireIndexFile(table);
+  std::optional<RID> rid = BTreeCursor::findRID(pool, index_file, key);
   if (!rid.has_value()) {
     throw std::runtime_error("Key " + std::to_string(key) +
                              " not found in index file.");
@@ -140,12 +156,18 @@ std::vector<TypedRow> executor::read(BufferPool& pool,
   return rows;
 }
 
+void executor::create_table(const CreateTableParser& parser) {
+  Table::initialize(parser.extractTableName(),
+                    parser.extractSchema());
+}
+
 void executor::insert(BufferPool& pool, Table& table, const TypedRow& row,
                       WAL& wal) {
   const int key = extractAccessKey(table, row);
+  File& index_file = requireIndexFile(table);
   LOG_INFO("Inserting record with key {} into table {}.", key, table.name());
   std::optional<RID> existing_rid =
-      BTreeCursor::findRID(pool, table.indexFile(), key);
+      BTreeCursor::findRID(pool, index_file, key);
   if (existing_rid.has_value()) {
     throw std::runtime_error(
         "Key " + std::to_string(key) +
@@ -178,14 +200,15 @@ void executor::insert(BufferPool& pool, Table& table, const TypedRow& row,
 
   pool.unpinPage(heap_page, table.heapFile());
 
-  BTreeCursor::insertIntoIndex(pool, table.indexFile(), key,
+  BTreeCursor::insertIntoIndex(pool, index_file, key,
                                static_cast<uint16_t>(target_page_id),
                                static_cast<uint16_t>(inserted_slot_id.value()));
 }
 
 void executor::remove(BufferPool& pool, Table& table, int key, WAL& wal) {
+  File& index_file = requireIndexFile(table);
   std::optional<RID> rid =
-      BTreeCursor::findRID(pool, table.indexFile(), key, true);
+      BTreeCursor::findRID(pool, index_file, key, true);
   if (!rid.has_value()) {
     throw std::runtime_error("Key " + std::to_string(key) +
                              " not found in leaf page.");
