@@ -8,6 +8,7 @@
 #include <utility>
 #include <vector>
 
+#include "catalog/table_metadata.h"
 #include "schema/schema.h"
 #include "storage/index/rid.h"
 #include "storage/runtime/file.h"
@@ -38,16 +39,6 @@ class Table {
   File& heapFile() { return heap_file_; }
 
  private:
-    struct PersistedIndex {
-      std::string index_path;
-      std::optional<std::string> indexed_column_name;
-    };
-
-    struct PersistedMetadata {
-      Schema schema;
-      std::vector<PersistedIndex> indexes;
-    };
-
         Table(std::string name, Schema schema,
           std::optional<std::string> index_path,
           std::optional<std::string> indexed_column_name);
@@ -58,17 +49,9 @@ class Table {
 
   static std::string defaultHeapPath(const std::string& table_name);
 
-  static std::string defaultMetaPath(const std::string& table_name);
-
   static std::string preparePath(const std::string& path);
 
   static void removeFileIfExists(const std::string& path);
-
-  static void writeSchemaMetadata(
-      const std::string& meta_path, const Schema& schema,
-      const std::vector<PersistedIndex>& indexes);
-
-  static PersistedMetadata readSchemaMetadata(const std::string& meta_path);
 
   static bool anyBackingFileExists(const std::string& table_name);
 

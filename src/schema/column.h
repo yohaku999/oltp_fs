@@ -30,6 +30,26 @@ class Column {
 
   Type getType() const { return type_; }
 
+  static std::string typeToString(Type type) {
+    switch (type) {
+      case Type::Integer:
+        return "Integer";
+      case Type::Varchar:
+        return "Varchar";
+    }
+    throw std::runtime_error("Unknown column type");
+  }
+
+  static Type typeFromString(const std::string& type_name) {
+    if (type_name == "Integer") {
+      return Type::Integer;
+    }
+    if (type_name == "Varchar") {
+      return Type::Varchar;
+    }
+    throw std::runtime_error("Unknown column type: " + type_name);
+  }
+
   bool isFixedLength() const { return !is_variable_length_; }
 
  private:

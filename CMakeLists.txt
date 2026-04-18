@@ -64,6 +64,7 @@ add_library(dbfs_src
     src/execution/index_scan.cpp
     src/execution/seq_scan_operator.cpp
     src/execution/select_parser.cpp
+    src/catalog/table_metadata.cpp
     src/catalog/table.cpp
     src/logging.cpp
 )
