@@ -10,6 +10,7 @@
 #include "execution/operators/filter_operator.h"
 #include "execution/operators/heap_fetch.h"
 #include "execution/operators/index_scan.h"
+#include "execution/operators/limit_operator.h"
 #include "execution/operator.h"
 #include "execution/operators/orderby_operator.h"
 #include "execution/operators/projection_operator.h"
@@ -189,16 +190,21 @@ std::vector<TypedRow> executor::read(BufferPool& pool,
   std::vector<std::size_t> projection_indices =
       parser.extractProjectionIndices(table.schema());
   std::vector<OrderBySpec> order_by_specs =
-    parser.extractOrderBySpecs(table.schema());
+      parser.extractOrderBySpecs(table.schema());
+  std::optional<std::size_t> limit_count = parser.extractLimitCount();
   std::vector<ComparisonPredicate> predicates =
       parser.extractComparisonPredicates(table.schema());
 
   std::unique_ptr<Operator> source = buildReadSource(pool, table, predicates);
   std::unique_ptr<Operator> pipeline =
-    std::make_unique<FilterOperator>(std::move(source), predicates);
+      std::make_unique<FilterOperator>(std::move(source), predicates);
   if (!order_by_specs.empty()) {
-  pipeline = std::make_unique<OrderByOperator>(std::move(pipeline),
-                         std::move(order_by_specs));
+    pipeline = std::make_unique<OrderByOperator>(std::move(pipeline),
+                                                 std::move(order_by_specs));
+  }
+  if (limit_count.has_value()) {
+    pipeline = std::make_unique<LimitOperator>(std::move(pipeline),
+                                               limit_count.value());
   }
   ProjectionOperator projection(std::move(pipeline), projection_indices);
   projection.open();

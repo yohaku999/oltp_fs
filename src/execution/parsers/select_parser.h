@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -16,7 +17,8 @@ class SelectParser : private PgQueryJsonParser {
 
   std::string extractTableName() const;
   std::vector<std::size_t> extractProjectionIndices(const Schema& schema) const;
-    std::vector<OrderBySpec> extractOrderBySpecs(const Schema& schema) const;
+  std::vector<OrderBySpec> extractOrderBySpecs(const Schema& schema) const;
+  std::optional<std::size_t> extractLimitCount() const;
   std::vector<ComparisonPredicate> extractComparisonPredicates(
       const Schema& schema) const;
 };

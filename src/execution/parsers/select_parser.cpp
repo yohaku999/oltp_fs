@@ -91,6 +91,17 @@ std::vector<OrderBySpec> SelectParser::extractOrderBySpecs(
   return order_by_specs;
 }
 
+std::optional<std::size_t> SelectParser::extractLimitCount() const {
+  const auto& select_stmt = statementNode().at("SelectStmt");
+  const auto limit_count_it = select_stmt.find("limitCount");
+  if (limit_count_it == select_stmt.end()) {
+    return std::nullopt;
+  }
+  const auto& limit_count = *limit_count_it;
+  const int limit = limit_count.at("A_Const").at("ival").at("ival").get<int>();
+  return static_cast<std::size_t>(limit);
+}
+
 std::vector<ComparisonPredicate> SelectParser::extractComparisonPredicates(
     const Schema& schema) const {
   return parseWhereClausePredicates(statementNode().at("SelectStmt"), schema);

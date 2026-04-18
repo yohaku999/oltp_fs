@@ -180,6 +180,26 @@ TEST_F(ExecutorTest, ReadSelectAppliesExplicitAscendingOrderBy) {
   EXPECT_EQ(std::get<Column::IntegerType>(rows[3].values[0]), 107);
 }
 
+TEST_F(ExecutorTest, ReadSelectAppliesLimitWithoutOrderBy) {
+  SelectParser parser(
+      "SELECT id FROM executor_test_table WHERE id >= 103 LIMIT 2");
+  std::vector<TypedRow> rows = executor::read(*pool_, parser);
+
+  ASSERT_EQ(rows.size(), 2u);
+  EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[0]), 103);
+  EXPECT_EQ(std::get<Column::IntegerType>(rows[1].values[0]), 104);
+}
+
+TEST_F(ExecutorTest, ReadSelectAppliesLimitAfterOrderBy) {
+  SelectParser parser(
+      "SELECT id FROM executor_test_table ORDER BY id DESC LIMIT 2");
+  std::vector<TypedRow> rows = executor::read(*pool_, parser);
+
+  ASSERT_EQ(rows.size(), 2u);
+  EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[0]), 107);
+  EXPECT_EQ(std::get<Column::IntegerType>(rows[1].values[0]), 104);
+}
+
 TEST_F(ExecutorTest, InsertDeleteThenFailToRead) {
   Table& table = *table_;
   const int key = 99;
