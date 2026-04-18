@@ -58,6 +58,7 @@ add_library(dbfs_src
     src/storage/wal/wal.cpp
     src/execution/parser_ast_helpers.cpp
     src/execution/pg_query_json_parser.cpp
+    src/execution/create_index_parser.cpp
     src/execution/create_table_parser.cpp
     src/execution/drop_table_parser.cpp
     src/execution/insert_parser.cpp

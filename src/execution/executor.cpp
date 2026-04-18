@@ -12,6 +12,7 @@
 #include "execution/index_scan.h"
 #include "execution/operator.h"
 #include "execution/projection_operator.h"
+#include "execution/create_index_parser.h"
 #include "execution/select_parser.h"
 #include "execution/insert_parser.h"
 #include "execution/create_table_parser.h"
@@ -205,6 +206,17 @@ std::vector<TypedRow> executor::read(BufferPool& pool,
 void executor::create_table(const CreateTableParser& parser) {
   Table::initialize(parser.extractTableName(),
                     parser.extractSchema());
+}
+
+void executor::create_index(const CreateIndexParser& parser) {
+  const std::vector<std::string> column_names = parser.extractColumnNames();
+  if (column_names.empty()) {
+    throw std::runtime_error("CREATE INDEX requires at least one index column.");
+  }
+
+  Table table = Table::getTable(parser.extractTableName());
+  // TODO: currently only supports single-column indexes.
+  table.createIndex(column_names.front());
 }
 
 void executor::drop_table(const DropTableParser& parser) {

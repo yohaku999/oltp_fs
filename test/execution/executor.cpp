@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "catalog/table.h"
+#include "execution/create_index_parser.h"
 #include "execution/create_table_parser.h"
 #include "execution/drop_table_parser.h"
 #include "execution/insert_parser.h"
@@ -251,6 +252,8 @@ TEST_F(ExecutorTest, CreateAndDropTable) {
   Table::removeBackingFilesFor(new_table_name);
   CreateTableParser parser("CREATE TABLE new_table (id INTEGER, name VARCHAR)");
   executor::create_table(parser);
+  executor::create_index(
+      CreateIndexParser("CREATE INDEX idx_new_table_id ON new_table (id)"));
 
   Table new_table = Table::getTable(new_table_name);
   ASSERT_EQ(new_table.name(), new_table_name);
@@ -259,6 +262,8 @@ TEST_F(ExecutorTest, CreateAndDropTable) {
   EXPECT_EQ(new_table.schema().columns()[0].getType(), Column::Type::Integer);
   EXPECT_EQ(new_table.schema().columns()[1].getName(), "name");
   EXPECT_EQ(new_table.schema().columns()[1].getType(), Column::Type::Varchar);
+  ASSERT_TRUE(new_table.indexedColumnName().has_value());
+  EXPECT_EQ(new_table.indexedColumnName().value(), "id");
   executor::drop_table(DropTableParser("DROP TABLE new_table"));
   EXPECT_FALSE(Table::isPersisted(new_table_name));
 }
