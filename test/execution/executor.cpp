@@ -11,12 +11,12 @@
 #include <vector>
 
 #include "catalog/table.h"
-#include "execution/create_index_parser.h"
-#include "execution/create_table_parser.h"
-#include "execution/drop_table_parser.h"
-#include "execution/insert_parser.h"
-#include "execution/select_parser.h"
-#include "execution/update_parser.h"
+#include "execution/parsers/create_index_parser.h"
+#include "execution/parsers/create_table_parser.h"
+#include "execution/parsers/drop_table_parser.h"
+#include "execution/parsers/insert_parser.h"
+#include "execution/parsers/select_parser.h"
+#include "execution/parsers/update_parser.h"
 #include "storage/index/btreecursor.h"
 #include "storage/runtime/bufferpool.h"
 #include "storage/wal/wal.h"

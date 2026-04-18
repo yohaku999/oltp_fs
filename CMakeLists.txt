@@ -56,19 +56,19 @@ add_library(dbfs_src
     src/storage/wal/wal_record.cpp
     src/storage/wal/wal_body.cpp
     src/storage/wal/wal.cpp
-    src/execution/parser_ast_helpers.cpp
-    src/execution/pg_query_json_parser.cpp
-    src/execution/create_index_parser.cpp
-    src/execution/create_table_parser.cpp
-    src/execution/drop_table_parser.cpp
-    src/execution/insert_parser.cpp
-    src/execution/update_parser.cpp
-    src/execution/heap_fetch.cpp
+    src/execution/parsers/parser_ast_helpers.cpp
+    src/execution/parsers/pg_query_json_parser.cpp
+    src/execution/parsers/create_index_parser.cpp
+    src/execution/parsers/create_table_parser.cpp
+    src/execution/parsers/drop_table_parser.cpp
+    src/execution/parsers/insert_parser.cpp
+    src/execution/parsers/update_parser.cpp
+    src/execution/operators/heap_fetch.cpp
     src/execution/executor.cpp
-    src/execution/index_scan.cpp
-    src/execution/orderby_operator.cpp
-    src/execution/seq_scan_operator.cpp
-    src/execution/select_parser.cpp
+    src/execution/operators/index_scan.cpp
+    src/execution/operators/orderby_operator.cpp
+    src/execution/operators/seq_scan_operator.cpp
+    src/execution/parsers/select_parser.cpp
     src/catalog/table_metadata.cpp
     src/catalog/table.cpp
     src/logging.cpp

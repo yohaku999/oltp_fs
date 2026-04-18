@@ -10,7 +10,7 @@
 #include <nlohmann/json.hpp>
 
 #include "execution/executor.h"
-#include "execution/insert_parser.h"
+#include "execution/parsers/insert_parser.h"
 #include "storage/runtime/bufferpool.h"
 #include "storage/page/page.h"
 #include "storage/wal/wal.h"

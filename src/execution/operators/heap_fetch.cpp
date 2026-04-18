@@ -1,6 +1,6 @@
 #include "heap_fetch.h"
 
-#include "execution/rid_operator.h"
+#include "execution/operators/rid_operator.h"
 #include "schema/schema.h"
 #include "storage/record/record_cell.h"
 #include "storage/index/rid.h"

@@ -4,7 +4,7 @@
 #include <vector>
 
 #include "tuple/typed_row.h"
-#include "execution/pg_query_json_parser.h"
+#include "execution/parsers/pg_query_json_parser.h"
 
 class Schema;
 

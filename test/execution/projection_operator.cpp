@@ -1,4 +1,4 @@
-#include "execution/projection_operator.h"
+#include "execution/operators/projection_operator.h"
 #include "stub_row_operator.h"
 
 #include <gtest/gtest.h>

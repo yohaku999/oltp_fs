@@ -4,7 +4,7 @@
 #include <utility>
 
 #include "catalog/table.h"
-#include "execution/parser_ast_helpers.h"
+#include "execution/parsers/parser_ast_helpers.h"
 #include "tuple/typed_row.h"
 
 InsertParser::InsertParser(std::string sql)

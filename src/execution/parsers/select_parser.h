@@ -7,7 +7,7 @@ class Schema;
 
 #include "execution/comparison_predicate.h"
 #include "execution/order_by_spec.h"
-#include "execution/pg_query_json_parser.h"
+#include "execution/parsers/pg_query_json_parser.h"
 
 class SelectParser : private PgQueryJsonParser {
  public:

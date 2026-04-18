@@ -3,7 +3,7 @@
 #include <stdexcept>
 #include <utility>
 
-#include "execution/parser_ast_helpers.h"
+#include "execution/parsers/parser_ast_helpers.h"
 #include "schema/schema.h"
 
 SelectParser::SelectParser(std::string sql)

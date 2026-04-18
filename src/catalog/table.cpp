@@ -5,7 +5,7 @@
 #include <filesystem>
 
 #include "catalog/table_metadata.h"
-#include "execution/heap_fetch.h"
+#include "execution/operators/heap_fetch.h"
 #include "logging.h"
 #include "storage/index/btreecursor.h"
 #include "storage/page/page.h"

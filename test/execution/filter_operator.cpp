@@ -1,4 +1,4 @@
-#include "execution/filter_operator.h"
+#include "execution/operators/filter_operator.h"
 
 #include <gtest/gtest.h>
 

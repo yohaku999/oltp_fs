@@ -9,7 +9,7 @@ class BufferPool;
 class File;
 
 #include "execution/comparison_predicate.h"
-#include "execution/rid_operator.h"
+#include "execution/operators/rid_operator.h"
 
 // This scan only supports predicates over a discrete integer index key.
 // Range predicates are executed as repeated point lookups over the integer
