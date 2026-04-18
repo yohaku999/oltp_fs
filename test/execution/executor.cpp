@@ -13,6 +13,7 @@
 #include "catalog/table.h"
 #include "execution/parsers/create_index_parser.h"
 #include "execution/parsers/create_table_parser.h"
+#include "execution/parsers/delete_parser.h"
 #include "execution/parsers/drop_table_parser.h"
 #include "execution/parsers/insert_parser.h"
 #include "execution/parsers/select_parser.h"
@@ -208,9 +209,41 @@ TEST_F(ExecutorTest, InsertDeleteThenFailToRead) {
                        "INSERT INTO executor_test_table VALUES (99, 'transient')"),
                    *wal_);
 
-  executor::remove(*pool_, table, key, *wal_);
+  executor::remove(
+      *pool_, table,
+      DeleteParser("DELETE FROM executor_test_table WHERE id = " +
+                   std::to_string(key)),
+      *wal_);
 
   EXPECT_THROW({ executor::read(*pool_, table, key); }, std::runtime_error);
+}
+
+TEST_F(ExecutorTest, DeleteRemovesAllRowsMatchingIndexedPredicate) {
+  Table& table = *table_;
+
+  executor::remove(*pool_, table,
+                   DeleteParser(
+                       "DELETE FROM executor_test_table WHERE id >= 103"),
+                   *wal_);
+
+  EXPECT_EQ("row_101", singleVarcharValue(executor::read(*pool_, table, 101)));
+  EXPECT_THROW({ executor::read(*pool_, table, 103); }, std::runtime_error);
+  EXPECT_THROW({ executor::read(*pool_, table, 104); }, std::runtime_error);
+  EXPECT_THROW({ executor::read(*pool_, table, 107); }, std::runtime_error);
+}
+
+TEST_F(ExecutorTest, DeleteFallsBackToHeapScanForNonIndexedPredicate) {
+  Table& table = *table_;
+
+  executor::remove(*pool_, table,
+                   DeleteParser(
+                       "DELETE FROM executor_test_table WHERE value = 'row_104'"),
+                   *wal_);
+
+  EXPECT_EQ("row_101", singleVarcharValue(executor::read(*pool_, table, 101)));
+  EXPECT_EQ("row_103", singleVarcharValue(executor::read(*pool_, table, 103)));
+  EXPECT_THROW({ executor::read(*pool_, table, 104); }, std::runtime_error);
+  EXPECT_EQ("row_107", singleVarcharValue(executor::read(*pool_, table, 107)));
 }
 
 TEST_F(ExecutorTest, UpdateReplacesExistingValue) {

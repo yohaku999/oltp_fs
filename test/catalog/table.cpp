@@ -10,6 +10,7 @@
 #include <nlohmann/json.hpp>
 
 #include "execution/executor.h"
+#include "execution/parsers/delete_parser.h"
 #include "execution/parsers/insert_parser.h"
 #include "storage/runtime/bufferpool.h"
 #include "storage/page/page.h"
@@ -185,7 +186,9 @@ TEST_F(TableTest, InvalidateHeapRecordWithWalWritesDeleteRecord) {
   executor::insert(*pool_, table,
                    InsertParser("INSERT INTO table_test_table VALUES (22, 'gone')"),
                    *wal_);
-  executor::remove(*pool_, table, 22, *wal_);
+  executor::remove(*pool_, table,
+                   DeleteParser("DELETE FROM table_test_table WHERE id = 22"),
+                   *wal_);
   wal_->flush();
 
   std::vector<WALRecord> records = readWalRecords(kWalPath);

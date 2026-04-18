@@ -15,13 +15,15 @@
 #include "execution/operators/orderby_operator.h"
 #include "execution/operators/projection_operator.h"
 #include "execution/parsers/create_index_parser.h"
-#include "execution/parsers/select_parser.h"
-#include "execution/parsers/insert_parser.h"
 #include "execution/parsers/create_table_parser.h"
-#include "execution/operators/seq_scan_operator.h"
+#include "execution/parsers/delete_parser.h"
 #include "execution/parsers/drop_table_parser.h"
+#include "execution/parsers/insert_parser.h"
+#include "execution/parsers/select_parser.h"
 #include "execution/parsers/update_parser.h"
+#include "execution/operators/seq_scan_operator.h"
 #include "storage/index/btreecursor.h"
+#include "storage/page/cell.h"
 #include "storage/page/page.h"
 #include "storage/record/record_cell.h"
 #include "storage/record/record_serializer.h"
@@ -68,12 +70,149 @@ std::vector<ComparisonPredicate> extractIndexedPredicates(
   return index_predicates;
 }
 
+bool matchesPredicates(const TypedRow& row,
+                       const std::vector<ComparisonPredicate>& predicates) {
+  for (const auto& predicate : predicates) {
+    const auto& value = row.values[predicate.column_index];
+    switch (predicate.op) {
+      case ComparisonPredicate::Op::Eq:
+        if (value != predicate.value) {
+          return false;
+        }
+        break;
+      case ComparisonPredicate::Op::Gt:
+        if (value <= predicate.value) {
+          return false;
+        }
+        break;
+      case ComparisonPredicate::Op::Ge:
+        if (value < predicate.value) {
+          return false;
+        }
+        break;
+      case ComparisonPredicate::Op::Lt:
+        if (value >= predicate.value) {
+          return false;
+        }
+        break;
+      case ComparisonPredicate::Op::Le:
+        if (value > predicate.value) {
+          return false;
+        }
+        break;
+    }
+  }
+
+  return true;
+}
+
 File& requireIndexFile(Table& table) {
   const auto index_file = table.indexFile();
   if (!index_file.has_value()) {
     throw std::runtime_error("Table has no index file: " + table.name());
   }
   return index_file->get();
+}
+
+std::vector<RID> collectHeapRids(BufferPool& pool, File& heap_file) {
+  std::vector<RID> rids;
+  for (uint16_t page_id = 0; page_id <= heap_file.getMaxPageID(); ++page_id) {
+    Page* page = pool.pinPage(page_id, heap_file);
+    for (uint16_t slot_id = 0; slot_id < page->slotCount(); ++slot_id) {
+      char* cell_start = page->slotCellStartUnchecked(slot_id);
+      if (!Cell::isValid(cell_start)) {
+        continue;
+      }
+      rids.push_back(RID{page_id, slot_id});
+    }
+    pool.unpinPage(page, heap_file);
+  }
+
+  return rids;
+}
+
+std::vector<RID> collectCandidateRids(
+    BufferPool& pool, Table& table,
+    const std::vector<ComparisonPredicate>& predicates) {
+  const std::optional<std::string>& indexed_column_name =
+      table.indexedColumnName();
+  if (!indexed_column_name.has_value()) {
+    return collectHeapRids(pool, table.heapFile());
+  }
+
+  const int indexed_column_index =
+      table.schema().getColumnIndex(indexed_column_name.value());
+  if (indexed_column_index < 0) {
+    return collectHeapRids(pool, table.heapFile());
+  }
+
+  std::vector<ComparisonPredicate> index_predicates = extractIndexedPredicates(
+      predicates, static_cast<std::size_t>(indexed_column_index));
+  if (index_predicates.empty()) {
+    return collectHeapRids(pool, table.heapFile());
+  }
+
+  const auto index_file = table.indexFile();
+  if (!index_file.has_value()) {
+    return collectHeapRids(pool, table.heapFile());
+  }
+
+  std::vector<RID> rids;
+  IndexScanOperator scan(pool, index_file->get(),
+                         DiscreteIntegerIndexPredicates{std::move(index_predicates)});
+  scan.open();
+  while (std::optional<RID> rid = scan.next()) {
+    rids.push_back(*rid);
+  }
+  scan.close();
+  return rids;
+}
+
+std::size_t removeMatchingRows(BufferPool& pool, Table& table,
+                               const std::vector<ComparisonPredicate>& predicates,
+                               WAL& wal) {
+  const std::vector<RID> candidate_rids =
+      collectCandidateRids(pool, table, predicates);
+  std::size_t removed_count = 0;
+
+  for (const RID& rid : candidate_rids) {
+    Page* page = pool.pinPage(rid.heap_page_id, table.heapFile());
+    char* cell_start = page->slotCellStartUnchecked(rid.slot_id);
+    if (!Cell::isValid(cell_start)) {
+      pool.unpinPage(page, table.heapFile());
+      continue;
+    }
+
+    TypedRow row = RecordCellView(cell_start).getTypedRow(table.schema());
+    if (!matchesPredicates(row, predicates)) {
+      pool.unpinPage(page, table.heapFile());
+      continue;
+    }
+
+    wal.write(WALRecord::RecordType::DELETE, rid.heap_page_id,
+              DeleteRedoBody(rid.slot_id).encode());
+    page->invalidateSlot(rid.slot_id);
+    pool.unpinPage(page, table.heapFile());
+    ++removed_count;
+  }
+
+  return removed_count;
+}
+
+void removeByKey(BufferPool& pool, Table& table, int key, WAL& wal) {
+  const std::size_t removed_count = removeMatchingRows(
+      pool, table,
+      std::vector<ComparisonPredicate>{ComparisonPredicate{
+          static_cast<std::size_t>(table.schema().getColumnIndex(
+              table.indexedColumnName().value())),
+          ComparisonPredicate::Op::Eq, key}},
+      wal);
+  if (removed_count == 0) {
+    throw std::runtime_error("Key " + std::to_string(key) +
+                             " not found in leaf page.");
+  }
+
+  LOG_INFO("Removed record with key {} successfully.", key);
 }
 
 void insertRow(BufferPool& pool, Table& table, const TypedRow& row, WAL& wal) {
@@ -243,22 +382,11 @@ void executor::insert(BufferPool& pool, Table& table, const InsertParser& parser
   insertRow(pool, table, row, wal);
 }
 
-void executor::remove(BufferPool& pool, Table& table, int key, WAL& wal) {
-  File& index_file = requireIndexFile(table);
-  std::optional<RID> rid =
-      BTreeCursor::findRID(pool, index_file, key, true);
-  if (!rid.has_value()) {
-    throw std::runtime_error("Key " + std::to_string(key) +
-                             " not found in leaf page.");
-  }
-
-  Page* page = pool.pinPage(rid->heap_page_id, table.heapFile());
-  wal.write(WALRecord::RecordType::DELETE, rid->heap_page_id,
-            DeleteRedoBody(rid->slot_id).encode());
-  page->invalidateSlot(rid->slot_id);
-  pool.unpinPage(page, table.heapFile());
-
-  LOG_INFO("Removed record with key {} successfully.", key);
+void executor::remove(BufferPool& pool, Table& table, const DeleteParser& parser,
+                      WAL& wal) {
+  const std::vector<ComparisonPredicate> predicates =
+      parser.extractComparisonPredicates(table.schema());
+  removeMatchingRows(pool, table, predicates, wal);
 }
 
 /**
@@ -273,6 +401,6 @@ void executor::update(BufferPool& pool, Table& table, const UpdateParser& parser
   const int key = parser.extractTargetKey(table.schema());
   TypedRow original_row = executor::read(pool, table, key);
   TypedRow updated_row = parser.extractUpdatedRow(table.schema(), original_row);
-  executor::remove(pool, table, key, wal);
+  removeByKey(pool, table, key, wal);
   insertRow(pool, table, updated_row, wal);
 }

@@ -60,6 +60,7 @@ add_library(dbfs_src
     src/execution/parsers/pg_query_json_parser.cpp
     src/execution/parsers/create_index_parser.cpp
     src/execution/parsers/create_table_parser.cpp
+    src/execution/parsers/delete_parser.cpp
     src/execution/parsers/drop_table_parser.cpp
     src/execution/parsers/insert_parser.cpp
     src/execution/parsers/update_parser.cpp

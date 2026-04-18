@@ -7,6 +7,7 @@
 class BufferPool;
 class CreateIndexParser;
 class CreateTableParser;
+class DeleteParser;
 class DropTableParser;
 class SelectParser;
 class InsertParser;
@@ -21,7 +22,8 @@ std::vector<TypedRow> read(BufferPool& pool, const SelectParser& parser);
 
 void insert(BufferPool& pool, Table& table, const InsertParser& parser, WAL& wal);
 
-void remove(BufferPool& pool, Table& table, int key, WAL& wal);
+void remove(BufferPool& pool, Table& table, const DeleteParser& parser,
+			WAL& wal);
 
 void update(BufferPool& pool, Table& table, const UpdateParser& parser, WAL& wal);
 
