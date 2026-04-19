@@ -70,6 +70,22 @@ std::vector<ComparisonPredicate> extractIndexedPredicates(
   return index_predicates;
 }
 
+bool canUseIndexForDmlCandidateCollection(
+    const std::vector<ComparisonPredicate>& index_predicates) {
+  if (index_predicates.empty()) {
+    return false;
+  }
+
+  // TODO: currently we suppot only equality predicates for indexed column. We need to update range scan for index search.
+  for (const auto& predicate : index_predicates) {
+    if (predicate.op != ComparisonPredicate::Op::Eq) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 bool matchesPredicates(const TypedRow& row,
                        const std::vector<ComparisonPredicate>& predicates) {
   for (const auto& predicate : predicates) {
@@ -114,6 +130,8 @@ File& requireIndexFile(Table& table) {
   return index_file->get();
 }
 
+void insertRow(BufferPool& pool, Table& table, const TypedRow& row, WAL& wal);
+
 std::vector<RID> collectHeapRids(BufferPool& pool, File& heap_file) {
   std::vector<RID> rids;
   for (uint16_t page_id = 0; page_id <= heap_file.getMaxPageID(); ++page_id) {
@@ -148,7 +166,7 @@ std::vector<RID> collectCandidateRids(
 
   std::vector<ComparisonPredicate> index_predicates = extractIndexedPredicates(
       predicates, static_cast<std::size_t>(indexed_column_index));
-  if (index_predicates.empty()) {
+  if (!canUseIndexForDmlCandidateCollection(index_predicates)) {
     return collectHeapRids(pool, table.heapFile());
   }
 
@@ -189,6 +207,12 @@ std::size_t removeMatchingRows(BufferPool& pool, Table& table,
       continue;
     }
 
+    const auto index_file = table.indexFile();
+    if (index_file.has_value()) {
+      const int key = extractAccessKey(table, row);
+      BTreeCursor::findRID(pool, index_file->get(), key, true);
+    }
+
     wal.write(WALRecord::RecordType::DELETE, rid.heap_page_id,
               DeleteRedoBody(rid.slot_id).encode());
     page->invalidateSlot(rid.slot_id);
@@ -199,20 +223,36 @@ std::size_t removeMatchingRows(BufferPool& pool, Table& table,
   return removed_count;
 }
 
-void removeByKey(BufferPool& pool, Table& table, int key, WAL& wal) {
-  const std::size_t removed_count = removeMatchingRows(
-      pool, table,
-      std::vector<ComparisonPredicate>{ComparisonPredicate{
-          static_cast<std::size_t>(table.schema().getColumnIndex(
-              table.indexedColumnName().value())),
-          ComparisonPredicate::Op::Eq, key}},
-      wal);
-  if (removed_count == 0) {
-    throw std::runtime_error("Key " + std::to_string(key) +
-                             " not found in leaf page.");
+std::size_t updateMatchingRows(BufferPool& pool, Table& table,
+                               const std::vector<ComparisonPredicate>& predicates,
+                               const UpdateParser& parser, WAL& wal) {
+  const std::vector<RID> candidate_rids =
+      collectCandidateRids(pool, table, predicates);
+  std::vector<TypedRow> updated_rows;
+
+  for (const RID& rid : candidate_rids) {
+    Page* page = pool.pinPage(rid.heap_page_id, table.heapFile());
+    char* cell_start = page->slotCellStartUnchecked(rid.slot_id);
+    if (!Cell::isValid(cell_start)) {
+      pool.unpinPage(page, table.heapFile());
+      continue;
+    }
+
+    TypedRow original_row = RecordCellView(cell_start).getTypedRow(table.schema());
+    pool.unpinPage(page, table.heapFile());
+    if (!matchesPredicates(original_row, predicates)) {
+      continue;
+    }
+
+    updated_rows.push_back(parser.extractUpdatedRow(table.schema(), original_row));
   }
 
-  LOG_INFO("Removed record with key {} successfully.", key);
+  const std::size_t removed_count = removeMatchingRows(pool, table, predicates, wal);
+  for (const TypedRow& updated_row : updated_rows) {
+    insertRow(pool, table, updated_row, wal);
+  }
+
+  return removed_count;
 }
 
 void insertRow(BufferPool& pool, Table& table, const TypedRow& row, WAL& wal) {
@@ -398,9 +438,11 @@ void executor::remove(BufferPool& pool, Table& table, const DeleteParser& parser
  * special-case split handling.
  */
 void executor::update(BufferPool& pool, Table& table, const UpdateParser& parser, WAL& wal) {
-  const int key = parser.extractTargetKey(table.schema());
-  TypedRow original_row = executor::read(pool, table, key);
-  TypedRow updated_row = parser.extractUpdatedRow(table.schema(), original_row);
-  removeByKey(pool, table, key, wal);
-  insertRow(pool, table, updated_row, wal);
+  const std::vector<ComparisonPredicate> predicates =
+      parser.extractComparisonPredicates(table.schema());
+  const std::size_t updated_count =
+      updateMatchingRows(pool, table, predicates, parser, wal);
+  if (updated_count == 0) {
+    throw std::runtime_error("UPDATE matched no rows.");
+  }
 }

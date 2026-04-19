@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 
+#include "execution/comparison_predicate.h"
 #include "tuple/typed_row.h"
 #include "execution/parsers/pg_query_json_parser.h"
 
@@ -15,7 +16,8 @@ class UpdateParser : private PgQueryJsonParser {
 
   std::string extractTableName() const;
 
-  int extractTargetKey(const Schema& schema) const;
+  std::vector<ComparisonPredicate> extractComparisonPredicates(
+      const Schema& schema) const;
   TypedRow extractUpdatedRow(const Schema& schema,
                              const TypedRow& original_row) const;
 

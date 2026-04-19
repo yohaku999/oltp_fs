@@ -21,17 +21,9 @@ std::string UpdateParser::extractTableName() const {
       .get<std::string>();
 }
 
-int UpdateParser::extractTargetKey(const Schema& schema) const {
-    const std::vector<ComparisonPredicate> predicates =
-            parseWhereClausePredicates(updateStatement(), schema);
-    if (predicates.size() != 1 ||
-            predicates[0].op != ComparisonPredicate::Op::Eq ||
-            !std::holds_alternative<Column::IntegerType>(predicates[0].value)) {
-        throw std::runtime_error(
-                "UPDATE currently requires a single equality predicate on the key.");
-    }
-
-    return std::get<Column::IntegerType>(predicates[0].value);
+std::vector<ComparisonPredicate> UpdateParser::extractComparisonPredicates(
+    const Schema& schema) const {
+    return parseWhereClausePredicates(updateStatement(), schema);
 }
 
 TypedRow UpdateParser::extractUpdatedRow(const Schema& schema,

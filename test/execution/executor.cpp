@@ -279,6 +279,36 @@ TEST_F(ExecutorTest, UpdateNonExistingKeyThrows) {
       std::runtime_error);
 }
 
+TEST_F(ExecutorTest, UpdateMatchesAllRowsFromIndexedPredicates) {
+  Table& table = *table_;
+
+  executor::update(
+      *pool_, table,
+      UpdateParser(
+          "UPDATE executor_test_table SET value = 'updated-range' WHERE id >= 103"),
+      *wal_);
+
+  EXPECT_EQ("row_101", singleVarcharValue(executor::read(*pool_, table, 101)));
+  EXPECT_EQ("updated-range", singleVarcharValue(executor::read(*pool_, table, 103)));
+  EXPECT_EQ("updated-range", singleVarcharValue(executor::read(*pool_, table, 104)));
+  EXPECT_EQ("updated-range", singleVarcharValue(executor::read(*pool_, table, 107)));
+}
+
+TEST_F(ExecutorTest, UpdateFallsBackToHeapScanForNonIndexedPredicate) {
+  Table& table = *table_;
+
+  executor::update(
+      *pool_, table,
+      UpdateParser(
+          "UPDATE executor_test_table SET value = 'updated-non-index' WHERE value = 'row_104'"),
+      *wal_);
+
+  EXPECT_EQ("row_101", singleVarcharValue(executor::read(*pool_, table, 101)));
+  EXPECT_EQ("row_103", singleVarcharValue(executor::read(*pool_, table, 103)));
+  EXPECT_EQ("updated-non-index", singleVarcharValue(executor::read(*pool_, table, 104)));
+  EXPECT_EQ("row_107", singleVarcharValue(executor::read(*pool_, table, 107)));
+}
+
 TEST_F(ExecutorTest, InsertPageOverflow) {
   try {
     Table& table = *table_;
