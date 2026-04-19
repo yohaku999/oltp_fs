@@ -15,18 +15,24 @@
  */
 class File {
  private:
-  static std::unordered_map<std::string, std::weak_ptr<std::fstream>>
-      stream_cache_;
-  std::shared_ptr<std::fstream> stream_;
-  uint16_t max_page_id_;
-  uint16_t root_page_id_;
-  bool header_dirty_ = false;
+  struct SharedState {
+    std::shared_ptr<std::fstream> stream;
+    uint16_t max_page_id = 0;
+    uint16_t root_page_id = 0;
+    bool header_dirty = false;
+  };
+
+  static std::unordered_map<std::string, std::weak_ptr<SharedState>>
+      state_cache_;
+
+  std::shared_ptr<SharedState> state_;
   std::string file_path_;
   void writeHeader();
 
  public:
   static constexpr size_t HEADDER_SIZE_BYTE = 256;
   static constexpr size_t MAX_PAGE_ID_SIZE_BYTE = 2;
+  static void invalidateCache(const std::string& file_path);
   uint16_t allocateNextPageId();
   bool isPageIDUsed(uint16_t page_id) const;
   File(const std::string& file_path);
@@ -36,10 +42,10 @@ class File {
   void readPageIntoBuffer(uint16_t const page_id, char* buffer);
   void writePageFromBuffer(uint16_t const page_id, char* buffer);
   std::string getFilePath() const { return file_path_; }
-  uint16_t getMaxPageID() const { return max_page_id_; }
-  uint16_t getRootPageID() const { return root_page_id_; }
+  uint16_t getMaxPageID() const { return state_->max_page_id; }
+  uint16_t getRootPageID() const { return state_->root_page_id; }
   void setRootPageID(uint16_t root_page_id) {
-    root_page_id_ = root_page_id;
-    header_dirty_ = true;
+    state_->root_page_id = root_page_id;
+    state_->header_dirty = true;
   };
 };

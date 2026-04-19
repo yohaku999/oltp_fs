@@ -155,6 +155,7 @@ std::string Table::preparePath(const std::string& path) {
 }
 
 void Table::removeFileIfExists(const std::string& path) {
+  File::invalidateCache(path);
   std::error_code error;
   std::filesystem::remove(path, error);
   if (error) {

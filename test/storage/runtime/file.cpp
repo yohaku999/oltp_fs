@@ -71,6 +71,21 @@ TEST_F(FileTest, LoadMaxPageIdFromHeader) {
   EXPECT_TRUE(file_p->isPageIDUsed(next));
 }
 
+TEST_F(FileTest, ReopenSharesUpdatedMetadataBeforeClose) {
+  constexpr uint16_t updated_root = 7;
+
+  uint16_t next = file_p->allocateNextPageId();
+  EXPECT_EQ(1u, next);
+  file_p->setRootPageID(updated_root);
+
+  File reopened(test_file_path_);
+
+  EXPECT_EQ(next, reopened.getMaxPageID());
+  EXPECT_EQ(updated_root, reopened.getRootPageID());
+  EXPECT_TRUE(reopened.isPageIDUsed(next));
+  EXPECT_FALSE(reopened.isPageIDUsed(static_cast<uint16_t>(next + 1)));
+}
+
 TEST_F(FileTest, TestPersistanceLoadFromHeader) {
   constexpr uint16_t persisted_max = 100;
   constexpr uint16_t persisted_root = 5;
