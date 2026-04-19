@@ -12,6 +12,7 @@
 #include "execution/executor.h"
 #include "execution/parsers/delete_parser.h"
 #include "execution/parsers/insert_parser.h"
+#include "execution/parsers/select_parser.h"
 #include "storage/runtime/bufferpool.h"
 #include "storage/page/page.h"
 #include "storage/wal/wal.h"
@@ -158,7 +159,10 @@ TEST_F(TableTest, InsertIndexFindRIDAndReadRowRoundTrip) {
       *pool_, table,
       InsertParser("INSERT INTO table_test_table VALUES (11, 'table-value')"),
       *wal_);
-  TypedRow restored = executor::read(*pool_, table, 11);
+  std::vector<TypedRow> rows = executor::read(
+      *pool_, SelectParser("SELECT id, value FROM table_test_table WHERE id = 11"));
+  ASSERT_EQ(rows.size(), 1u);
+  TypedRow restored = rows.front();
   EXPECT_EQ(singleVarcharValue(restored), "table-value");
 }
 
@@ -201,5 +205,7 @@ TEST_F(TableTest, InvalidateHeapRecordWithWalWritesDeleteRecord) {
   const auto& delete_body = std::get<DeleteRedoBody>(body);
   EXPECT_EQ(delete_body.offset, 0);
 
-  EXPECT_THROW({ executor::read(*pool_, table, 22); }, std::runtime_error);
+  EXPECT_TRUE(executor::read(
+                  *pool_, SelectParser("SELECT id, value FROM table_test_table WHERE id = 22"))
+                  .empty());
 }

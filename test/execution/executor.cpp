@@ -84,8 +84,11 @@ TEST_F(ExecutorTest, InsertAndGetMultipleRecords) {
   }
 
   for (const auto& record : records) {
-    std::string restored =
-        singleVarcharValue(executor::read(*pool_, table, record.first));
+    std::vector<TypedRow> rows = executor::read(
+        *pool_, SelectParser("SELECT id, value FROM executor_test_table WHERE id = " +
+                             std::to_string(record.first)));
+    ASSERT_EQ(rows.size(), 1u);
+    std::string restored = singleVarcharValue(rows.front());
     EXPECT_EQ(record.second, restored);
   }
 }
@@ -97,7 +100,10 @@ TEST_F(ExecutorTest, InsertAndReadTypedRow) {
                        "INSERT INTO executor_test_table VALUES (11, 'typed-value')"),
                    *wal_);
 
-  TypedRow restored = executor::read(*pool_, table, 11);
+  std::vector<TypedRow> rows = executor::read(
+      *pool_, SelectParser("SELECT id, value FROM executor_test_table WHERE id = 11"));
+  ASSERT_EQ(rows.size(), 1u);
+  TypedRow restored = rows.front();
   ASSERT_EQ(restored.values.size(), 2u);
   ASSERT_TRUE(std::holds_alternative<Column::VarcharType>(restored.values[1]));
   EXPECT_EQ(std::get<Column::VarcharType>(restored.values[1]), "typed-value");
@@ -215,7 +221,10 @@ TEST_F(ExecutorTest, InsertDeleteThenFailToRead) {
                    std::to_string(key)),
       *wal_);
 
-  EXPECT_THROW({ executor::read(*pool_, table, key); }, std::runtime_error);
+  std::vector<TypedRow> rows = executor::read(
+      *pool_, SelectParser("SELECT id, value FROM executor_test_table WHERE id = " +
+                           std::to_string(key)));
+  EXPECT_TRUE(rows.empty());
 }
 
 TEST_F(ExecutorTest, DeleteRemovesAllRowsMatchingIndexedPredicate) {
@@ -226,10 +235,20 @@ TEST_F(ExecutorTest, DeleteRemovesAllRowsMatchingIndexedPredicate) {
                        "DELETE FROM executor_test_table WHERE id >= 103"),
                    *wal_);
 
-  EXPECT_EQ("row_101", singleVarcharValue(executor::read(*pool_, table, 101)));
-  EXPECT_THROW({ executor::read(*pool_, table, 103); }, std::runtime_error);
-  EXPECT_THROW({ executor::read(*pool_, table, 104); }, std::runtime_error);
-  EXPECT_THROW({ executor::read(*pool_, table, 107); }, std::runtime_error);
+  std::vector<TypedRow> rows101 = executor::read(
+      *pool_, SelectParser("SELECT id, value FROM executor_test_table WHERE id = 101"));
+  ASSERT_EQ(rows101.size(), 1u);
+  EXPECT_EQ("row_101", singleVarcharValue(rows101.front()));
+
+  EXPECT_TRUE(executor::read(
+                  *pool_, SelectParser("SELECT id, value FROM executor_test_table WHERE id = 103"))
+                  .empty());
+  EXPECT_TRUE(executor::read(
+                  *pool_, SelectParser("SELECT id, value FROM executor_test_table WHERE id = 104"))
+                  .empty());
+  EXPECT_TRUE(executor::read(
+                  *pool_, SelectParser("SELECT id, value FROM executor_test_table WHERE id = 107"))
+                  .empty());
 }
 
 TEST_F(ExecutorTest, DeleteFallsBackToHeapScanForNonIndexedPredicate) {
@@ -240,10 +259,24 @@ TEST_F(ExecutorTest, DeleteFallsBackToHeapScanForNonIndexedPredicate) {
                        "DELETE FROM executor_test_table WHERE value = 'row_104'"),
                    *wal_);
 
-  EXPECT_EQ("row_101", singleVarcharValue(executor::read(*pool_, table, 101)));
-  EXPECT_EQ("row_103", singleVarcharValue(executor::read(*pool_, table, 103)));
-  EXPECT_THROW({ executor::read(*pool_, table, 104); }, std::runtime_error);
-  EXPECT_EQ("row_107", singleVarcharValue(executor::read(*pool_, table, 107)));
+    std::vector<TypedRow> rows101 = executor::read(
+      *pool_, SelectParser("SELECT id, value FROM executor_test_table WHERE id = 101"));
+    ASSERT_EQ(rows101.size(), 1u);
+    EXPECT_EQ("row_101", singleVarcharValue(rows101.front()));
+
+    std::vector<TypedRow> rows103 = executor::read(
+      *pool_, SelectParser("SELECT id, value FROM executor_test_table WHERE id = 103"));
+    ASSERT_EQ(rows103.size(), 1u);
+    EXPECT_EQ("row_103", singleVarcharValue(rows103.front()));
+
+    EXPECT_TRUE(executor::read(
+            *pool_, SelectParser("SELECT id, value FROM executor_test_table WHERE id = 104"))
+            .empty());
+
+    std::vector<TypedRow> rows107 = executor::read(
+      *pool_, SelectParser("SELECT id, value FROM executor_test_table WHERE id = 107"));
+    ASSERT_EQ(rows107.size(), 1u);
+    EXPECT_EQ("row_107", singleVarcharValue(rows107.front()));
 }
 
 TEST_F(ExecutorTest, UpdateReplacesExistingValue) {
@@ -260,8 +293,11 @@ TEST_F(ExecutorTest, UpdateReplacesExistingValue) {
                    "WHERE id = 123"),
       *wal_);
 
-  EXPECT_EQ("updated-value",
-            singleVarcharValue(executor::read(*pool_, table, key)));
+    std::vector<TypedRow> rows = executor::read(
+      *pool_, SelectParser("SELECT id, value FROM executor_test_table WHERE id = " +
+                 std::to_string(key)));
+    ASSERT_EQ(rows.size(), 1u);
+    EXPECT_EQ("updated-value", singleVarcharValue(rows.front()));
 }
 
 TEST_F(ExecutorTest, UpdateNonExistingKeyThrows) {
@@ -288,10 +324,25 @@ TEST_F(ExecutorTest, UpdateMatchesAllRowsFromIndexedPredicates) {
           "UPDATE executor_test_table SET value = 'updated-range' WHERE id >= 103"),
       *wal_);
 
-  EXPECT_EQ("row_101", singleVarcharValue(executor::read(*pool_, table, 101)));
-  EXPECT_EQ("updated-range", singleVarcharValue(executor::read(*pool_, table, 103)));
-  EXPECT_EQ("updated-range", singleVarcharValue(executor::read(*pool_, table, 104)));
-  EXPECT_EQ("updated-range", singleVarcharValue(executor::read(*pool_, table, 107)));
+    std::vector<TypedRow> rows101 = executor::read(
+      *pool_, SelectParser("SELECT id, value FROM executor_test_table WHERE id = 101"));
+    ASSERT_EQ(rows101.size(), 1u);
+    EXPECT_EQ("row_101", singleVarcharValue(rows101.front()));
+
+    std::vector<TypedRow> rows103 = executor::read(
+      *pool_, SelectParser("SELECT id, value FROM executor_test_table WHERE id = 103"));
+    ASSERT_EQ(rows103.size(), 1u);
+    EXPECT_EQ("updated-range", singleVarcharValue(rows103.front()));
+
+    std::vector<TypedRow> rows104 = executor::read(
+      *pool_, SelectParser("SELECT id, value FROM executor_test_table WHERE id = 104"));
+    ASSERT_EQ(rows104.size(), 1u);
+    EXPECT_EQ("updated-range", singleVarcharValue(rows104.front()));
+
+    std::vector<TypedRow> rows107 = executor::read(
+      *pool_, SelectParser("SELECT id, value FROM executor_test_table WHERE id = 107"));
+    ASSERT_EQ(rows107.size(), 1u);
+    EXPECT_EQ("updated-range", singleVarcharValue(rows107.front()));
 }
 
 TEST_F(ExecutorTest, UpdateFallsBackToHeapScanForNonIndexedPredicate) {
@@ -303,10 +354,25 @@ TEST_F(ExecutorTest, UpdateFallsBackToHeapScanForNonIndexedPredicate) {
           "UPDATE executor_test_table SET value = 'updated-non-index' WHERE value = 'row_104'"),
       *wal_);
 
-  EXPECT_EQ("row_101", singleVarcharValue(executor::read(*pool_, table, 101)));
-  EXPECT_EQ("row_103", singleVarcharValue(executor::read(*pool_, table, 103)));
-  EXPECT_EQ("updated-non-index", singleVarcharValue(executor::read(*pool_, table, 104)));
-  EXPECT_EQ("row_107", singleVarcharValue(executor::read(*pool_, table, 107)));
+    std::vector<TypedRow> rows101 = executor::read(
+      *pool_, SelectParser("SELECT id, value FROM executor_test_table WHERE id = 101"));
+    ASSERT_EQ(rows101.size(), 1u);
+    EXPECT_EQ("row_101", singleVarcharValue(rows101.front()));
+
+    std::vector<TypedRow> rows103 = executor::read(
+      *pool_, SelectParser("SELECT id, value FROM executor_test_table WHERE id = 103"));
+    ASSERT_EQ(rows103.size(), 1u);
+    EXPECT_EQ("row_103", singleVarcharValue(rows103.front()));
+
+    std::vector<TypedRow> rows104 = executor::read(
+      *pool_, SelectParser("SELECT id, value FROM executor_test_table WHERE id = 104"));
+    ASSERT_EQ(rows104.size(), 1u);
+    EXPECT_EQ("updated-non-index", singleVarcharValue(rows104.front()));
+
+    std::vector<TypedRow> rows107 = executor::read(
+      *pool_, SelectParser("SELECT id, value FROM executor_test_table WHERE id = 107"));
+    ASSERT_EQ(rows107.size(), 1u);
+    EXPECT_EQ("row_107", singleVarcharValue(rows107.front()));
 }
 
 TEST_F(ExecutorTest, InsertPageOverflow) {
@@ -346,8 +412,11 @@ TEST_F(ExecutorTest, InsertPageOverflow) {
 
     std::cout << "Start Verifying inserted records..." << std::endl;
     for (const auto& [key, value] : expected) {
-      std::string restored =
-          singleVarcharValue(executor::read(*pool_, table, key));
+      std::vector<TypedRow> rows = executor::read(
+          *pool_, SelectParser("SELECT id, value FROM executor_test_table WHERE id = " +
+                               std::to_string(key)));
+      ASSERT_EQ(rows.size(), 1u) << "missing row for key=" << key;
+      std::string restored = singleVarcharValue(rows.front());
       if (restored != value) {
         std::cout << "Mismatch detected for key=" << key
                   << ". Dumping B+tree index state..." << std::endl;
@@ -374,15 +443,19 @@ TEST_F(ExecutorTest, CreateAndDropTable) {
   executor::create_index(
       CreateIndexParser("CREATE INDEX idx_new_table_id ON new_table (id)"));
 
-  Table new_table = Table::getTable(new_table_name);
-  ASSERT_EQ(new_table.name(), new_table_name);
-  ASSERT_EQ(new_table.schema().columns().size(), 2u);
-  EXPECT_EQ(new_table.schema().columns()[0].getName(), "id");
-  EXPECT_EQ(new_table.schema().columns()[0].getType(), Column::Type::Integer);
-  EXPECT_EQ(new_table.schema().columns()[1].getName(), "name");
-  EXPECT_EQ(new_table.schema().columns()[1].getType(), Column::Type::Varchar);
-  ASSERT_TRUE(new_table.indexedColumnName().has_value());
-  EXPECT_EQ(new_table.indexedColumnName().value(), "id");
+  // Brackets to limit the scope of reopened table and ensure file handles are closed.
+  {
+    Table new_table = Table::getTable(new_table_name);
+    ASSERT_EQ(new_table.name(), new_table_name);
+    ASSERT_EQ(new_table.schema().columns().size(), 2u);
+    EXPECT_EQ(new_table.schema().columns()[0].getName(), "id");
+    EXPECT_EQ(new_table.schema().columns()[0].getType(), Column::Type::Integer);
+    EXPECT_EQ(new_table.schema().columns()[1].getName(), "name");
+    EXPECT_EQ(new_table.schema().columns()[1].getType(), Column::Type::Varchar);
+    ASSERT_TRUE(new_table.indexedColumnName().has_value());
+    EXPECT_EQ(new_table.indexedColumnName().value(), "id");
+  }
+
   executor::drop_table(DropTableParser("DROP TABLE new_table"));
   EXPECT_FALSE(Table::isPersisted(new_table_name));
 }
