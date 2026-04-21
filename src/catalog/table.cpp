@@ -169,6 +169,19 @@ bool Table::hasIndexForColumn(const std::string& column_name) const {
          indexed_column_name_.value() == column_name;
 }
 
+std::optional<std::size_t> Table::indexedColumnIndex() const {
+  if (!indexed_column_name_.has_value()) {
+    return std::nullopt;
+  }
+
+  const int column_index = schema_.getColumnIndex(indexed_column_name_.value());
+  if (column_index < 0) {
+    return std::nullopt;
+  }
+
+  return static_cast<std::size_t>(column_index);
+}
+
 std::optional<std::reference_wrapper<File>> Table::indexFile() {
   if (!index_file_.has_value()) {
     return std::nullopt;

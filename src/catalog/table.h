@@ -35,6 +35,7 @@ class Table {
   const std::optional<std::string>& indexedColumnName() const {
     return indexed_column_name_;
   }
+  std::optional<std::size_t> indexedColumnIndex() const;
   std::optional<std::reference_wrapper<File>> indexFile();
   File& heapFile() { return heap_file_; }
 
