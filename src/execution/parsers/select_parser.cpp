@@ -9,14 +9,14 @@
 SelectParser::SelectParser(std::string sql)
     : PgQueryJsonParser(std::move(sql)) {}
 
-std::string SelectParser::extractTableName() const {
-  return statementNode()
-      .at("SelectStmt")
-      .at("fromClause")
-      .at(0)
-      .at("RangeVar")
-      .at("relname")
-      .get<std::string>();
+std::vector<std::string> SelectParser::extractTableNames() const {
+  const auto& from_clause = statementNode().at("SelectStmt").at("fromClause");
+  std::vector<std::string> table_names;
+  for (const auto& entry : from_clause) {
+    const std::string table_name = entry.at("RangeVar").at("relname").get<std::string>();
+    table_names.push_back(table_name);
+  }
+  return table_names;
 }
 
 std::vector<std::size_t> SelectParser::extractProjectionIndices(

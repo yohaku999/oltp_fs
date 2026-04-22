@@ -15,7 +15,7 @@ class SelectParser : private PgQueryJsonParser {
   explicit SelectParser(std::string sql);
   ~SelectParser() = default;
 
-  std::string extractTableName() const;
+  std::vector<std::string> extractTableNames() const;
   std::vector<std::size_t> extractProjectionIndices(const Schema& schema) const;
   std::vector<OrderBySpec> extractOrderBySpecs(const Schema& schema) const;
   std::optional<std::size_t> extractLimitCount() const;
