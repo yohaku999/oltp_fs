@@ -14,7 +14,7 @@ class DeleteParser : private PgQueryJsonParser {
   ~DeleteParser() = default;
 
   std::string extractTableName() const;
-  std::vector<ComparisonPredicate> extractComparisonPredicates(
+  std::vector<UnboundComparisonPredicate> extractComparisonPredicates(
       const Schema& schema) const;
 
  private:

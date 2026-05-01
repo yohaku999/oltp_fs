@@ -25,6 +25,7 @@
 class ExecutorTest : public ::testing::Test {
  protected:
   static constexpr const char* kTableName = "executor_test_table";
+  static constexpr const char* kJoinTableName = "executor_join_table";
   static constexpr const char* kWalPath = "executor_test_table.wal";
   std::unique_ptr<BufferPool> pool_;
   std::unique_ptr<WAL> wal_;
@@ -32,6 +33,7 @@ class ExecutorTest : public ::testing::Test {
 
   void SetUp() override {
     Table::removeBackingFilesFor(kTableName);
+    Table::removeBackingFilesFor(kJoinTableName);
     std::remove(kWalPath);
     wal_ = WAL::initializeNew(kWalPath);
     pool_ = std::make_unique<BufferPool>(*wal_);
@@ -58,6 +60,7 @@ class ExecutorTest : public ::testing::Test {
     pool_.reset();
     wal_.reset();
     Table::removeBackingFilesFor(kTableName);
+    Table::removeBackingFilesFor(kJoinTableName);
     std::remove(kWalPath);
   }
 
@@ -69,6 +72,99 @@ class ExecutorTest : public ::testing::Test {
     return std::get<Column::VarcharType>(row.values[1]);
   }
 };
+
+TEST_F(ExecutorTest, ReadSelectReturnsCartesianProductForMultipleTables) {
+  Table join_table = Table::initialize(
+      kJoinTableName,
+      Schema(std::vector<Column>{Column("code", Column::Type::Integer),
+                                 Column("label", Column::Type::Varchar)}));
+  join_table.createIndex("code");
+
+  executor::insert(*pool_, join_table,
+                   InsertParser("INSERT INTO executor_join_table VALUES (1, 'alpha')"),
+                   *wal_);
+  executor::insert(*pool_, join_table,
+                   InsertParser("INSERT INTO executor_join_table VALUES (2, 'beta')"),
+                   *wal_);
+
+  std::vector<TypedRow> rows = executor::read(
+      *pool_, SelectParser("SELECT * FROM executor_test_table, executor_join_table"));
+
+  ASSERT_EQ(rows.size(), 8u);
+
+  ASSERT_EQ(rows[0].values.size(), 4u);
+  EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[0]), 101);
+  EXPECT_EQ(std::get<Column::VarcharType>(rows[0].values[1]), "row_101");
+  EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[2]), 1);
+  EXPECT_EQ(std::get<Column::VarcharType>(rows[0].values[3]), "alpha");
+
+  ASSERT_EQ(rows[1].values.size(), 4u);
+  EXPECT_EQ(std::get<Column::IntegerType>(rows[1].values[0]), 101);
+  EXPECT_EQ(std::get<Column::VarcharType>(rows[1].values[1]), "row_101");
+  EXPECT_EQ(std::get<Column::IntegerType>(rows[1].values[2]), 2);
+  EXPECT_EQ(std::get<Column::VarcharType>(rows[1].values[3]), "beta");
+
+  ASSERT_EQ(rows[7].values.size(), 4u);
+  EXPECT_EQ(std::get<Column::IntegerType>(rows[7].values[0]), 107);
+  EXPECT_EQ(std::get<Column::VarcharType>(rows[7].values[1]), "row_107");
+  EXPECT_EQ(std::get<Column::IntegerType>(rows[7].values[2]), 2);
+  EXPECT_EQ(std::get<Column::VarcharType>(rows[7].values[3]), "beta");
+}
+
+TEST_F(ExecutorTest, ReadSelectAppliesWhereFiltersAcrossJoinedRows) {
+  Table join_table = Table::initialize(
+      kJoinTableName,
+      Schema(std::vector<Column>{Column("code", Column::Type::Integer),
+                                 Column("label", Column::Type::Varchar)}));
+  join_table.createIndex("code");
+
+  executor::insert(*pool_, join_table,
+                   InsertParser("INSERT INTO executor_join_table VALUES (1, 'alpha')"),
+                   *wal_);
+  executor::insert(*pool_, join_table,
+                   InsertParser("INSERT INTO executor_join_table VALUES (2, 'beta')"),
+                   *wal_);
+
+  std::vector<TypedRow> rows = executor::read(
+      *pool_, SelectParser(
+                  "SELECT * FROM executor_test_table, executor_join_table "
+                  "WHERE executor_test_table.id = 101 "
+                  "AND executor_join_table.code = 2"));
+
+  ASSERT_EQ(rows.size(), 1u);
+  ASSERT_EQ(rows[0].values.size(), 4u);
+  EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[0]), 101);
+  EXPECT_EQ(std::get<Column::VarcharType>(rows[0].values[1]), "row_101");
+  EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[2]), 2);
+  EXPECT_EQ(std::get<Column::VarcharType>(rows[0].values[3]), "beta");
+}
+
+TEST_F(ExecutorTest, ReadSelectAppliesColumnComparisonWhereOnJoinedRows) {
+  Table join_table = Table::initialize(
+      kJoinTableName,
+      Schema(std::vector<Column>{Column("code", Column::Type::Integer),
+                                 Column("label", Column::Type::Varchar)}));
+  join_table.createIndex("code");
+
+  executor::insert(*pool_, join_table,
+                   InsertParser("INSERT INTO executor_join_table VALUES (101, 'alpha')"),
+                   *wal_);
+  executor::insert(*pool_, join_table,
+                   InsertParser("INSERT INTO executor_join_table VALUES (999, 'beta')"),
+                   *wal_);
+
+  std::vector<TypedRow> rows = executor::read(
+      *pool_, SelectParser(
+                  "SELECT * FROM executor_test_table, executor_join_table "
+                  "WHERE executor_test_table.id = executor_join_table.code"));
+
+  ASSERT_EQ(rows.size(), 1u);
+  ASSERT_EQ(rows[0].values.size(), 4u);
+  EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[0]), 101);
+  EXPECT_EQ(std::get<Column::VarcharType>(rows[0].values[1]), "row_101");
+  EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[2]), 101);
+  EXPECT_EQ(std::get<Column::VarcharType>(rows[0].values[3]), "alpha");
+}
 
 TEST_F(ExecutorTest, InsertAndGetMultipleRecords) {
   Table& table = *table_;

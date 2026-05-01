@@ -16,7 +16,7 @@ class UpdateParser : private PgQueryJsonParser {
 
   std::string extractTableName() const;
 
-  std::vector<ComparisonPredicate> extractComparisonPredicates(
+  std::vector<UnboundComparisonPredicate> extractComparisonPredicates(
       const Schema& schema) const;
   TypedRow extractUpdatedRow(const Schema& schema,
                              const TypedRow& original_row) const;

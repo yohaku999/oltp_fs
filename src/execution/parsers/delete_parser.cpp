@@ -16,7 +16,7 @@ std::string DeleteParser::extractTableName() const {
   return deleteStatement().at("relation").at("relname").get<std::string>();
 }
 
-std::vector<ComparisonPredicate> DeleteParser::extractComparisonPredicates(
+std::vector<UnboundComparisonPredicate> DeleteParser::extractComparisonPredicates(
     const Schema& schema) const {
   return parseWhereClausePredicates(deleteStatement(), schema);
 }

@@ -17,7 +17,6 @@ class WAL;
 
 namespace executor {
 
-TypedRow read(BufferPool& pool, Table& table, int key);
 std::vector<TypedRow> read(BufferPool& pool, const SelectParser& parser);
 
 void insert(BufferPool& pool, Table& table, const InsertParser& parser, WAL& wal);

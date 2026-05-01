@@ -21,7 +21,7 @@ std::string UpdateParser::extractTableName() const {
       .get<std::string>();
 }
 
-std::vector<ComparisonPredicate> UpdateParser::extractComparisonPredicates(
+std::vector<UnboundComparisonPredicate> UpdateParser::extractComparisonPredicates(
     const Schema& schema) const {
     return parseWhereClausePredicates(updateStatement(), schema);
 }

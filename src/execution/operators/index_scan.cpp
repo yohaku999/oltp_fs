@@ -31,11 +31,11 @@ IndexScanOperator::IndexScanOperator(BufferPool& pool, File& index_file,
       indexFile_(index_file),
       pos_(0),
       mode_(Mode::Keys) {
-  initializeFromPredicates(discrete_integer_predicates.predicates);
+  configureScanRangeFromPredicates(discrete_integer_predicates.predicates);
 }
 
-void IndexScanOperator::initializeFromPredicates(
-    const std::vector<ComparisonPredicate>& predicates) {
+void IndexScanOperator::configureScanRangeFromPredicates(
+    const std::vector<UnboundComparisonPredicate>& predicates) {
   if (predicates.empty()) {
     throw std::runtime_error("Index scan requires one or two predicates.");
   }
@@ -45,22 +45,23 @@ void IndexScanOperator::initializeFromPredicates(
 
   if (predicates.size() == 1) {
     const auto& predicate = predicates[0];
-    const int value = std::get<Column::IntegerType>(predicate.value);
+    const auto& fieldvalue = std::holds_alternative<FieldValue>(predicate.left) ? std::get<FieldValue>(predicate.left) : std::get<FieldValue>(predicate.right);
+    const int value = std::get<Column::IntegerType>(fieldvalue);
     switch (predicate.op) {
-      case ComparisonPredicate::Op::Eq:
+      case Op::Eq:
         keys_.push_back(value);
         mode_ = Mode::Keys;
         return;
-      case ComparisonPredicate::Op::Gt:
+      case Op::Gt:
         low_key = exclusiveLowerToInclusive(value);
         break;
-      case ComparisonPredicate::Op::Ge:
+      case Op::Ge:
         low_key = value;
         break;
-      case ComparisonPredicate::Op::Lt:
+      case Op::Lt:
         high_key = exclusiveUpperToInclusive(value);
         break;
-      case ComparisonPredicate::Op::Le:
+      case Op::Le:
         high_key = value;
         break;
     }
@@ -75,20 +76,21 @@ void IndexScanOperator::initializeFromPredicates(
   }
 
   for (const auto& predicate : predicates) {
-    const int value = std::get<Column::IntegerType>(predicate.value);
+    const auto& fieldvalue = std::holds_alternative<FieldValue>(predicate.left) ? std::get<FieldValue>(predicate.left) : std::get<FieldValue>(predicate.right);
+    const int value = std::get<Column::IntegerType>(fieldvalue);
     switch (predicate.op) {
-      case ComparisonPredicate::Op::Eq:
+      case Op::Eq:
         throw std::logic_error("Equality predicates must be merged before index scan initialization.");
-      case ComparisonPredicate::Op::Gt:
+      case Op::Gt:
         low_key = exclusiveLowerToInclusive(value);
         break;
-      case ComparisonPredicate::Op::Ge:
+      case Op::Ge:
         low_key = value;
         break;
-      case ComparisonPredicate::Op::Lt:
+      case Op::Lt:
         high_key = exclusiveUpperToInclusive(value);
         break;
-      case ComparisonPredicate::Op::Le:
+      case Op::Le:
         high_key = value;
         break;
     }

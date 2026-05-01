@@ -1,5 +1,5 @@
 #include "execution/parsers/parser_ast_helpers.h"
-
+#include "execution/comparison_predicate.h"
 #include <stdexcept>
 #include <string>
 
@@ -7,29 +7,36 @@
 
 namespace {
 
-ComparisonPredicate::Op parseComparisonOp(const nlohmann::json& expr) {
+ColumnRef parseColumnRef(const nlohmann::json& column_ref);
+Column::Type requireColumnType(const nlohmann::json& expression,
+                               const Schema& schema);
+UnboundOperand parseOperand(const nlohmann::json& expression,
+                            const Schema& schema,
+                            Column::Type constant_type);
+
+Op parseComparisonOp(const nlohmann::json& expr) {
   const std::string op =
       expr.at("name").at(0).at("String").at("sval").get<std::string>();
   if (op == "=") {
-    return ComparisonPredicate::Op::Eq;
+    return Op::Eq;
   }
   if (op == ">") {
-    return ComparisonPredicate::Op::Gt;
+    return Op::Gt;
   }
   if (op == ">=") {
-    return ComparisonPredicate::Op::Ge;
+    return Op::Ge;
   }
   if (op == "<") {
-    return ComparisonPredicate::Op::Lt;
+    return Op::Lt;
   }
   if (op == "<=") {
-    return ComparisonPredicate::Op::Le;
+    return Op::Le;
   }
   throw std::runtime_error("Unsupported comparison operator: " + op);
 }
 
 void extractPredicatesFromNode(const nlohmann::json& node, const Schema& schema,
-                               std::vector<ComparisonPredicate>& out) {
+                               std::vector<UnboundComparisonPredicate>& out) {
   if (node.contains("BoolExpr")) {
     const auto& bool_expr = node.at("BoolExpr");
     const std::string op = bool_expr.at("boolop").get<std::string>();
@@ -43,29 +50,73 @@ void extractPredicatesFromNode(const nlohmann::json& node, const Schema& schema,
   }
 
   const auto& expr = node.at("A_Expr");
-  const std::string column_name = expr.at("lexpr")
-                                      .at("ColumnRef")
-                                      .at("fields")
-                                      .at(0)
-                                      .at("String")
-                                      .at("sval")
-                                      .get<std::string>();
-  const int column_index = schema.getColumnIndex(column_name);
-  if (column_index < 0) {
-    throw std::runtime_error("Unknown predicate column: " + column_name);
-  }
-
+  const auto& lhs = expr.at("lexpr");
   const auto& rhs = expr.at("rexpr");
-  if (!rhs.contains("A_Const")) {
-    throw std::runtime_error("Unsupported predicate rhs.");
+  const bool lhs_is_column = lhs.contains("ColumnRef");
+  const bool rhs_is_column = rhs.contains("ColumnRef");
+
+  if (!lhs_is_column && !rhs_is_column) {
+    throw std::runtime_error(
+        "At least one side of a predicate must reference a column.");
   }
 
-  out.push_back(ComparisonPredicate{
-      static_cast<std::size_t>(column_index), parseComparisonOp(expr),
-      parseConstFieldValue(rhs, schema.columns().at(column_index).getType())});
+  const Column::Type constant_type = lhs_is_column
+                                         ? requireColumnType(lhs, schema)
+                                         : requireColumnType(rhs, schema);
+  out.push_back(UnboundComparisonPredicate{
+      parseComparisonOp(expr), parseOperand(lhs, schema, constant_type),
+      parseOperand(rhs, schema, constant_type)});
 }
 
-}  // namespace
+ColumnRef parseColumnRef(const nlohmann::json& column_ref) {
+  const auto& fields = column_ref.at("fields");
+  if (fields.size() == 1) {
+    return ColumnRef{"", fields.at(0).at("String").at("sval").get<std::string>()};
+  }
+  if (fields.size() == 2) {
+    return ColumnRef{fields.at(0).at("String").at("sval").get<std::string>(),
+                     fields.at(1).at("String").at("sval").get<std::string>()};
+  }
+  throw std::runtime_error("Unsupported column reference shape.");
+}
+
+Column::Type requireColumnType(const nlohmann::json& expression,
+                               const Schema& schema) {
+  if (!expression.contains("ColumnRef")) {
+    throw std::runtime_error("Expected a column reference operand.");
+  }
+
+  const ColumnRef column_ref = parseColumnRef(expression.at("ColumnRef"));
+  const int column_index = schema.getColumnIndex(column_ref.column_name);
+  if (column_index < 0) {
+    throw std::runtime_error("Unknown predicate column: " +
+                             column_ref.column_name);
+  }
+
+  return schema.columns().at(column_index).getType();
+}
+
+UnboundOperand parseOperand(const nlohmann::json& expression,
+                            const Schema& schema,
+                            Column::Type constant_type) {
+  if (expression.contains("ColumnRef")) {
+    const ColumnRef column_ref = parseColumnRef(expression.at("ColumnRef"));
+    const int column_index = schema.getColumnIndex(column_ref.column_name);
+    if (column_index < 0) {
+      throw std::runtime_error("Unknown predicate column: " +
+                               column_ref.column_name);
+    }
+    return column_ref;
+  }
+
+  if (expression.contains("A_Const")) {
+    return parseConstFieldValue(expression, constant_type);
+  }
+
+  throw std::runtime_error("Unsupported predicate operand.");
+}
+
+}
 
 FieldValue parseConstFieldValue(const nlohmann::json& item,
                                Column::Type column_type) {
@@ -101,13 +152,13 @@ FieldValue parseConstFieldValue(const nlohmann::json& item,
   throw std::runtime_error("Unknown column type in parser AST helper");
 }
 
-std::vector<ComparisonPredicate> parseWhereClausePredicates(
+std::vector<UnboundComparisonPredicate> parseWhereClausePredicates(
     const nlohmann::json& statement, const Schema& schema) {
   if (!statement.contains("whereClause")) {
     return {};
   }
 
-  std::vector<ComparisonPredicate> predicates;
+  std::vector<UnboundComparisonPredicate> predicates;
   extractPredicatesFromNode(statement.at("whereClause"), schema, predicates);
   return predicates;
 }

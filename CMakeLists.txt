@@ -56,6 +56,7 @@ add_library(dbfs_src
     src/storage/wal/wal_record.cpp
     src/storage/wal/wal_body.cpp
     src/storage/wal/wal.cpp
+    src/execution/comparison_predicate.cpp
     src/execution/parsers/parser_ast_helpers.cpp
     src/execution/parsers/pg_query_json_parser.cpp
     src/execution/parsers/create_index_parser.cpp

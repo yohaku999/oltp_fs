@@ -13,7 +13,7 @@
 class FilterOperator : public Operator {
  public:
   FilterOperator(std::unique_ptr<Operator> child,
-                 std::vector<ComparisonPredicate> predicates)
+                 std::vector<BoundComparisonPredicate> predicates)
       : child_(std::move(child)),
         predicates_(std::move(predicates)) {}
 
@@ -23,30 +23,35 @@ class FilterOperator : public Operator {
     while (std::optional<TypedRow> row = child_->next()) {
       bool matches = true;
       for (const auto& predicate : predicates_) {
-        const auto& value = row->values[predicate.column_index];
+
+        // すべてのpredicateについてのvalueとrowのvalueを比較しているが、predicateのvalueもrowから取得する必要がある。
+        // predicateのvalueにカラム名を持てるようにするのもあり？
+        // テーブルをイメージして実装してきたけど、実際はtuple相手なので、indexは改めて取る必要がある。
+        const FieldValue left = resolveBoundOperand(predicate.left, row.value());
+        const FieldValue right = resolveBoundOperand(predicate.right, row.value());
         switch (predicate.op) {
-          case ComparisonPredicate::Op::Eq:
-            if (value != predicate.value) {
+          case Op::Eq:
+            if (left != right) {
               matches = false;
             }
             break;
-          case ComparisonPredicate::Op::Gt:
-            if (value <= predicate.value) {
+          case Op::Gt:
+            if (left <= right) {
               matches = false;
             }
             break;
-          case ComparisonPredicate::Op::Ge:
-            if (value < predicate.value) {
+          case Op::Ge:
+            if (left < right) {
               matches = false;
             }
             break;
-          case ComparisonPredicate::Op::Lt:
-            if (value >= predicate.value) {
+          case Op::Lt:
+            if (left >= right) {
               matches = false;
             }
             break;
-          case ComparisonPredicate::Op::Le:
-            if (value > predicate.value) {
+          case Op::Le:
+            if (left > right) {
               matches = false;
             }
             break;
@@ -69,5 +74,5 @@ class FilterOperator : public Operator {
 
  private:
   std::unique_ptr<Operator> child_;
-  std::vector<ComparisonPredicate> predicates_;
+  std::vector<BoundComparisonPredicate> predicates_;
 };

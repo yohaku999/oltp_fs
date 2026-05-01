@@ -16,7 +16,7 @@ class File;
 // key space, so callers must pass predicates already normalized for a single
 // indexed integer column.
 struct DiscreteIntegerIndexPredicates {
-  std::vector<ComparisonPredicate> predicates;
+  std::vector<UnboundComparisonPredicate> predicates;
 };
 
 class IndexScanOperator : public RidOperator {
@@ -31,8 +31,8 @@ class IndexScanOperator : public RidOperator {
  private:
   enum class Mode { Keys, Range };
 
-  void initializeFromPredicates(
-      const std::vector<ComparisonPredicate>& predicates);
+  void configureScanRangeFromPredicates(
+      const std::vector<UnboundComparisonPredicate>& predicates);
   void setDiscreteIntegerRange(int low_key, int high_key);
 
   BufferPool& pool_;

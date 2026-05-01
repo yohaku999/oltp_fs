@@ -19,6 +19,6 @@ class SelectParser : private PgQueryJsonParser {
   std::vector<std::size_t> extractProjectionIndices(const Schema& schema) const;
   std::vector<OrderBySpec> extractOrderBySpecs(const Schema& schema) const;
   std::optional<std::size_t> extractLimitCount() const;
-  std::vector<ComparisonPredicate> extractComparisonPredicates(
+    std::vector<UnboundComparisonPredicate> extractComparisonPredicates(
       const Schema& schema) const;
 };

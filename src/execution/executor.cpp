@@ -22,6 +22,7 @@
 #include "execution/parsers/select_parser.h"
 #include "execution/parsers/update_parser.h"
 #include "execution/operators/seq_scan_operator.h"
+#include "execution/operators/loop_join_operator.h"
 #include "storage/index/btreecursor.h"
 #include "storage/page/cell.h"
 #include "storage/page/page.h"
@@ -37,48 +38,66 @@ namespace {
 
 // only avaiable for single-column integer access indexes for now
 int extractAccessKey(const Table& table, const TypedRow& row) {
+  const std::optional<std::size_t> indexed_column_index =
+      table.indexedColumnIndex();
   if (!table.indexedColumnName().has_value()) {
     throw std::runtime_error("Table has no configured indexed column: " +
                              table.name());
   }
   const std::string& column_name = table.indexedColumnName().value();
-  const int column_index = table.schema().getColumnIndex(column_name);
-  if (column_index < 0) {
+  if (!indexed_column_index.has_value()) {
     throw std::runtime_error("Access index column not found in schema: " +
                              column_name);
   }
-  if (row.values.size() <= static_cast<std::size_t>(column_index)) {
+  if (row.values.size() <= indexed_column_index.value()) {
     throw std::runtime_error("Row does not contain access-index column: " +
                              column_name);
   }
-  if (!std::holds_alternative<Column::IntegerType>(row.values[column_index])) {
+  if (!std::holds_alternative<Column::IntegerType>(
+          row.values[indexed_column_index.value()])) {
     throw std::runtime_error("Access-index column must be Integer: " +
                              column_name);
   }
-  return std::get<Column::IntegerType>(row.values[column_index]);
+  return std::get<Column::IntegerType>(row.values[indexed_column_index.value()]);
 }
 
-std::vector<ComparisonPredicate> extractIndexedPredicates(
-    const std::vector<ComparisonPredicate>& predicates,
+std::vector<UnboundComparisonPredicate> extractIndexedPredicates(
+    const Table& table,
+    const std::vector<UnboundComparisonPredicate>& predicates,
     std::size_t indexed_column_index) {
-  std::vector<ComparisonPredicate> index_predicates;
+  std::vector<UnboundComparisonPredicate> index_predicates;
+  const std::string& indexed_column_name =
+      table.schema().columns().at(indexed_column_index).getName();
   for (const auto& predicate : predicates) {
-    if (predicate.column_index == indexed_column_index) {
-      index_predicates.push_back(predicate);
+    // index predicate must be in the form of "column op value" or "value op column",
+    // where column is the indexed column and value is a constant value for now.
+    // TODO: change this limit when implementing hash join.
+    const auto* column_ref = std::get_if<ColumnRef>(&predicate.left);
+    const auto* value = std::get_if<FieldValue>(&predicate.right);
+    if (column_ref == nullptr || value == nullptr) {
+      column_ref = std::get_if<ColumnRef>(&predicate.right);
+      value = std::get_if<FieldValue>(&predicate.left);
     }
+    if (column_ref == nullptr || value == nullptr) {
+      continue;
+    }
+    if (column_ref->column_name != indexed_column_name) {
+      continue;
+    }
+    index_predicates.push_back(predicate);
   }
   return index_predicates;
 }
 
 bool canUseIndexForDmlCandidateCollection(
-    const std::vector<ComparisonPredicate>& index_predicates) {
+    const std::vector<UnboundComparisonPredicate>& index_predicates) {
   if (index_predicates.empty()) {
     return false;
   }
 
   // TODO: currently we suppot only equality predicates for indexed column. We need to update range scan for index search.
   for (const auto& predicate : index_predicates) {
-    if (predicate.op != ComparisonPredicate::Op::Eq) {
+    if (predicate.op != Op::Eq) {
       return false;
     }
   }
@@ -86,33 +105,119 @@ bool canUseIndexForDmlCandidateCollection(
   return true;
 }
 
-bool matchesPredicates(const TypedRow& row,
-                       const std::vector<ComparisonPredicate>& predicates) {
+BoundOperand bindOperandForSingleTable(const UnboundOperand& operand,
+                                       const Table& table) {
+  if (const auto* column_ref = std::get_if<ColumnRef>(&operand)) {
+    if (!column_ref->table_name.empty() &&
+        column_ref->table_name != table.name()) {
+      throw std::runtime_error("Predicate references another table: " +
+                               column_ref->table_name);
+    }
+
+    const int column_index =
+        table.schema().getColumnIndex(column_ref->column_name);
+    if (column_index < 0) {
+      throw std::runtime_error("Unknown predicate column: " +
+                               column_ref->column_name);
+    }
+
+    return BoundColumnRef{0, static_cast<std::size_t>(column_index)};
+  }
+
+  if (const auto* value = std::get_if<FieldValue>(&operand)) {
+    return *value;
+  }
+
+  return std::monostate{};
+}
+
+std::vector<BoundComparisonPredicate> bindPredicatesForSingleTable(
+    const std::vector<UnboundComparisonPredicate>& predicates,
+    const Table& table) {
+  std::vector<BoundComparisonPredicate> bound_predicates;
+  bound_predicates.reserve(predicates.size());
+
   for (const auto& predicate : predicates) {
-    const auto& value = row.values[predicate.column_index];
+    bound_predicates.push_back(BoundComparisonPredicate{
+        predicate.op, bindOperandForSingleTable(predicate.left, table),
+        bindOperandForSingleTable(predicate.right, table)});
+  }
+
+  return bound_predicates;
+}
+
+BoundOperand bindOperandForJoinedTables(const UnboundOperand& operand,
+                                        const std::vector<Table>& tables) {
+  if (const auto* column_ref = std::get_if<ColumnRef>(&operand)) {
+    std::size_t joined_column_offset = 0;
+    const Table* matched_table = nullptr;
+
+    for (const auto& table : tables) {
+      if (!column_ref->table_name.empty() && column_ref->table_name != table.name()) {
+        joined_column_offset += table.schema().columns().size();
+        continue;
+      }
+
+      const int column_index = table.schema().getColumnIndex(column_ref->column_name);
+      if (column_index < 0) {
+        joined_column_offset += table.schema().columns().size();
+        continue;
+      }
+
+      if (matched_table != nullptr && column_ref->table_name.empty()) {
+        throw std::runtime_error("Ambiguous joined predicate column: " +
+                                 column_ref->column_name);
+      }
+
+      matched_table = &table;
+      return BoundColumnRef{0, joined_column_offset +
+                                   static_cast<std::size_t>(column_index)};
+    }
+
+    if (!column_ref->table_name.empty()) {
+      throw std::runtime_error("Unknown predicate column on table " +
+                               column_ref->table_name + ": " +
+                               column_ref->column_name);
+    }
+    throw std::runtime_error("Unknown joined predicate column: " +
+                             column_ref->column_name);
+  }
+
+  if (const auto* value = std::get_if<FieldValue>(&operand)) {
+    return *value;
+  }
+
+  return std::monostate{};
+}
+
+bool matchesPredicates(const TypedRow& row,
+                       const std::vector<BoundComparisonPredicate>& predicates) {
+  for (const auto& predicate : predicates) {
+    const FieldValue left = resolveBoundOperand(predicate.left, row);
+    const FieldValue right = resolveBoundOperand(predicate.right, row);
     switch (predicate.op) {
-      case ComparisonPredicate::Op::Eq:
-        if (value != predicate.value) {
+      case Op::Eq:
+        if (left != right) {
           return false;
         }
         break;
-      case ComparisonPredicate::Op::Gt:
-        if (value <= predicate.value) {
+      case Op::Gt:
+        if (left <= right) {
           return false;
         }
         break;
-      case ComparisonPredicate::Op::Ge:
-        if (value < predicate.value) {
+      case Op::Ge:
+        if (left < right) {
           return false;
         }
         break;
-      case ComparisonPredicate::Op::Lt:
-        if (value >= predicate.value) {
+      case Op::Lt:
+        if (left >= right) {
           return false;
         }
         break;
-      case ComparisonPredicate::Op::Le:
-        if (value > predicate.value) {
+      case Op::Le:
+        if (left > right) {
           return false;
         }
         break;
@@ -151,21 +256,15 @@ std::vector<RID> collectHeapRids(BufferPool& pool, File& heap_file) {
 
 std::vector<RID> collectCandidateRids(
     BufferPool& pool, Table& table,
-    const std::vector<ComparisonPredicate>& predicates) {
-  const std::optional<std::string>& indexed_column_name =
-      table.indexedColumnName();
-  if (!indexed_column_name.has_value()) {
+    const std::vector<UnboundComparisonPredicate>& predicates) {
+  const std::optional<std::size_t> indexed_column_index =
+      table.indexedColumnIndex();
+  if (!indexed_column_index.has_value()) {
     return collectHeapRids(pool, table.heapFile());
   }
 
-  const int indexed_column_index =
-      table.schema().getColumnIndex(indexed_column_name.value());
-  if (indexed_column_index < 0) {
-    return collectHeapRids(pool, table.heapFile());
-  }
-
-  std::vector<ComparisonPredicate> index_predicates = extractIndexedPredicates(
-      predicates, static_cast<std::size_t>(indexed_column_index));
+  std::vector<UnboundComparisonPredicate> index_predicates = extractIndexedPredicates(
+      table, predicates, indexed_column_index.value());
   if (!canUseIndexForDmlCandidateCollection(index_predicates)) {
     return collectHeapRids(pool, table.heapFile());
   }
@@ -187,10 +286,12 @@ std::vector<RID> collectCandidateRids(
 }
 
 std::size_t removeMatchingRows(BufferPool& pool, Table& table,
-                               const std::vector<ComparisonPredicate>& predicates,
+                               const std::vector<UnboundComparisonPredicate>& predicates,
                                WAL& wal) {
   const std::vector<RID> candidate_rids =
       collectCandidateRids(pool, table, predicates);
+  const std::vector<BoundComparisonPredicate> bound_predicates =
+    bindPredicatesForSingleTable(predicates, table);
   std::size_t removed_count = 0;
 
   for (const RID& rid : candidate_rids) {
@@ -202,7 +303,7 @@ std::size_t removeMatchingRows(BufferPool& pool, Table& table,
     }
 
     TypedRow row = RecordCellView(cell_start).getTypedRow(table.schema());
-    if (!matchesPredicates(row, predicates)) {
+    if (!matchesPredicates(row, bound_predicates)) {
       pool.unpinPage(page, table.heapFile());
       continue;
     }
@@ -224,7 +325,7 @@ std::size_t removeMatchingRows(BufferPool& pool, Table& table,
 }
 
 std::size_t updateMatchingRows(BufferPool& pool, Table& table,
-                               const std::vector<ComparisonPredicate>& predicates,
+                               const std::vector<UnboundComparisonPredicate>& predicates,
                                const UpdateParser& parser, WAL& wal) {
   const std::vector<RID> candidate_rids =
       collectCandidateRids(pool, table, predicates);
@@ -240,7 +341,7 @@ std::size_t updateMatchingRows(BufferPool& pool, Table& table,
 
     TypedRow original_row = RecordCellView(cell_start).getTypedRow(table.schema());
     pool.unpinPage(page, table.heapFile());
-    if (!matchesPredicates(original_row, predicates)) {
+    if (!matchesPredicates(original_row, bindPredicatesForSingleTable(predicates, table))) {
       continue;
     }
 
@@ -300,34 +401,16 @@ void insertRow(BufferPool& pool, Table& table, const TypedRow& row, WAL& wal) {
 
 std::unique_ptr<Operator> buildReadSource(
     BufferPool& pool, Table& table,
-    const std::vector<ComparisonPredicate>& predicates) {
-  const std::optional<std::string>& indexed_column_name =
-      table.indexedColumnName();
-  if (!indexed_column_name.has_value()) {
-    return std::make_unique<SeqScanOperator>(pool, table.heapFile(),
-                                             table.schema());
-  }
+    const std::vector<UnboundComparisonPredicate>& index_predicates) {
 
-  const int indexed_column_index =
-      table.schema().getColumnIndex(indexed_column_name.value());
-  if (indexed_column_index < 0) {
-    return std::make_unique<SeqScanOperator>(pool, table.heapFile(),
-                                             table.schema());
-  }
-
-  std::vector<ComparisonPredicate> index_predicates = extractIndexedPredicates(
-      predicates, static_cast<std::size_t>(indexed_column_index));
+  // sequential scan
   if (index_predicates.empty()) {
     return std::make_unique<SeqScanOperator>(pool, table.heapFile(),
                                              table.schema());
   }
 
+  // index scan
   const auto index_file = table.indexFile();
-  if (!index_file.has_value()) {
-    return std::make_unique<SeqScanOperator>(pool, table.heapFile(),
-                                             table.schema());
-  }
-
   auto scan = std::make_unique<IndexScanOperator>(
       pool, index_file->get(),
       DiscreteIntegerIndexPredicates{std::move(index_predicates)});
@@ -347,44 +430,79 @@ std::unique_ptr<Operator> buildReadSource(
  * 
  * 
  */
-TypedRow executor::read(BufferPool& pool, Table& table, int key) {
-  File& index_file = requireIndexFile(table);
-  std::optional<RID> rid = BTreeCursor::findRID(pool, index_file, key);
-  if (!rid.has_value()) {
-    throw std::runtime_error("Key " + std::to_string(key) +
-                             " not found in index file.");
-  }
-
-  Page* page = pool.pinPage(rid->heap_page_id, table.heapFile());
-  TypedRow row =
-      RecordCellView(page->getSlotCellStart(rid->slot_id)).getTypedRow(
-          table.schema());
-  pool.unpinPage(page, table.heapFile());
-  return row;
-}
-
 std::vector<TypedRow> executor::read(BufferPool& pool,
                                      const SelectParser& parser) {
-  Table table = Table::getTable(parser.extractTableName());
-  std::vector<std::size_t> projection_indices =
-      parser.extractProjectionIndices(table.schema());
-  std::vector<OrderBySpec> order_by_specs =
-      parser.extractOrderBySpecs(table.schema());
-  std::optional<std::size_t> limit_count = parser.extractLimitCount();
-  std::vector<ComparisonPredicate> predicates =
-      parser.extractComparisonPredicates(table.schema());
+  std::vector<std::string> table_names = parser.extractTableNames();
+  std::vector<Table> tables;
+  tables.reserve(table_names.size());
+  for (const auto& table_name : table_names) {
+    tables.push_back(Table::getTable(table_name));
+  }
 
-  std::unique_ptr<Operator> source = buildReadSource(pool, table, predicates);
-  std::unique_ptr<Operator> pipeline =
-      std::make_unique<FilterOperator>(std::move(source), predicates);
+  // build joined schema
+  std::vector<Column> columns;
+  for (const auto& table : tables) {
+    const auto& table_columns = table.schema().columns();
+    columns.insert(columns.end(), table_columns.begin(), table_columns.end());
+  }
+  const Schema joined_schema(columns);
+
+  const std::vector<UnboundComparisonPredicate> predicates =
+      parser.extractComparisonPredicates(joined_schema);
+
+  std::vector<std::unique_ptr<Operator>> sources;
+  for (auto& table : tables) {
+    std::unique_ptr<Operator> source;
+    if (const std::optional<std::size_t> indexed_column_index =
+            table.indexedColumnIndex();
+        indexed_column_index.has_value()) {
+      std::vector<UnboundComparisonPredicate> index_predicates;
+      index_predicates = extractIndexedPredicates(
+          table, predicates, indexed_column_index.value());
+      source = buildReadSource(pool, table, index_predicates);
+    } else {
+      source = buildReadSource(pool, table, {});
+    }
+    sources.push_back(std::move(source));
+  }
+  
+  // build bound predicates
+  std::vector<BoundComparisonPredicate> bound_predicates;
+  bound_predicates.reserve(predicates.size());
+
+  for (const auto& predicate : predicates) {
+    bound_predicates.push_back(BoundComparisonPredicate{
+        predicate.op, bindOperandForJoinedTables(predicate.left, tables),
+        bindOperandForJoinedTables(predicate.right, tables)});
+  }
+
+  // join
+  std::unique_ptr<Operator> pipeline;
+  if (sources.size() == 1) {
+    pipeline = std::move(sources.front());
+  } else {
+    pipeline = std::make_unique<LoopJoinOperator>(std::move(sources));
+  }
+
+  // filter
+  pipeline = std::make_unique<FilterOperator>(std::move(pipeline),
+                                              bound_predicates);
+  // order by
+  std::vector<OrderBySpec> order_by_specs =
+      parser.extractOrderBySpecs(joined_schema);
   if (!order_by_specs.empty()) {
     pipeline = std::make_unique<OrderByOperator>(std::move(pipeline),
-                                                 std::move(order_by_specs));
+                                                std::move(order_by_specs));
   }
+  std::optional<std::size_t> limit_count = parser.extractLimitCount();
+  // limit
   if (limit_count.has_value()) {
     pipeline = std::make_unique<LimitOperator>(std::move(pipeline),
-                                               limit_count.value());
+                                              limit_count.value());
   }
+  // projection
+  std::vector<std::size_t> projection_indices =
+      parser.extractProjectionIndices(joined_schema);
   ProjectionOperator projection(std::move(pipeline), projection_indices);
   projection.open();
 
@@ -424,7 +542,7 @@ void executor::insert(BufferPool& pool, Table& table, const InsertParser& parser
 
 void executor::remove(BufferPool& pool, Table& table, const DeleteParser& parser,
                       WAL& wal) {
-  const std::vector<ComparisonPredicate> predicates =
+  const std::vector<UnboundComparisonPredicate> predicates =
       parser.extractComparisonPredicates(table.schema());
   removeMatchingRows(pool, table, predicates, wal);
 }
@@ -438,7 +556,7 @@ void executor::remove(BufferPool& pool, Table& table, const DeleteParser& parser
  * special-case split handling.
  */
 void executor::update(BufferPool& pool, Table& table, const UpdateParser& parser, WAL& wal) {
-  const std::vector<ComparisonPredicate> predicates =
+  const std::vector<UnboundComparisonPredicate> predicates =
       parser.extractComparisonPredicates(table.schema());
   const std::size_t updated_count =
       updateMatchingRows(pool, table, predicates, parser, wal);

@@ -102,7 +102,7 @@ std::optional<std::size_t> SelectParser::extractLimitCount() const {
   return static_cast<std::size_t>(limit);
 }
 
-std::vector<ComparisonPredicate> SelectParser::extractComparisonPredicates(
+std::vector<UnboundComparisonPredicate> SelectParser::extractComparisonPredicates(
     const Schema& schema) const {
   return parseWhereClausePredicates(statementNode().at("SelectStmt"), schema);
 }

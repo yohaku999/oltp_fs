@@ -12,5 +12,5 @@ class Schema;
 FieldValue parseConstFieldValue(const nlohmann::json& item,
                                Column::Type column_type);
 
-std::vector<ComparisonPredicate> parseWhereClausePredicates(
+std::vector<UnboundComparisonPredicate> parseWhereClausePredicates(
     const nlohmann::json& statement, const Schema& schema);
