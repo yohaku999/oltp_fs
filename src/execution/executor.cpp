@@ -94,45 +94,6 @@ std::vector<TypedRow> collectRows(Operator& root) {
   return rows;
 }
 
-bool matchesPredicates(const TypedRow& row,
-                       const std::vector<BoundComparisonPredicate>& predicates) {
-  for (const auto& predicate : predicates) {
-    const FieldValue left = resolveBoundOperand(predicate.left, row);
-    const FieldValue right = resolveBoundOperand(predicate.right, row);
-    switch (predicate.op) {
-      case Op::Eq:
-        if (left != right) {
-          return false;
-        }
-        break;
-      case Op::Gt:
-        if (left <= right) {
-          return false;
-        }
-        break;
-      case Op::Ge:
-        if (left < right) {
-          return false;
-        }
-        break;
-      case Op::Lt:
-        if (left >= right) {
-          return false;
-        }
-        break;
-      case Op::Le:
-        if (left > right) {
-          return false;
-        }
-        break;
-    }
-  }
-
-  return true;
-}
-
-void insertRow(BufferPool& pool, Table& table, const TypedRow& row, WAL& wal);
-
 std::vector<RID> collectHeapRids(BufferPool& pool, File& heap_file) {
   std::vector<RID> rids;
   for (uint16_t page_id = 0; page_id <= heap_file.getMaxPageID(); ++page_id) {
@@ -220,39 +181,6 @@ std::size_t removeMatchingRows(BufferPool& pool, Table& table,
   return removed_count;
 }
 
-std::size_t updateMatchingRows(BufferPool& pool, Table& table,
-                               const std::vector<UnboundComparisonPredicate>& predicates,
-                               const UpdateParser& parser, WAL& wal) {
-  const std::vector<RID> candidate_rids =
-      collectCandidateRids(pool, table, predicates);
-  std::vector<TypedRow> updated_rows;
-
-  for (const RID& rid : candidate_rids) {
-    Page* page = pool.pinPage(rid.heap_page_id, table.heapFile());
-    char* cell_start = page->slotCellStartUnchecked(rid.slot_id);
-    if (!Cell::isValid(cell_start)) {
-      pool.unpinPage(page, table.heapFile());
-      continue;
-    }
-
-    TypedRow original_row = RecordCellView(cell_start).getTypedRow(table.schema());
-    pool.unpinPage(page, table.heapFile());
-    if (!matchesPredicates(original_row,
-                           binder::bindPredicates(predicates, {table}))) {
-      continue;
-    }
-
-    updated_rows.push_back(parser.extractUpdatedRow(table.schema(), original_row));
-  }
-
-  const std::size_t removed_count = removeMatchingRows(pool, table, predicates, wal);
-  for (const TypedRow& updated_row : updated_rows) {
-    insertRow(pool, table, updated_row, wal);
-  }
-
-  return removed_count;
-}
-
 void insertRow(BufferPool& pool, Table& table, const TypedRow& row, WAL& wal) {
   const int key = table.extractIndexKey(row);
   File& index_file = table.requireIndexFile();
@@ -294,6 +222,39 @@ void insertRow(BufferPool& pool, Table& table, const TypedRow& row, WAL& wal) {
   BTreeCursor::insertIntoIndex(pool, index_file, key,
                                static_cast<uint16_t>(target_page_id),
                                static_cast<uint16_t>(inserted_slot_id.value()));
+}
+
+std::size_t updateMatchingRows(BufferPool& pool, Table& table,
+                               const std::vector<UnboundComparisonPredicate>& predicates,
+                               const UpdateParser& parser, WAL& wal) {
+  const std::vector<RID> candidate_rids =
+      collectCandidateRids(pool, table, predicates);
+  std::vector<TypedRow> updated_rows;
+
+  for (const RID& rid : candidate_rids) {
+    Page* page = pool.pinPage(rid.heap_page_id, table.heapFile());
+    char* cell_start = page->slotCellStartUnchecked(rid.slot_id);
+    if (!Cell::isValid(cell_start)) {
+      pool.unpinPage(page, table.heapFile());
+      continue;
+    }
+
+    TypedRow original_row = RecordCellView(cell_start).getTypedRow(table.schema());
+    pool.unpinPage(page, table.heapFile());
+    if (!matchesPredicates(original_row,
+                           binder::bindPredicates(predicates, {table}))) {
+      continue;
+    }
+
+    updated_rows.push_back(parser.extractUpdatedRow(table.schema(), original_row));
+  }
+
+  const std::size_t removed_count = removeMatchingRows(pool, table, predicates, wal);
+  for (const TypedRow& updated_row : updated_rows) {
+    insertRow(pool, table, updated_row, wal);
+  }
+
+  return removed_count;
 }
 
 std::unique_ptr<Operator> buildReadSource(

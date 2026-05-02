@@ -23,3 +23,40 @@ FieldValue resolveBoundOperand(const BoundOperand& operand,
 
   throw std::logic_error("Unsupported bound predicate operand.");
 }
+
+bool matchesPredicates(const TypedRow& row,
+                       const std::vector<BoundComparisonPredicate>& predicates) {
+  for (const auto& predicate : predicates) {
+    const FieldValue left = resolveBoundOperand(predicate.left, row);
+    const FieldValue right = resolveBoundOperand(predicate.right, row);
+    switch (predicate.op) {
+      case Op::Eq:
+        if (left != right) {
+          return false;
+        }
+        break;
+      case Op::Gt:
+        if (left <= right) {
+          return false;
+        }
+        break;
+      case Op::Ge:
+        if (left < right) {
+          return false;
+        }
+        break;
+      case Op::Lt:
+        if (left >= right) {
+          return false;
+        }
+        break;
+      case Op::Le:
+        if (left > right) {
+          return false;
+        }
+        break;
+    }
+  }
+
+  return true;
+}

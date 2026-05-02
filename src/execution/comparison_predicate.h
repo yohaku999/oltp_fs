@@ -36,3 +36,6 @@ struct BoundComparisonPredicate {
 
 FieldValue resolveBoundOperand(const BoundOperand& operand,
                               const TypedRow& row);
+
+bool matchesPredicates(const TypedRow& row,
+                       const std::vector<BoundComparisonPredicate>& predicates);
