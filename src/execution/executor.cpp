@@ -81,34 +81,8 @@ bool canUseIndexForDmlCandidateCollection(
   return true;
 }
 
-BoundOperand bindOperandForSingleTable(const UnboundOperand& operand,
-                                       const Table& table) {
-  if (const auto* column_ref = std::get_if<ColumnRef>(&operand)) {
-    if (!column_ref->table_name.empty() &&
-        column_ref->table_name != table.name()) {
-      throw std::runtime_error("Predicate references another table: " +
-                               column_ref->table_name);
-    }
-
-    const int column_index =
-        table.schema().getColumnIndex(column_ref->column_name);
-    if (column_index < 0) {
-      throw std::runtime_error("Unknown predicate column: " +
-                               column_ref->column_name);
-    }
-
-    return BoundColumnRef{0, static_cast<std::size_t>(column_index)};
-  }
-
-  if (const auto* value = std::get_if<FieldValue>(&operand)) {
-    return *value;
-  }
-
-  return std::monostate{};
-}
-
-BoundColumnRef bindColumnRefForJoinedTables(const ColumnRef& column_ref,
-                                            const std::vector<Table>& tables) {
+BoundColumnRef bindColumnRef(const ColumnRef& column_ref,
+                             const std::vector<Table>& tables) {
   std::size_t joined_column_offset = 0;
   const Table* matched_table = nullptr;
 
@@ -126,8 +100,7 @@ BoundColumnRef bindColumnRefForJoinedTables(const ColumnRef& column_ref,
     }
 
     if (matched_table != nullptr && column_ref.table_name.empty()) {
-      throw std::runtime_error("Ambiguous joined predicate column: " +
-                               column_ref.column_name);
+      throw std::runtime_error("Ambiguous column: " + column_ref.column_name);
     }
 
     matched_table = &table;
@@ -136,12 +109,24 @@ BoundColumnRef bindColumnRefForJoinedTables(const ColumnRef& column_ref,
   }
 
   if (!column_ref.table_name.empty()) {
-    throw std::runtime_error("Unknown predicate column on table " +
+    throw std::runtime_error("Unknown column on table " +
                              column_ref.table_name + ": " +
                              column_ref.column_name);
   }
-  throw std::runtime_error("Unknown joined predicate column: " +
-                           column_ref.column_name);
+  throw std::runtime_error("Unknown column: " + column_ref.column_name);
+}
+
+BoundOperand bindOperand(const UnboundOperand& operand,
+                         const std::vector<Table>& tables) {
+  if (const auto* column_ref = std::get_if<ColumnRef>(&operand)) {
+    return bindColumnRef(*column_ref, tables);
+  }
+
+  if (const auto* value = std::get_if<FieldValue>(&operand)) {
+    return *value;
+  }
+
+  return std::monostate{};
 }
 
 std::vector<BoundSelectItem> bindSelectItems(
@@ -165,14 +150,14 @@ std::vector<BoundSelectItem> bindSelectItems(
     }
 
     if (const auto* column_ref = std::get_if<ColumnRef>(&item)) {
-      bound_select_items.push_back(bindColumnRefForJoinedTables(*column_ref, tables));
+      bound_select_items.push_back(bindColumnRef(*column_ref, tables));
       continue;
     }
 
     const auto& aggregate_call = std::get<UnboundAggregateCall>(item);
     bound_select_items.push_back(BoundAggregateCall{
         aggregate_call.function,
-        bindColumnRefForJoinedTables(aggregate_call.argument, tables)});
+        bindColumnRef(aggregate_call.argument, tables)});
   }
 
   return bound_select_items;
@@ -214,32 +199,19 @@ std::vector<TypedRow> collectRows(Operator& root) {
   return rows;
 }
 
-std::vector<BoundComparisonPredicate> bindPredicatesForSingleTable(
+std::vector<BoundComparisonPredicate> bindPredicates(
     const std::vector<UnboundComparisonPredicate>& predicates,
-    const Table& table) {
+    const std::vector<Table>& tables) {
   std::vector<BoundComparisonPredicate> bound_predicates;
   bound_predicates.reserve(predicates.size());
 
   for (const auto& predicate : predicates) {
     bound_predicates.push_back(BoundComparisonPredicate{
-        predicate.op, bindOperandForSingleTable(predicate.left, table),
-        bindOperandForSingleTable(predicate.right, table)});
+        predicate.op, bindOperand(predicate.left, tables),
+        bindOperand(predicate.right, tables)});
   }
 
   return bound_predicates;
-}
-
-BoundOperand bindOperandForJoinedTables(const UnboundOperand& operand,
-                                        const std::vector<Table>& tables) {
-  if (const auto* column_ref = std::get_if<ColumnRef>(&operand)) {
-    return bindColumnRefForJoinedTables(*column_ref, tables);
-  }
-
-  if (const auto* value = std::get_if<FieldValue>(&operand)) {
-    return *value;
-  }
-
-  return std::monostate{};
 }
 
 bool matchesPredicates(const TypedRow& row,
@@ -335,7 +307,7 @@ std::size_t removeMatchingRows(BufferPool& pool, Table& table,
   const std::vector<RID> candidate_rids =
       collectCandidateRids(pool, table, predicates);
   const std::vector<BoundComparisonPredicate> bound_predicates =
-    bindPredicatesForSingleTable(predicates, table);
+      bindPredicates(predicates, {table});
   std::size_t removed_count = 0;
 
   for (const RID& rid : candidate_rids) {
@@ -385,7 +357,7 @@ std::size_t updateMatchingRows(BufferPool& pool, Table& table,
 
     TypedRow original_row = RecordCellView(cell_start).getTypedRow(table.schema());
     pool.unpinPage(page, table.heapFile());
-    if (!matchesPredicates(original_row, bindPredicatesForSingleTable(predicates, table))) {
+    if (!matchesPredicates(original_row, bindPredicates(predicates, {table}))) {
       continue;
     }
 
@@ -522,8 +494,8 @@ std::vector<TypedRow> executor::read(BufferPool& pool,
 
   for (const auto& predicate : predicates) {
     bound_predicates.push_back(BoundComparisonPredicate{
-        predicate.op, bindOperandForJoinedTables(predicate.left, tables),
-        bindOperandForJoinedTables(predicate.right, tables)});
+      predicate.op, bindOperand(predicate.left, tables),
+      bindOperand(predicate.right, tables)});
   }
 
   const std::vector<BoundSelectItem> bound_select_items =
