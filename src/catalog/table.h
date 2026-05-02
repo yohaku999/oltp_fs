@@ -32,11 +32,13 @@ class Table {
   const std::string& name() const { return name_; }
   const Schema& schema() const { return schema_; }
   bool hasIndexForColumn(const std::string& column_name) const;
+  int extractIndexKey(const TypedRow& row) const;
   const std::optional<std::string>& indexedColumnName() const {
     return indexed_column_name_;
   }
   std::optional<std::size_t> indexedColumnIndex() const;
   std::optional<std::reference_wrapper<File>> indexFile();
+  File& requireIndexFile();
   File& heapFile() { return heap_file_; }
 
  private:

@@ -37,32 +37,7 @@
 
 namespace {
 
-// only avaiable for single-column integer access indexes for now
-int extractAccessKey(const Table& table, const TypedRow& row) {
-  const std::optional<std::size_t> indexed_column_index =
-      table.indexedColumnIndex();
-  if (!table.indexedColumnName().has_value()) {
-    throw std::runtime_error("Table has no configured indexed column: " +
-                             table.name());
-  }
-  const std::string& column_name = table.indexedColumnName().value();
-  if (!indexed_column_index.has_value()) {
-    throw std::runtime_error("Access index column not found in schema: " +
-                             column_name);
-  }
-  if (row.values.size() <= indexed_column_index.value()) {
-    throw std::runtime_error("Row does not contain access-index column: " +
-                             column_name);
-  }
-  if (!std::holds_alternative<Column::IntegerType>(
-          row.values[indexed_column_index.value()])) {
-    throw std::runtime_error("Access-index column must be Integer: " +
-                             column_name);
-  }
-  return std::get<Column::IntegerType>(row.values[indexed_column_index.value()]);
-}
-
-std::vector<UnboundComparisonPredicate> extractIndexedPredicates(
+std::vector<UnboundComparisonPredicate> collectPredicatesForIndexedColumn(
     const Table& table,
     const std::vector<UnboundComparisonPredicate>& predicates,
     std::size_t indexed_column_index) {
@@ -304,14 +279,6 @@ bool matchesPredicates(const TypedRow& row,
   return true;
 }
 
-File& requireIndexFile(Table& table) {
-  const auto index_file = table.indexFile();
-  if (!index_file.has_value()) {
-    throw std::runtime_error("Table has no index file: " + table.name());
-  }
-  return index_file->get();
-}
-
 void insertRow(BufferPool& pool, Table& table, const TypedRow& row, WAL& wal);
 
 std::vector<RID> collectHeapRids(BufferPool& pool, File& heap_file) {
@@ -340,7 +307,7 @@ std::vector<RID> collectCandidateRids(
     return collectHeapRids(pool, table.heapFile());
   }
 
-  std::vector<UnboundComparisonPredicate> index_predicates = extractIndexedPredicates(
+  std::vector<UnboundComparisonPredicate> index_predicates = collectPredicatesForIndexedColumn(
       table, predicates, indexed_column_index.value());
   if (!canUseIndexForDmlCandidateCollection(index_predicates)) {
     return collectHeapRids(pool, table.heapFile());
@@ -387,7 +354,7 @@ std::size_t removeMatchingRows(BufferPool& pool, Table& table,
 
     const auto index_file = table.indexFile();
     if (index_file.has_value()) {
-      const int key = extractAccessKey(table, row);
+      const int key = table.extractIndexKey(row);
       BTreeCursor::findRID(pool, index_file->get(), key, true);
     }
 
@@ -434,8 +401,8 @@ std::size_t updateMatchingRows(BufferPool& pool, Table& table,
 }
 
 void insertRow(BufferPool& pool, Table& table, const TypedRow& row, WAL& wal) {
-  const int key = extractAccessKey(table, row);
-  File& index_file = requireIndexFile(table);
+  const int key = table.extractIndexKey(row);
+  File& index_file = table.requireIndexFile();
   LOG_INFO("Inserting record with key {} into table {}.", key, table.name());
   std::optional<RID> existing_rid =
       BTreeCursor::findRID(pool, index_file, key);
@@ -536,7 +503,7 @@ std::vector<TypedRow> executor::read(BufferPool& pool,
             table.indexedColumnIndex();
         indexed_column_index.has_value()) {
       std::vector<UnboundComparisonPredicate> index_predicates;
-      index_predicates = extractIndexedPredicates(
+      index_predicates = collectPredicatesForIndexedColumn(
           table, predicates, indexed_column_index.value());
       if (canUseIndexForDmlCandidateCollection(index_predicates)) {
         source = buildReadSource(pool, table, std::move(index_predicates));

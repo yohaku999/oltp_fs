@@ -169,6 +169,12 @@ bool Table::hasIndexForColumn(const std::string& column_name) const {
          indexed_column_name_.value() == column_name;
 }
 
+int Table::extractIndexKey(const TypedRow& row) const {
+  const std::optional<std::size_t> indexed_column_index = indexedColumnIndex();
+  // TODO: only available for single-column integer access indexes for now.
+  return std::get<Column::IntegerType>(row.values[indexed_column_index.value()]);
+}
+
 std::optional<std::size_t> Table::indexedColumnIndex() const {
   if (!indexed_column_name_.has_value()) {
     return std::nullopt;
@@ -187,6 +193,14 @@ std::optional<std::reference_wrapper<File>> Table::indexFile() {
     return std::nullopt;
   }
   return index_file_.value();
+}
+
+File& Table::requireIndexFile() {
+  const auto index_file = indexFile();
+  if (!index_file.has_value()) {
+    throw std::runtime_error("Table has no index file: " + name_);
+  }
+  return index_file->get();
 }
 
 bool Table::anyBackingFileExists(const std::string& table_name) {
