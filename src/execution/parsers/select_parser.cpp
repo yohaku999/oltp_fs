@@ -1,6 +1,9 @@
 #include "select_parser.h"
 
+#include <algorithm>
+#include <cctype>
 #include <stdexcept>
+#include <string>
 #include <utility>
 
 #include "execution/parsers/parser_ast_helpers.h"
@@ -19,36 +22,52 @@ std::vector<std::string> SelectParser::extractTableNames() const {
   return table_names;
 }
 
-std::vector<std::size_t> SelectParser::extractProjectionIndices(
-    const Schema& schema) const {
+std::vector<UnboundSelectItem> SelectParser::extractSelectItems() const {
   const auto& targets = statementNode().at("SelectStmt").at("targetList");
 
-  std::vector<std::size_t> projection_indices;
+  std::vector<UnboundSelectItem> select_items;
+  select_items.reserve(targets.size());
   for (const auto& target : targets) {
-    const auto& fields = target.at("ResTarget")
-                             .at("val")
-                             .at("ColumnRef")
-                             .at("fields");
+    const auto& value = target.at("ResTarget").at("val");
+    if (value.contains("ColumnRef")) {
+      const auto& column_ref = value.at("ColumnRef");
+      const auto& fields = column_ref.at("fields");
 
-    if (fields.size() == 1 && fields.at(0).contains("A_Star")) {
-      projection_indices.clear();
-      projection_indices.reserve(schema.columns().size());
-      for (std::size_t index = 0; index < schema.columns().size(); ++index) {
-        projection_indices.push_back(index);
+      if (fields.size() == 1 && fields.at(0).contains("A_Star")) {
+        select_items.push_back(SelectAllItem{});
+        continue;
       }
-      return projection_indices;
+
+      select_items.push_back(parseColumnRef(column_ref));
+      continue;
     }
 
-    const std::string column_name =
-        fields.at(0).at("String").at("sval").get<std::string>();
-    const int column_index = schema.getColumnIndex(column_name);
-    if (column_index < 0) {
-      throw std::runtime_error("Unknown projection column: " + column_name);
+    if (value.contains("FuncCall")) {
+      const auto& func_call = value.at("FuncCall");
+      const auto& func_name_node = func_call.at("funcname");
+
+      std::string function_name =
+          func_name_node.at(0).at("String").at("sval").get<std::string>();
+      std::transform(function_name.begin(), function_name.end(),
+                     function_name.begin(),
+                     [](unsigned char ch) {
+                       return static_cast<char>(std::tolower(ch));
+                     });
+      if (function_name != "sum") {
+        throw std::runtime_error("Unsupported aggregate function: " +
+                                 function_name);
+      }
+
+      const auto& args = func_call.at("args");
+      select_items.push_back(UnboundAggregateCall{
+          AggregateFunction::Sum, parseColumnRef(args.at(0).at("ColumnRef"))});
+      continue;
     }
-    projection_indices.push_back(static_cast<std::size_t>(column_index));
+
+    throw std::runtime_error("Unsupported select target.");
   }
 
-  return projection_indices;
+  return select_items;
 }
 
 std::vector<OrderBySpec> SelectParser::extractOrderBySpecs(
@@ -63,14 +82,12 @@ std::vector<OrderBySpec> SelectParser::extractOrderBySpecs(
   order_by_specs.reserve(sort_clause.size());
   for (const auto& entry : sort_clause) {
     const auto& sort_by = entry.at("SortBy");
-    const auto& fields = sort_by.at("node")
-                             .at("ColumnRef")
-                             .at("fields");
-    const std::string column_name =
-        fields.at(0).at("String").at("sval").get<std::string>();
-    const int column_index = schema.getColumnIndex(column_name);
+    const ColumnRef column_ref =
+        parseColumnRef(sort_by.at("node").at("ColumnRef"));
+    const int column_index = schema.getColumnIndex(column_ref.column_name);
     if (column_index < 0) {
-      throw std::runtime_error("Unknown ORDER BY column: " + column_name);
+      throw std::runtime_error("Unknown ORDER BY column: " +
+                               column_ref.column_name);
     }
 
     const std::string direction =

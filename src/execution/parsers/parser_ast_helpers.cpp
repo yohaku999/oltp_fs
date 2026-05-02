@@ -7,7 +7,6 @@
 
 namespace {
 
-ColumnRef parseColumnRef(const nlohmann::json& column_ref);
 Column::Type requireColumnType(const nlohmann::json& expression,
                                const Schema& schema);
 UnboundOperand parseOperand(const nlohmann::json& expression,
@@ -116,6 +115,19 @@ UnboundOperand parseOperand(const nlohmann::json& expression,
   throw std::runtime_error("Unsupported predicate operand.");
 }
 
+}
+
+ColumnRef parseColumnRef(const nlohmann::json& column_ref) {
+  const auto& fields = column_ref.at("fields");
+  if (fields.size() == 1) {
+    return ColumnRef{"", fields.at(0).at("String").at("sval").get<std::string>()};
+  }
+  if (fields.size() == 2) {
+    return ColumnRef{fields.at(0).at("String").at("sval").get<std::string>(),
+                     fields.at(1).at("String").at("sval").get<std::string>()};
+  }
+
+  throw std::runtime_error("Unsupported column reference shape.");
 }
 
 FieldValue parseConstFieldValue(const nlohmann::json& item,

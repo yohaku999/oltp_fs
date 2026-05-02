@@ -217,6 +217,25 @@ TEST_F(ExecutorTest, ReadSelectHandlesThousandByThousandJoinInput) {
   EXPECT_EQ(std::get<Column::IntegerType>(rows[4].values[0]), 1991);
 }
 
+TEST_F(ExecutorTest, ReadSelectReturnsSumForIntegerColumn) {
+  std::vector<TypedRow> rows =
+      executor::read(*pool_, SelectParser("SELECT SUM(id) FROM executor_test_table"));
+
+  ASSERT_EQ(rows.size(), 1u);
+  ASSERT_EQ(rows[0].values.size(), 1u);
+  EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[0]), 415);
+}
+
+TEST_F(ExecutorTest, ReadSelectReturnsFilteredSumForIntegerColumn) {
+  std::vector<TypedRow> rows = executor::read(
+      *pool_, SelectParser(
+                  "SELECT SUM(id) FROM executor_test_table WHERE id >= 104"));
+
+  ASSERT_EQ(rows.size(), 1u);
+  ASSERT_EQ(rows[0].values.size(), 1u);
+  EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[0]), 211);
+}
+
 TEST_F(ExecutorTest, InsertAndGetMultipleRecords) {
   Table& table = *table_;
   std::vector<std::pair<int, std::string>> records = {

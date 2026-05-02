@@ -9,6 +9,8 @@
 
 class Schema;
 
+ColumnRef parseColumnRef(const nlohmann::json& column_ref);
+
 FieldValue parseConstFieldValue(const nlohmann::json& item,
                                Column::Type column_type);
 

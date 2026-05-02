@@ -8,6 +8,7 @@
 
 #include "../logging.h"
 #include "execution/operators/filter_operator.h"
+#include "execution/operators/aggregate_operator.h"
 #include "execution/operators/heap_fetch.h"
 #include "execution/operators/index_scan.h"
 #include "execution/operators/limit_operator.h"
@@ -131,6 +132,113 @@ BoundOperand bindOperandForSingleTable(const UnboundOperand& operand,
   return std::monostate{};
 }
 
+BoundColumnRef bindColumnRefForJoinedTables(const ColumnRef& column_ref,
+                                            const std::vector<Table>& tables) {
+  std::size_t joined_column_offset = 0;
+  const Table* matched_table = nullptr;
+
+  for (const auto& table : tables) {
+    if (!column_ref.table_name.empty() &&
+        column_ref.table_name != table.name()) {
+      joined_column_offset += table.schema().columns().size();
+      continue;
+    }
+
+    const int column_index = table.schema().getColumnIndex(column_ref.column_name);
+    if (column_index < 0) {
+      joined_column_offset += table.schema().columns().size();
+      continue;
+    }
+
+    if (matched_table != nullptr && column_ref.table_name.empty()) {
+      throw std::runtime_error("Ambiguous joined predicate column: " +
+                               column_ref.column_name);
+    }
+
+    matched_table = &table;
+    return BoundColumnRef{0, joined_column_offset +
+                                 static_cast<std::size_t>(column_index)};
+  }
+
+  if (!column_ref.table_name.empty()) {
+    throw std::runtime_error("Unknown predicate column on table " +
+                             column_ref.table_name + ": " +
+                             column_ref.column_name);
+  }
+  throw std::runtime_error("Unknown joined predicate column: " +
+                           column_ref.column_name);
+}
+
+std::vector<BoundSelectItem> bindSelectItems(
+    const std::vector<UnboundSelectItem>& select_items,
+    const std::vector<Table>& tables) {
+  std::vector<BoundSelectItem> bound_select_items;
+
+  std::size_t joined_column_offset = 0;
+  for (const auto& item : select_items) {
+    if (std::holds_alternative<SelectAllItem>(item)) {
+      joined_column_offset = 0;
+      for (const auto& table : tables) {
+        const std::size_t column_count = table.schema().columns().size();
+        for (std::size_t column_index = 0; column_index < column_count; ++column_index) {
+          bound_select_items.push_back(
+              BoundColumnRef{0, joined_column_offset + column_index});
+        }
+        joined_column_offset += column_count;
+      }
+      continue;
+    }
+
+    if (const auto* column_ref = std::get_if<ColumnRef>(&item)) {
+      bound_select_items.push_back(bindColumnRefForJoinedTables(*column_ref, tables));
+      continue;
+    }
+
+    const auto& aggregate_call = std::get<UnboundAggregateCall>(item);
+    bound_select_items.push_back(BoundAggregateCall{
+        aggregate_call.function,
+        bindColumnRefForJoinedTables(aggregate_call.argument, tables)});
+  }
+
+  return bound_select_items;
+}
+
+std::vector<BoundAggregateCall> extractAggregateCalls(
+    const std::vector<BoundSelectItem>& bound_select_items) {
+  std::vector<BoundAggregateCall> aggregate_calls;
+  for (const auto& item : bound_select_items) {
+    if (const auto* aggregate_call = std::get_if<BoundAggregateCall>(&item)) {
+      aggregate_calls.push_back(*aggregate_call);
+    }
+  }
+
+  return aggregate_calls;
+}
+
+std::vector<std::size_t> extractProjectionIndices(
+    const std::vector<BoundSelectItem>& bound_select_items) {
+  std::vector<std::size_t> projection_indices;
+  projection_indices.reserve(bound_select_items.size());
+  for (const auto& item : bound_select_items) {
+    const BoundColumnRef& column_ref = std::get<BoundColumnRef>(item);
+    projection_indices.push_back(column_ref.column_index);
+  }
+
+  return projection_indices;
+}
+
+std::vector<TypedRow> consumeOperator(Operator& root) {
+  root.open();
+
+  std::vector<TypedRow> rows;
+  while (std::optional<TypedRow> row = root.next()) {
+    rows.push_back(*row);
+  }
+
+  root.close();
+  return rows;
+}
+
 std::vector<BoundComparisonPredicate> bindPredicatesForSingleTable(
     const std::vector<UnboundComparisonPredicate>& predicates,
     const Table& table) {
@@ -149,38 +257,7 @@ std::vector<BoundComparisonPredicate> bindPredicatesForSingleTable(
 BoundOperand bindOperandForJoinedTables(const UnboundOperand& operand,
                                         const std::vector<Table>& tables) {
   if (const auto* column_ref = std::get_if<ColumnRef>(&operand)) {
-    std::size_t joined_column_offset = 0;
-    const Table* matched_table = nullptr;
-
-    for (const auto& table : tables) {
-      if (!column_ref->table_name.empty() && column_ref->table_name != table.name()) {
-        joined_column_offset += table.schema().columns().size();
-        continue;
-      }
-
-      const int column_index = table.schema().getColumnIndex(column_ref->column_name);
-      if (column_index < 0) {
-        joined_column_offset += table.schema().columns().size();
-        continue;
-      }
-
-      if (matched_table != nullptr && column_ref->table_name.empty()) {
-        throw std::runtime_error("Ambiguous joined predicate column: " +
-                                 column_ref->column_name);
-      }
-
-      matched_table = &table;
-      return BoundColumnRef{0, joined_column_offset +
-                                   static_cast<std::size_t>(column_index)};
-    }
-
-    if (!column_ref->table_name.empty()) {
-      throw std::runtime_error("Unknown predicate column on table " +
-                               column_ref->table_name + ": " +
-                               column_ref->column_name);
-    }
-    throw std::runtime_error("Unknown joined predicate column: " +
-                             column_ref->column_name);
+    return bindColumnRefForJoinedTables(*column_ref, tables);
   }
 
   if (const auto* value = std::get_if<FieldValue>(&operand)) {
@@ -449,6 +526,8 @@ std::vector<TypedRow> executor::read(BufferPool& pool,
 
   const std::vector<UnboundComparisonPredicate> predicates =
       parser.extractComparisonPredicates(joined_schema);
+    const std::vector<UnboundSelectItem> select_items =
+      parser.extractSelectItems();
 
   std::vector<std::unique_ptr<Operator>> sources;
   for (auto& table : tables) {
@@ -459,7 +538,11 @@ std::vector<TypedRow> executor::read(BufferPool& pool,
       std::vector<UnboundComparisonPredicate> index_predicates;
       index_predicates = extractIndexedPredicates(
           table, predicates, indexed_column_index.value());
-      source = buildReadSource(pool, table, index_predicates);
+      if (canUseIndexForDmlCandidateCollection(index_predicates)) {
+        source = buildReadSource(pool, table, std::move(index_predicates));
+      } else {
+        source = buildReadSource(pool, table, {});
+      }
     } else {
       source = buildReadSource(pool, table, {});
     }
@@ -476,6 +559,19 @@ std::vector<TypedRow> executor::read(BufferPool& pool,
         bindOperandForJoinedTables(predicate.right, tables)});
   }
 
+  const std::vector<BoundSelectItem> bound_select_items =
+      bindSelectItems(select_items, tables);
+  bool has_aggregate = false;
+  bool has_projection = false;
+  for (const auto& item : bound_select_items) {
+    has_aggregate = has_aggregate || std::holds_alternative<BoundAggregateCall>(item);
+    has_projection = has_projection || std::holds_alternative<BoundColumnRef>(item);
+  }
+  if (has_aggregate && has_projection) {
+    throw std::runtime_error(
+        "Mixing aggregate and non-aggregate select items is not supported.");
+  }
+
   // join
   std::unique_ptr<Operator> pipeline;
   if (sources.size() == 1) {
@@ -487,6 +583,26 @@ std::vector<TypedRow> executor::read(BufferPool& pool,
   // filter
   pipeline = std::make_unique<FilterOperator>(std::move(pipeline),
                                               bound_predicates);
+
+  if (has_aggregate) {
+    std::vector<OrderBySpec> order_by_specs =
+        parser.extractOrderBySpecs(joined_schema);
+    if (!order_by_specs.empty()) {
+      throw std::runtime_error("ORDER BY is not supported for aggregate queries.");
+    }
+
+    pipeline = std::make_unique<AggregateOperator>(
+        std::move(pipeline), extractAggregateCalls(bound_select_items));
+
+    std::optional<std::size_t> limit_count = parser.extractLimitCount();
+    if (limit_count.has_value()) {
+      pipeline = std::make_unique<LimitOperator>(std::move(pipeline),
+                                                limit_count.value());
+    }
+
+    return consumeOperator(*pipeline);
+  }
+
   // order by
   std::vector<OrderBySpec> order_by_specs =
       parser.extractOrderBySpecs(joined_schema);
@@ -494,24 +610,19 @@ std::vector<TypedRow> executor::read(BufferPool& pool,
     pipeline = std::make_unique<OrderByOperator>(std::move(pipeline),
                                                 std::move(order_by_specs));
   }
-  std::optional<std::size_t> limit_count = parser.extractLimitCount();
+
   // limit
+  std::optional<std::size_t> limit_count = parser.extractLimitCount();
   if (limit_count.has_value()) {
     pipeline = std::make_unique<LimitOperator>(std::move(pipeline),
                                               limit_count.value());
   }
+  
   // projection
   std::vector<std::size_t> projection_indices =
-      parser.extractProjectionIndices(joined_schema);
+      extractProjectionIndices(bound_select_items);
   ProjectionOperator projection(std::move(pipeline), projection_indices);
-  projection.open();
-
-  std::vector<TypedRow> rows;
-  while (std::optional<TypedRow> row = projection.next()) {
-    rows.push_back(*row);
-  }
-  projection.close();
-  return rows;
+  return consumeOperator(projection);
 }
 
 void executor::create_table(const CreateTableParser& parser) {
