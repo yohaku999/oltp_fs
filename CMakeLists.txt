@@ -68,9 +68,9 @@ add_library(dbfs_src
     src/execution/parsers/drop_table_parser.cpp
     src/execution/parsers/insert_parser.cpp
     src/execution/parsers/update_parser.cpp
-    src/execution/operators/heap_fetch.cpp
+    src/execution/operators/heap_fetch_operator.cpp
     src/execution/executor.cpp
-    src/execution/operators/index_scan.cpp
+    src/execution/operators/index_scan_operator.cpp
     src/execution/operators/limit_operator.cpp
     src/execution/operators/loop_join_operator.cpp
     src/execution/operators/orderby_operator.cpp

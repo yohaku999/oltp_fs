@@ -1,12 +1,12 @@
-#include "heap_fetch.h"
+#include "heap_fetch_operator.h"
 
 #include "execution/operators/rid_operator.h"
 #include "schema/schema.h"
-#include "storage/record/record_cell.h"
 #include "storage/index/rid.h"
+#include "storage/page/page.h"
+#include "storage/record/record_cell.h"
 #include "storage/runtime/bufferpool.h"
 #include "storage/runtime/file.h"
-#include "storage/page/page.h"
 
 HeapFetchOperator::HeapFetchOperator(std::unique_ptr<RidOperator> child,
                                      BufferPool& pool, File& heap_file,

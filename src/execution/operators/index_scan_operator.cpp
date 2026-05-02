@@ -1,10 +1,10 @@
-#include "index_scan.h"
+#include "index_scan_operator.h"
 
 #include <limits>
 #include <stdexcept>
 
-#include "storage/index/btreecursor.h"
 #include "logging.h"
+#include "storage/index/btreecursor.h"
 
 namespace {
 
