@@ -28,6 +28,7 @@
 #include "storage/index/btreecursor.h"
 #include "storage/page/cell.h"
 #include "storage/page/page.h"
+#include "storage/record/heap_file_access.h"
 #include "storage/record/record_cell.h"
 #include "storage/record/record_serializer.h"
 #include "storage/runtime/bufferpool.h"
@@ -94,41 +95,24 @@ std::vector<TypedRow> collectRows(Operator& root) {
   return rows;
 }
 
-std::vector<RID> collectHeapRids(BufferPool& pool, File& heap_file) {
-  std::vector<RID> rids;
-  for (uint16_t page_id = 0; page_id <= heap_file.getMaxPageID(); ++page_id) {
-    Page* page = pool.pinPage(page_id, heap_file);
-    for (uint16_t slot_id = 0; slot_id < page->slotCount(); ++slot_id) {
-      char* cell_start = page->slotCellStartUnchecked(slot_id);
-      if (!Cell::isValid(cell_start)) {
-        continue;
-      }
-      rids.push_back(RID{page_id, slot_id});
-    }
-    pool.unpinPage(page, heap_file);
-  }
-
-  return rids;
-}
-
 std::vector<RID> collectCandidateRids(
     BufferPool& pool, Table& table,
     const std::vector<UnboundComparisonPredicate>& predicates) {
   const std::optional<std::size_t> indexed_column_index =
       table.indexedColumnIndex();
   if (!indexed_column_index.has_value()) {
-    return collectHeapRids(pool, table.heapFile());
+    return heap_file_access::collectRids(pool, table.heapFile());
   }
 
   std::vector<UnboundComparisonPredicate> index_predicates = collectPredicatesForIndexedColumn(
       table, predicates, indexed_column_index.value());
   if (!canUseIndexForDmlCandidateCollection(index_predicates)) {
-    return collectHeapRids(pool, table.heapFile());
+    return heap_file_access::collectRids(pool, table.heapFile());
   }
 
   const auto index_file = table.indexFile();
   if (!index_file.has_value()) {
-    return collectHeapRids(pool, table.heapFile());
+    return heap_file_access::collectRids(pool, table.heapFile());
   }
 
   std::vector<RID> rids;
