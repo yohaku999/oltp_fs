@@ -71,16 +71,17 @@ std::vector<UnboundComparisonPredicate> collectPredicatesForIndexedColumn(
   return index_predicates;
 }
 
-std::vector<TypedRow> collectRows(Operator& root) {
-  root.open();
+template <typename Item, typename Source>
+std::vector<Item> collectItems(Source& source) {
+  source.open();
 
-  std::vector<TypedRow> rows;
-  while (std::optional<TypedRow> row = root.next()) {
-    rows.push_back(*row);
+  std::vector<Item> items;
+  while (std::optional<Item> item = source.next()) {
+    items.push_back(*item);
   }
 
-  root.close();
-  return rows;
+  source.close();
+  return items;
 }
 
 /**
@@ -106,15 +107,9 @@ std::vector<RID> collectRidsNarrowedByPredicates(
     return heap_file_access::collectRids(pool, table.heapFile());
   }
 
-  std::vector<RID> rids;
   IndexScanOperator scan(pool, index_file->get(),
                          DiscreteIntegerIndexPredicates{std::move(index_predicates)});
-  scan.open();
-  while (std::optional<RID> rid = scan.next()) {
-    rids.push_back(*rid);
-  }
-  scan.close();
-  return rids;
+  return collectItems<RID>(scan);
 }
 
 std::size_t removeMatchingRows(BufferPool& pool, Table& table,
@@ -347,7 +342,7 @@ std::vector<TypedRow> executor::read(BufferPool& pool,
                                                 limit_count.value());
     }
 
-    return collectRows(*pipeline);
+    return collectItems<TypedRow>(*pipeline);
   }
 
   // order by
@@ -369,7 +364,7 @@ std::vector<TypedRow> executor::read(BufferPool& pool,
   std::vector<std::size_t> projection_indices =
       select_item::extractProjectionIndices(bound_select_items);
   ProjectionOperator projection(std::move(pipeline), projection_indices);
-  return collectRows(projection);
+  return collectItems<TypedRow>(projection);
 }
 
 void executor::create_table(const CreateTableParser& parser) {
