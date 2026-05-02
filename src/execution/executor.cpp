@@ -202,7 +202,7 @@ std::vector<std::size_t> extractProjectionIndices(
   return projection_indices;
 }
 
-std::vector<TypedRow> consumeOperator(Operator& root) {
+std::vector<TypedRow> collectRows(Operator& root) {
   root.open();
 
   std::vector<TypedRow> rows;
@@ -567,7 +567,7 @@ std::vector<TypedRow> executor::read(BufferPool& pool,
                                                 limit_count.value());
     }
 
-    return consumeOperator(*pipeline);
+    return collectRows(*pipeline);
   }
 
   // order by
@@ -589,7 +589,7 @@ std::vector<TypedRow> executor::read(BufferPool& pool,
   std::vector<std::size_t> projection_indices =
       extractProjectionIndices(bound_select_items);
   ProjectionOperator projection(std::move(pipeline), projection_indices);
-  return consumeOperator(projection);
+  return collectRows(projection);
 }
 
 void executor::create_table(const CreateTableParser& parser) {
