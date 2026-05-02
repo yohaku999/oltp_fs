@@ -199,6 +199,8 @@ std::size_t updateMatchingRows(BufferPool& pool, Table& table,
                                const UpdateParser& parser, WAL& wal) {
   const std::vector<RID> rids =
       collectRidsNarrowedByPredicates(pool, table, predicates);
+  const std::vector<BoundComparisonPredicate> bound_predicates =
+      binder::bindPredicates(predicates, {table});
   std::vector<TypedRow> updated_rows;
 
   for (const RID& rid : rids) {
@@ -211,8 +213,7 @@ std::size_t updateMatchingRows(BufferPool& pool, Table& table,
 
     TypedRow original_row = RecordCellView(cell_start).getTypedRow(table.schema());
     pool.unpinPage(page, table.heapFile());
-    if (!matchesPredicates(original_row,
-                           binder::bindPredicates(predicates, {table}))) {
+    if (!matchesPredicates(original_row, bound_predicates)) {
       continue;
     }
 
