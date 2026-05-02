@@ -49,6 +49,7 @@ std::vector<UnboundComparisonPredicate> collectPredicatesForIndexedColumn(
   for (const auto& predicate : predicates) {
     // index predicate must be in the form of "column op value" or "value op column",
     // where column is the indexed column and value is a constant value for now.
+    // We currently use only equality predicates for index narrowing.
     // TODO: change this limit when implementing hash join.
     const auto* column_ref = std::get_if<ColumnRef>(&predicate.left);
     const auto* value = std::get_if<FieldValue>(&predicate.right);
@@ -62,25 +63,12 @@ std::vector<UnboundComparisonPredicate> collectPredicatesForIndexedColumn(
     if (column_ref->column_name != indexed_column_name) {
       continue;
     }
+    if (predicate.op != Op::Eq) {
+      continue;
+    }
     index_predicates.push_back(predicate);
   }
   return index_predicates;
-}
-
-bool canUseIndexForDmlCandidateCollection(
-  const std::vector<UnboundComparisonPredicate>& index_predicates) {
-  if (index_predicates.empty()) {
-    return false;
-  }
-
-  // TODO: currently we suppot only equality predicates for indexed column. We need to update range scan for index search.
-  for (const auto& predicate : index_predicates) {
-    if (predicate.op != Op::Eq) {
-      return false;
-    }
-  }
-
-  return true;
 }
 
 std::vector<TypedRow> collectRows(Operator& root) {
@@ -95,7 +83,10 @@ std::vector<TypedRow> collectRows(Operator& root) {
   return rows;
 }
 
-std::vector<RID> collectCandidateRids(
+/**
+ * Collect RIDs of records narrowed by the given predicates.
+ */
+std::vector<RID> collectRidsNarrowedByPredicates(
     BufferPool& pool, Table& table,
     const std::vector<UnboundComparisonPredicate>& predicates) {
   const std::optional<std::size_t> indexed_column_index =
@@ -106,7 +97,7 @@ std::vector<RID> collectCandidateRids(
 
   std::vector<UnboundComparisonPredicate> index_predicates = collectPredicatesForIndexedColumn(
       table, predicates, indexed_column_index.value());
-  if (!canUseIndexForDmlCandidateCollection(index_predicates)) {
+  if (index_predicates.empty()) {
     return heap_file_access::collectRids(pool, table.heapFile());
   }
 
@@ -129,13 +120,13 @@ std::vector<RID> collectCandidateRids(
 std::size_t removeMatchingRows(BufferPool& pool, Table& table,
                                const std::vector<UnboundComparisonPredicate>& predicates,
                                WAL& wal) {
-  const std::vector<RID> candidate_rids =
-      collectCandidateRids(pool, table, predicates);
+  const std::vector<RID> rids =
+      collectRidsNarrowedByPredicates(pool, table, predicates);
   const std::vector<BoundComparisonPredicate> bound_predicates =
       binder::bindPredicates(predicates, {table});
   std::size_t removed_count = 0;
 
-  for (const RID& rid : candidate_rids) {
+  for (const RID& rid : rids) {
     Page* page = pool.pinPage(rid.heap_page_id, table.heapFile());
     char* cell_start = page->slotCellStartUnchecked(rid.slot_id);
     if (!Cell::isValid(cell_start)) {
@@ -211,11 +202,11 @@ void insertRow(BufferPool& pool, Table& table, const TypedRow& row, WAL& wal) {
 std::size_t updateMatchingRows(BufferPool& pool, Table& table,
                                const std::vector<UnboundComparisonPredicate>& predicates,
                                const UpdateParser& parser, WAL& wal) {
-  const std::vector<RID> candidate_rids =
-      collectCandidateRids(pool, table, predicates);
+  const std::vector<RID> rids =
+      collectRidsNarrowedByPredicates(pool, table, predicates);
   std::vector<TypedRow> updated_rows;
 
-  for (const RID& rid : candidate_rids) {
+  for (const RID& rid : rids) {
     Page* page = pool.pinPage(rid.heap_page_id, table.heapFile());
     char* cell_start = page->slotCellStartUnchecked(rid.slot_id);
     if (!Cell::isValid(cell_start)) {
@@ -303,11 +294,7 @@ std::vector<TypedRow> executor::read(BufferPool& pool,
       std::vector<UnboundComparisonPredicate> index_predicates;
       index_predicates = collectPredicatesForIndexedColumn(
           table, predicates, indexed_column_index.value());
-      if (canUseIndexForDmlCandidateCollection(index_predicates)) {
-        source = buildReadSource(pool, table, std::move(index_predicates));
-      } else {
-        source = buildReadSource(pool, table, {});
-      }
+      source = buildReadSource(pool, table, std::move(index_predicates));
     } else {
       source = buildReadSource(pool, table, {});
     }
