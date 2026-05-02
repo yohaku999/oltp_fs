@@ -107,6 +107,12 @@ class RecordCellView {
             fixed_payload_ptr += column.size();
             break;
           }
+          case Column::Type::Double: {
+            row.values.emplace_back(
+                readValue<Column::DoubleType>(fixed_payload_ptr));
+            fixed_payload_ptr += column.size();
+            break;
+          }
           case Column::Type::Varchar:
             throw std::runtime_error(
                 "Unsupported fixed-length column type in RecordCellView.");
@@ -120,6 +126,7 @@ class RecordCellView {
             ++variable_column_index;
             break;
           case Column::Type::Integer:
+          case Column::Type::Double:
             throw std::runtime_error(
                 "Unsupported variable-length column type in RecordCellView.");
         }

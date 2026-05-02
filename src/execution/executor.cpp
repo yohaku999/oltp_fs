@@ -152,15 +152,21 @@ std::size_t removeMatchingRows(BufferPool& pool, Table& table,
 }
 
 void insertRow(BufferPool& pool, Table& table, const TypedRow& row, WAL& wal) {
-  const int key = table.extractIndexKey(row);
-  File& index_file = table.requireIndexFile();
-  LOG_INFO("Inserting record with key {} into table {}.", key, table.name());
-  std::optional<RID> existing_rid =
-      BTreeCursor::findRID(pool, index_file, key);
-  if (existing_rid.has_value()) {
-    throw std::runtime_error(
-        "Key " + std::to_string(key) +
-        " already exists. Duplicate keys are not allowed.");
+  const auto index_file = table.indexFile();
+  std::optional<int> key;
+  if (index_file.has_value()) {
+    key = table.extractIndexKey(row);
+    LOG_INFO("Inserting record with key {} into table {}.", key.value(),
+             table.name());
+    std::optional<RID> existing_rid =
+        BTreeCursor::findRID(pool, index_file->get(), key.value());
+    if (existing_rid.has_value()) {
+      throw std::runtime_error(
+          "Key " + std::to_string(key.value()) +
+          " already exists. Duplicate keys are not allowed.");
+    }
+  } else {
+    LOG_INFO("Inserting record into table {}.", table.name());
   }
 
   RecordSerializer cell(table.schema(), row);
@@ -189,9 +195,11 @@ void insertRow(BufferPool& pool, Table& table, const TypedRow& row, WAL& wal) {
 
   pool.unpinPage(heap_page, table.heapFile());
 
-  BTreeCursor::insertIntoIndex(pool, index_file, key,
-                               static_cast<uint16_t>(target_page_id),
-                               static_cast<uint16_t>(inserted_slot_id.value()));
+  if (index_file.has_value()) {
+    BTreeCursor::insertIntoIndex(pool, index_file->get(), key.value(),
+                                 static_cast<uint16_t>(target_page_id),
+                                 static_cast<uint16_t>(inserted_slot_id.value()));
+  }
 }
 
 std::size_t updateMatchingRows(BufferPool& pool, Table& table,

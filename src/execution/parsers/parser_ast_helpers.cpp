@@ -148,6 +148,18 @@ FieldValue parseConstFieldValue(const nlohmann::json& item,
             constant.at("fval").at("fval").get<std::string>()));
       }
       throw std::runtime_error("Unsupported constant for Integer column");
+    case Column::Type::Double:
+      if (constant.contains("fval")) {
+        return std::stod(constant.at("fval").at("fval").get<std::string>());
+      }
+      if (constant.contains("ival")) {
+        return static_cast<Column::DoubleType>(
+            constant.at("ival").at("ival").get<int>());
+      }
+      if (constant.contains("sval")) {
+        return std::stod(constant.at("sval").at("sval").get<std::string>());
+      }
+      throw std::runtime_error("Unsupported constant for Double column");
     case Column::Type::Varchar:
       if (constant.contains("sval")) {
         return constant.at("sval").at("sval").get<std::string>();

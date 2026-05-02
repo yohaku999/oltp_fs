@@ -6,9 +6,10 @@
 
 class Column {
  public:
-  enum class Type { Integer, Varchar };
+  enum class Type { Integer, Double, Varchar };
 
   using IntegerType = std::int32_t;
+  using DoubleType = double;
   using VarcharType = std::string;
 
   Column(std::string name, Type type)
@@ -20,6 +21,8 @@ class Column {
     switch (type_) {
       case Type::Integer:
         return sizeof(IntegerType);
+      case Type::Double:
+        return sizeof(DoubleType);
       case Type::Varchar:
         return sizeof(VarcharType);
     }
@@ -34,6 +37,8 @@ class Column {
     switch (type) {
       case Type::Integer:
         return "Integer";
+      case Type::Double:
+        return "Double";
       case Type::Varchar:
         return "Varchar";
     }
@@ -43,6 +48,9 @@ class Column {
   static Type typeFromString(const std::string& type_name) {
     if (type_name == "Integer") {
       return Type::Integer;
+    }
+    if (type_name == "Double") {
+      return Type::Double;
     }
     if (type_name == "Varchar") {
       return Type::Varchar;
@@ -56,6 +64,8 @@ class Column {
   static bool inferVariableLength(Type type) {
     switch (type) {
       case Type::Integer:
+        return false;
+      case Type::Double:
         return false;
       case Type::Varchar:
         return true;

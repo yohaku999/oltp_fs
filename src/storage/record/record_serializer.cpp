@@ -21,6 +21,10 @@ std::size_t getNonNullFieldPayloadSize(const Column& column,
       getFieldValueOrThrow<Column::IntegerType>(
           value, "Expected Integer field value.");
       return sizeof(Column::IntegerType);
+    case Column::Type::Double:
+      getFieldValueOrThrow<Column::DoubleType>(
+          value, "Expected Double field value.");
+      return sizeof(Column::DoubleType);
     case Column::Type::Varchar:
       return getFieldValueOrThrow<Column::VarcharType>(
                  value, "Expected Varchar field value.")
@@ -35,6 +39,12 @@ void writeNonNullFieldValue(const Column& column, const FieldValue& value,
     case Column::Type::Integer: {
       const auto fixed_value = getFieldValueOrThrow<Column::IntegerType>(
           value, "Expected Integer field value.");
+      std::memcpy(dst, &fixed_value, sizeof(fixed_value));
+      return;
+    }
+    case Column::Type::Double: {
+      const auto fixed_value = getFieldValueOrThrow<Column::DoubleType>(
+          value, "Expected Double field value.");
       std::memcpy(dst, &fixed_value, sizeof(fixed_value));
       return;
     }

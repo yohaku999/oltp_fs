@@ -10,6 +10,8 @@
 #include <unordered_set>
 #include <vector>
 
+#include <unistd.h>
+
 #include "catalog/table.h"
 #include "execution/parsers/create_index_parser.h"
 #include "execution/parsers/create_table_parser.h"
@@ -93,6 +95,12 @@ class ExecutorTest : public ::testing::Test {
                      InsertParser("INSERT INTO executor_join_table VALUES (" +
                                   std::to_string(key) + ", '" + label + "')"),
                      *wal_);
+  }
+
+  static std::string uniqueTableName(const std::string& prefix) {
+    static int next_id = 0;
+    return prefix + "_" + std::to_string(getpid()) + "_" +
+           std::to_string(next_id++);
   }
 };
 
@@ -624,4 +632,106 @@ TEST_F(ExecutorTest, CreateAndDropTable) {
 
   executor::drop_table(DropTableParser("DROP TABLE new_table"));
   EXPECT_FALSE(Table::isPersisted(new_table_name));
+}
+
+TEST_F(ExecutorTest, ReadSelectRoundTripsTraceLikeWarehouseRow) {
+  const std::string new_table_name = uniqueTableName("warehouse_read_test");
+
+  executor::create_table(CreateTableParser(
+      "CREATE TABLE " + new_table_name + " ("
+      "w_id int NOT NULL, "
+      "w_ytd decimal(12, 2) NOT NULL, "
+      "w_tax decimal(4, 4) NOT NULL, "
+      "w_name varchar(10) NOT NULL, "
+      "w_state char(2) NOT NULL, "
+      "w_zip char(9) NOT NULL, "
+      "PRIMARY KEY (w_id))"));
+
+      {
+      Table warehouse = Table::getTable(new_table_name);
+      ASSERT_EQ(warehouse.schema().columns().size(), 6u);
+      EXPECT_EQ(warehouse.schema().columns()[0].getType(), Column::Type::Integer);
+      EXPECT_EQ(warehouse.schema().columns()[1].getType(), Column::Type::Double);
+      EXPECT_EQ(warehouse.schema().columns()[2].getType(), Column::Type::Double);
+      EXPECT_EQ(warehouse.schema().columns()[3].getType(), Column::Type::Varchar);
+      EXPECT_EQ(warehouse.schema().columns()[4].getType(), Column::Type::Varchar);
+      EXPECT_EQ(warehouse.schema().columns()[5].getType(), Column::Type::Varchar);
+
+      executor::insert(*pool_, warehouse,
+               InsertParser(
+                 "INSERT INTO " + new_table_name + " VALUES "
+                 "(1, 300000.0, 0.1817, 'eiyjz', 'YX', '123456789')"),
+               *wal_);
+
+      std::vector<TypedRow> rows = executor::read(
+        *pool_, SelectParser(
+              "SELECT * FROM " + new_table_name + " WHERE w_id = 1"));
+
+      ASSERT_EQ(rows.size(), 1u);
+      ASSERT_EQ(rows[0].values.size(), 6u);
+      EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[0]), 1);
+      EXPECT_DOUBLE_EQ(std::get<Column::DoubleType>(rows[0].values[1]), 300000.0);
+      EXPECT_DOUBLE_EQ(std::get<Column::DoubleType>(rows[0].values[2]), 0.1817);
+      EXPECT_EQ(std::get<Column::VarcharType>(rows[0].values[3]), "eiyjz");
+      EXPECT_EQ(std::get<Column::VarcharType>(rows[0].values[4]), "YX");
+      EXPECT_EQ(std::get<Column::VarcharType>(rows[0].values[5]), "123456789");
+      }
+
+  EXPECT_TRUE(Table::isPersisted(new_table_name));
+}
+
+TEST_F(ExecutorTest, ReadSelectRoundTripsTraceLikeCustomerRow) {
+  const std::string new_table_name = uniqueTableName("customer_read_test");
+
+  executor::create_table(CreateTableParser(
+      "CREATE TABLE " + new_table_name + " ("
+      "c_w_id int NOT NULL, "
+      "c_d_id int NOT NULL, "
+      "c_id int NOT NULL, "
+      "c_balance decimal(12, 2) NOT NULL, "
+      "c_ytd_payment float NOT NULL, "
+      "c_since timestamp NOT NULL, "
+      "c_first varchar(16) NOT NULL, "
+      "c_middle char(2) NOT NULL, "
+      "PRIMARY KEY (c_w_id, c_d_id, c_id))"));
+
+      {
+      Table customer = Table::getTable(new_table_name);
+      ASSERT_EQ(customer.schema().columns().size(), 8u);
+      EXPECT_EQ(customer.schema().columns()[0].getType(), Column::Type::Integer);
+      EXPECT_EQ(customer.schema().columns()[1].getType(), Column::Type::Integer);
+      EXPECT_EQ(customer.schema().columns()[2].getType(), Column::Type::Integer);
+      EXPECT_EQ(customer.schema().columns()[3].getType(), Column::Type::Double);
+      EXPECT_EQ(customer.schema().columns()[4].getType(), Column::Type::Double);
+      EXPECT_EQ(customer.schema().columns()[5].getType(), Column::Type::Varchar);
+      EXPECT_EQ(customer.schema().columns()[6].getType(), Column::Type::Varchar);
+      EXPECT_EQ(customer.schema().columns()[7].getType(), Column::Type::Varchar);
+
+      executor::insert(*pool_, customer,
+               InsertParser(
+                 "INSERT INTO " + new_table_name + " VALUES "
+                 "(1, 1, 1, -10.0, 10.0, '2026-04-18 04:43:47.487', "
+                 "'xzgptnvhrvng', 'OE')"),
+               *wal_);
+
+      std::vector<TypedRow> rows = executor::read(
+        *pool_, SelectParser(
+              "SELECT * FROM " + new_table_name + " "
+              "WHERE c_w_id = 1 AND c_d_id = 1 AND c_id = 1"));
+
+      ASSERT_EQ(rows.size(), 1u);
+      ASSERT_EQ(rows[0].values.size(), 8u);
+      EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[0]), 1);
+      EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[1]), 1);
+      EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[2]), 1);
+      EXPECT_DOUBLE_EQ(std::get<Column::DoubleType>(rows[0].values[3]), -10.0);
+      EXPECT_DOUBLE_EQ(std::get<Column::DoubleType>(rows[0].values[4]), 10.0);
+      EXPECT_EQ(std::get<Column::VarcharType>(rows[0].values[5]),
+            "2026-04-18 04:43:47.487");
+      EXPECT_EQ(std::get<Column::VarcharType>(rows[0].values[6]),
+            "xzgptnvhrvng");
+      EXPECT_EQ(std::get<Column::VarcharType>(rows[0].values[7]), "OE");
+      }
+
+  EXPECT_TRUE(Table::isPersisted(new_table_name));
 }
