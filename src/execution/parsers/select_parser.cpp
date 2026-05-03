@@ -53,15 +53,30 @@ std::vector<UnboundSelectItem> SelectParser::extractSelectItems() const {
                      [](unsigned char ch) {
                        return static_cast<char>(std::tolower(ch));
                      });
-      if (function_name != "sum") {
-        throw std::runtime_error("Unsupported aggregate function: " +
-                                 function_name);
+      if (function_name == "sum") {
+        const auto& args = func_call.at("args");
+        select_items.push_back(UnboundAggregateCall{
+            AggregateFunction::Sum,
+            parseColumnRef(args.at(0).at("ColumnRef"))});
+        continue;
       }
 
-      const auto& args = func_call.at("args");
-      select_items.push_back(UnboundAggregateCall{
-          AggregateFunction::Sum, parseColumnRef(args.at(0).at("ColumnRef"))});
-      continue;
+      if (function_name == "count") {
+        if (func_call.value("agg_star", false)) {
+          select_items.push_back(UnboundAggregateCall{
+              AggregateFunction::Count, AggregateAllColumnsArgument{}});
+          continue;
+        }
+
+        const auto& args = func_call.at("args");
+        select_items.push_back(UnboundAggregateCall{
+            AggregateFunction::Count,
+            parseColumnRef(args.at(0).at("ColumnRef"))});
+        continue;
+      }
+
+      throw std::runtime_error("Unsupported aggregate function: " +
+                                 function_name);
     }
 
     throw std::runtime_error("Unsupported select target.");

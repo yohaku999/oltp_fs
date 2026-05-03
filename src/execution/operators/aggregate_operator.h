@@ -19,6 +19,7 @@ class AggregateOperator : public Operator {
   void open() override {
     child_->open();
     emitted_ = false;
+    accumulators_ = buildAccumulators();
     result_row_ = computeAggregate();
   }
 
@@ -34,33 +35,101 @@ class AggregateOperator : public Operator {
   void close() override { child_->close(); }
 
  private:
+  class AggregateAccumulator {
+   public:
+    virtual ~AggregateAccumulator() = default;
+    virtual void accumulate(const TypedRow& row) = 0;
+    virtual FieldValue finalize() const = 0;
+  };
+
+  class CountAccumulator : public AggregateAccumulator {
+   public:
+    explicit CountAccumulator(BoundAggregateArgument argument)
+        : argument_(std::move(argument)) {}
+
+    void accumulate(const TypedRow& row) override {
+      if (std::holds_alternative<AggregateAllColumnsArgument>(argument_)) {
+        ++count_;
+        return;
+      }
+
+      const auto& argument = std::get<BoundColumnRef>(argument_);
+      const FieldValue& value = row.values[argument.column_index];
+      if (!std::holds_alternative<std::monostate>(value)) {
+        ++count_;
+      }
+    }
+
+    FieldValue finalize() const override {
+      return static_cast<Column::IntegerType>(count_);
+    }
+
+   private:
+    BoundAggregateArgument argument_;
+    long long count_ = 0;
+  };
+
+  class SumAccumulator : public AggregateAccumulator {
+   public:
+    explicit SumAccumulator(BoundColumnRef argument)
+        : argument_(std::move(argument)) {}
+
+    void accumulate(const TypedRow& row) override {
+      const FieldValue& value = row.values[argument_.column_index];
+      if (std::holds_alternative<std::monostate>(value)) {
+        return;
+      }
+
+      integer_sum_ += std::get<Column::IntegerType>(value);
+      saw_value_ = true;
+    }
+
+    FieldValue finalize() const override {
+      if (!saw_value_) {
+        return std::monostate{};
+      }
+      return static_cast<Column::IntegerType>(integer_sum_);
+    }
+
+   private:
+    BoundColumnRef argument_;
+    long long integer_sum_ = 0;
+    bool saw_value_ = false;
+  };
+
+  static std::unique_ptr<AggregateAccumulator> createAccumulator(
+      const BoundAggregateCall& aggregate_call) {
+    switch (aggregate_call.function) {
+      case AggregateFunction::Count:
+        return std::make_unique<CountAccumulator>(aggregate_call.argument);
+      case AggregateFunction::Sum:
+        return std::make_unique<SumAccumulator>(
+            std::get<BoundColumnRef>(aggregate_call.argument));
+    }
+
+    throw std::runtime_error("Unsupported aggregate function.");
+  }
+
+  std::vector<std::unique_ptr<AggregateAccumulator>> buildAccumulators() const {
+    std::vector<std::unique_ptr<AggregateAccumulator>> accumulators;
+    accumulators.reserve(aggregate_calls_.size());
+    for (const auto& aggregate_call : aggregate_calls_) {
+      accumulators.push_back(createAccumulator(aggregate_call));
+    }
+    return accumulators;
+  }
+
   TypedRow computeAggregate() {
-    std::vector<long long> sums(aggregate_calls_.size(), 0);
-    std::vector<bool> saw_value(aggregate_calls_.size(), false);
-
     while (std::optional<TypedRow> row = child_->next()) {
-      for (std::size_t index = 0; index < aggregate_calls_.size(); ++index) {
-        const BoundAggregateCall& aggregate_call = aggregate_calls_[index];
-        const FieldValue& value = row->values[aggregate_call.argument.column_index];
-        if (std::holds_alternative<std::monostate>(value)) {
-          continue;
-        }
-
-        sums[index] += std::get<Column::IntegerType>(value);
-        saw_value[index] = true;
+      for (std::size_t index = 0; index < accumulators_.size(); ++index) {
+        accumulators_[index]->accumulate(*row);
       }
     }
 
     TypedRow result_row;
-    result_row.values.reserve(aggregate_calls_.size());
-    for (std::size_t index = 0; index < aggregate_calls_.size(); ++index) {
-      if (!saw_value[index]) {
-        result_row.values.push_back(std::monostate{});
-        continue;
-      }
-
-      result_row.values.push_back(
-          static_cast<Column::IntegerType>(sums[index]));
+    result_row.values.reserve(accumulators_.size());
+    for (const auto& accumulator : accumulators_) {
+      result_row.values.push_back(accumulator->finalize());
     }
 
     return result_row;
@@ -68,6 +137,7 @@ class AggregateOperator : public Operator {
 
   std::unique_ptr<Operator> child_;
   std::vector<BoundAggregateCall> aggregate_calls_;
+  std::vector<std::unique_ptr<AggregateAccumulator>> accumulators_;
   TypedRow result_row_;
   bool emitted_ = false;
 };

@@ -8,13 +8,22 @@
 
 enum class AggregateFunction {
   Sum,
+  Count,
 };
 
 struct SelectAllItem {};
 
+struct AggregateAllColumnsArgument {};
+
+using UnboundAggregateArgument =
+    std::variant<ColumnRef, AggregateAllColumnsArgument>;
+
+using BoundAggregateArgument =
+    std::variant<BoundColumnRef, AggregateAllColumnsArgument>;
+
 struct UnboundAggregateCall {
   AggregateFunction function;
-  ColumnRef argument;
+  UnboundAggregateArgument argument;
 };
 
 using UnboundSelectItem =
@@ -22,7 +31,7 @@ using UnboundSelectItem =
 
 struct BoundAggregateCall {
   AggregateFunction function;
-  BoundColumnRef argument;
+  BoundAggregateArgument argument;
 };
 
 using BoundSelectItem = std::variant<BoundColumnRef, BoundAggregateCall>;

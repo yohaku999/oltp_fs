@@ -88,9 +88,16 @@ std::vector<BoundSelectItem> bindSelectItems(
     }
 
     const auto& aggregate_call = std::get<UnboundAggregateCall>(item);
-    bound_select_items.push_back(BoundAggregateCall{
-        aggregate_call.function,
-        bindColumnRef(aggregate_call.argument, tables)});
+    if (const auto* column_ref =
+        std::get_if<ColumnRef>(&aggregate_call.argument)) {
+      bound_select_items.push_back(
+        BoundAggregateCall{aggregate_call.function,
+                 bindColumnRef(*column_ref, tables)});
+    }else{
+      // This is an aggregate call with the special argument meaning "all columns".
+      bound_select_items.push_back(BoundAggregateCall{
+      aggregate_call.function, AggregateAllColumnsArgument{}});
+    }
   }
 
   return bound_select_items;
