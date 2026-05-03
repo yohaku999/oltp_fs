@@ -43,7 +43,8 @@ under `/benchbase/benchbase-config` so they do not overwrite BenchBase's built-i
   - dbfs runs also emit `dbfs_query_trace.csv` in the dbfs result directory,
     containing per-query-shape timing aggregates for bottleneck analysis.
   - PostgreSQL runs emit `postgres_query_trace.csv` in the postgres result
-    directory, exported from `pg_stat_statements` for query-level comparison.
+    directory from the tracing JDBC wrapper, using the same client-side SQL
+    shape style as dbfs.
 - `notebooks/`
   - Jupyter notebooks for analysis and visualization.
 
@@ -55,7 +56,9 @@ under `/benchbase/benchbase-config` so they do not overwrite BenchBase's built-i
 4. Open notebooks as needed to visualize throughput and latency.
 5. Inspect `dbfs_query_trace.csv` and `postgres_query_trace.csv`, or use the
   comparison notebook to rank query shapes by total time, mean latency, and
-  max latency.
+  max latency. Both files use client-side JDBC shapes; if you need
+  PostgreSQL server-side rewritten SQL, inspect `pg_stat_statements`
+  separately inside the container.
 
 If you want to keep the same compose environment and change only the
  BenchBase config file, place another XML file under `benchbase-config/` and run:

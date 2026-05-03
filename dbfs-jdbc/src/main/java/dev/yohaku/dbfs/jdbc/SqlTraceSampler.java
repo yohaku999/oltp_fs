@@ -16,8 +16,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 
 final class SqlTraceSampler {
-    private static final String TRACE_FILE_ENV = "DBFS_SQL_TRACE_SAMPLE_FILE";
-    private static final String TIMING_TRACE_FILE_ENV = "DBFS_SQL_TRACE_TIMING_FILE";
+    private static final String TRACE_FILE_ENV = "SQL_TRACE_SAMPLE_FILE";
+    private static final String LEGACY_TRACE_FILE_ENV = "DBFS_SQL_TRACE_SAMPLE_FILE";
+    private static final String TIMING_TRACE_FILE_ENV = "SQL_TRACE_TIMING_FILE";
+    private static final String LEGACY_TIMING_TRACE_FILE_ENV = "DBFS_SQL_TRACE_TIMING_FILE";
     private static final Set<String> SEEN_KEYS = ConcurrentHashMap.newKeySet();
     private static final Map<String, TimingAggregate> TIMING_AGGREGATES = new ConcurrentHashMap<>();
     private static final AtomicBoolean SHUTDOWN_HOOK_REGISTERED = new AtomicBoolean(false);
@@ -26,7 +28,7 @@ final class SqlTraceSampler {
     }
 
     static void record(String kind, String shapeKey, Supplier<String> renderedSqlSupplier) {
-        String traceFile = System.getenv(TRACE_FILE_ENV);
+        String traceFile = traceFile(TRACE_FILE_ENV, LEGACY_TRACE_FILE_ENV);
         if (traceFile == null || traceFile.isBlank()) {
             return;
         }
@@ -63,7 +65,18 @@ final class SqlTraceSampler {
             long elapsedMicros,
             boolean succeeded,
             String errorType) {
-        String traceFile = System.getenv(TIMING_TRACE_FILE_ENV);
+        recordTiming(kind, shapeKey, renderedSqlSupplier, elapsedMicros, 1, succeeded, errorType);
+    }
+
+    static void recordTiming(
+            String kind,
+            String shapeKey,
+            Supplier<String> renderedSqlSupplier,
+            long elapsedMicros,
+            long executionCount,
+            boolean succeeded,
+            String errorType) {
+        String traceFile = traceFile(TIMING_TRACE_FILE_ENV, LEGACY_TIMING_TRACE_FILE_ENV);
         if (traceFile == null || traceFile.isBlank()) {
             return;
         }
@@ -80,9 +93,12 @@ final class SqlTraceSampler {
             if (aggregate.sampleSql == null) {
                 aggregate.sampleSql = compactSql(renderedSqlSupplier.get());
             }
-            aggregate.executions += 1;
+            aggregate.executions += executionCount;
             aggregate.totalElapsedMicros += elapsedMicros;
-            aggregate.maxElapsedMicros = Math.max(aggregate.maxElapsedMicros, elapsedMicros);
+            long representativeElapsedMicros = executionCount <= 1
+                    ? elapsedMicros
+                    : Math.max(1, elapsedMicros / executionCount);
+            aggregate.maxElapsedMicros = Math.max(aggregate.maxElapsedMicros, representativeElapsedMicros);
             if (!succeeded) {
                 aggregate.failures += 1;
                 aggregate.lastErrorType = errorType;
@@ -142,6 +158,14 @@ final class SqlTraceSampler {
 
     private static String compactSql(String sql) {
         return sql.replaceAll("\\s+", " ").trim();
+    }
+
+    private static String traceFile(String primaryEnv, String legacyEnv) {
+        String traceFile = System.getenv(primaryEnv);
+        if (traceFile != null && !traceFile.isBlank()) {
+            return traceFile;
+        }
+        return System.getenv(legacyEnv);
     }
 
     private static String csvField(String value) {

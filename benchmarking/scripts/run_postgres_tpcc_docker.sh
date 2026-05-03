@@ -15,44 +15,11 @@ DBFS_JDBC_ROOT="${REPO_ROOT}/dbfs-jdbc"
 BENCHBASE_CONFIG_PATH=""
 POSTGRES_DB_NAME="${POSTGRES_DB:-benchbase}"
 POSTGRES_USER_NAME="${POSTGRES_USER:-admin}"
+DBFS_DRIVER_CLASS='dev.yohaku.dbfs.jdbc.DbfsDriver'
+TRACING_POSTGRES_DRIVER_CLASS='dev.yohaku.dbfs.jdbc.TracingPostgresDriver'
 
 usage() {
   echo "Usage: $0 --config <path>" >&2
-}
-
-ensure_postgres_query_stats_ready() {
-  "${compose_cmd[@]}" exec -T postgres psql -U "${POSTGRES_USER_NAME}" -d "${POSTGRES_DB_NAME}" \
-    -v ON_ERROR_STOP=1 \
-    -c 'CREATE EXTENSION IF NOT EXISTS pg_stat_statements;' \
-    -c 'SELECT pg_stat_statements_reset();' >/dev/null
-}
-
-export_postgres_query_stats() {
-  local host_results_dir="$1"
-  local output_path="${host_results_dir}/postgres_query_trace.csv"
-
-  mkdir -p "${host_results_dir}"
-  "${compose_cmd[@]}" exec -T postgres psql -U "${POSTGRES_USER_NAME}" -d "${POSTGRES_DB_NAME}" \
-    -v ON_ERROR_STOP=1 \
-    -c "\\copy (
-      SELECT
-        query,
-        calls,
-        total_exec_time,
-        mean_exec_time,
-        min_exec_time,
-        max_exec_time,
-        rows,
-        shared_blks_hit,
-        shared_blks_read,
-        temp_blks_read,
-        temp_blks_written
-      FROM pg_stat_statements
-      WHERE dbid = (SELECT oid FROM pg_database WHERE datname = '${POSTGRES_DB_NAME}')
-        AND query NOT LIKE 'CREATE EXTENSION IF NOT EXISTS pg_stat_statements%'
-        AND query NOT LIKE 'SELECT pg_stat_statements_reset()%'
-      ORDER BY total_exec_time DESC
-    ) TO STDOUT WITH CSV HEADER" >"${output_path}"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -93,7 +60,7 @@ if [[ "${BENCHBASE_CONFIG_PATH}" != "${CONFIG_ROOT}"/* ]]; then
   exit 1
 fi
 
-if grep -q '<driver>dev.yohaku.dbfs.jdbc.DbfsDriver</driver>' "${BENCHBASE_CONFIG_PATH}"; then
+if grep -Eq "<driver>(${DBFS_DRIVER_CLASS}|${TRACING_POSTGRES_DRIVER_CLASS})</driver>" "${BENCHBASE_CONFIG_PATH}"; then
   echo "Building dbfs-jdbc jar for BenchBase classpath..."
   (cd "${DBFS_JDBC_ROOT}" && mvn -q -DskipTests package)
 fi
@@ -101,9 +68,9 @@ fi
 CONTAINER_CONFIG="/benchbase/benchbase-config/${BENCHBASE_CONFIG_PATH#"${CONFIG_ROOT}/"}"
 
 WORKLOAD="tpcc"
-if grep -q '<driver>dev.yohaku.dbfs.jdbc.DbfsDriver</driver>' "${BENCHBASE_CONFIG_PATH}"; then
+if grep -q "<driver>${DBFS_DRIVER_CLASS}</driver>" "${BENCHBASE_CONFIG_PATH}"; then
   ENGINE="dbfs"
-elif grep -q '<driver>org.postgresql.Driver</driver>' "${BENCHBASE_CONFIG_PATH}"; then
+elif grep -Eq "<driver>(${TRACING_POSTGRES_DRIVER_CLASS}|org.postgresql.Driver)</driver>" "${BENCHBASE_CONFIG_PATH}"; then
   ENGINE="postgres"
 else
   echo "Unable to determine benchmark engine from ${BENCHBASE_CONFIG_PATH}" >&2
@@ -120,12 +87,16 @@ compose_cmd=(docker compose -f "${COMPOSE_FILE}")
 benchbase_env_args=()
 
 if [[ "${ENGINE}" == "dbfs" ]]; then
-  trace_timing_file=${DBFS_SQL_TRACE_TIMING_FILE:-"${RESULTS_DIR_CONTAINER}/dbfs_query_trace.csv"}
-  benchbase_env_args+=( -e "DBFS_SQL_TRACE_TIMING_FILE=${trace_timing_file}" )
+  trace_timing_file=${SQL_TRACE_TIMING_FILE:-${DBFS_SQL_TRACE_TIMING_FILE:-"${RESULTS_DIR_CONTAINER}/dbfs_query_trace.csv"}}
+  benchbase_env_args+=( -e "SQL_TRACE_TIMING_FILE=${trace_timing_file}" )
+elif [[ "${ENGINE}" == "postgres" ]] && grep -q "<driver>${TRACING_POSTGRES_DRIVER_CLASS}</driver>" "${BENCHBASE_CONFIG_PATH}"; then
+  trace_timing_file=${SQL_TRACE_TIMING_FILE:-"${RESULTS_DIR_CONTAINER}/postgres_query_trace.csv"}
+  benchbase_env_args+=( -e "SQL_TRACE_TIMING_FILE=${trace_timing_file}" )
 fi
 
-if [[ -n "${DBFS_SQL_TRACE_SAMPLE_FILE:-}" ]]; then
-  benchbase_env_args+=( -e "DBFS_SQL_TRACE_SAMPLE_FILE=${DBFS_SQL_TRACE_SAMPLE_FILE}" )
+trace_sample_file=${SQL_TRACE_SAMPLE_FILE:-${DBFS_SQL_TRACE_SAMPLE_FILE:-}}
+if [[ -n "${trace_sample_file}" ]]; then
+  benchbase_env_args+=( -e "SQL_TRACE_SAMPLE_FILE=${trace_sample_file}" )
 fi
 
 echo "Starting PostgreSQL compose service..."
@@ -143,11 +114,6 @@ for i in {1..60}; do
     exit 1
   fi
 done
-
-if [[ "${ENGINE}" == "postgres" ]]; then
-  echo "Resetting PostgreSQL query stats..."
-  ensure_postgres_query_stats_ready
-fi
 
 echo "Running BenchBase compose service..."
 echo "  Compare:    ${RUN_LABEL}"
@@ -172,11 +138,6 @@ else
     --load=true \
     --execute=true \
     -d "${RESULTS_DIR_CONTAINER}"
-fi
-
-if [[ "${ENGINE}" == "postgres" ]]; then
-  echo "Exporting PostgreSQL query stats..."
-  export_postgres_query_stats "${HOST_RESULTS_DIR}"
 fi
 
 echo "BenchBase run completed. Results should be under:"

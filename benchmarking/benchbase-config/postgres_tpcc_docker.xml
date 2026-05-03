@@ -2,8 +2,8 @@
 <parameters>
 
     <type>POSTGRES</type>
-    <driver>org.postgresql.Driver</driver>
-    <url>jdbc:postgresql://postgres:5432/benchbase?sslmode=disable&amp;ApplicationName=tpcc&amp;reWriteBatchedInserts=true</url>
+    <driver>dev.yohaku.dbfs.jdbc.TracingPostgresDriver</driver>
+    <url>jdbc:trace:postgresql://postgres:5432/benchbase?sslmode=disable&amp;ApplicationName=tpcc&amp;reWriteBatchedInserts=true</url>
     <username>admin</username>
     <password>password</password>
     <reconnectOnConnectionFailure>true</reconnectOnConnectionFailure>

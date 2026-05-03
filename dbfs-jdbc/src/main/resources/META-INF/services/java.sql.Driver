@@ -1,1 +1,2 @@
 dev.yohaku.dbfs.jdbc.DbfsDriver
+dev.yohaku.dbfs.jdbc.TracingPostgresDriver
