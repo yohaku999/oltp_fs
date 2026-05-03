@@ -40,6 +40,10 @@ under `/benchbase/benchbase-config` so they do not overwrite BenchBase's built-i
   - Recommended structure:
     - `results/<compare-label>/tpcc/postgres/...`
     - `results/<compare-label>/tpcc/dbfs/...`
+  - dbfs runs also emit `dbfs_query_trace.csv` in the dbfs result directory,
+    containing per-query-shape timing aggregates for bottleneck analysis.
+  - PostgreSQL runs emit `postgres_query_trace.csv` in the postgres result
+    directory, exported from `pg_stat_statements` for query-level comparison.
 - `notebooks/`
   - Jupyter notebooks for analysis and visualization.
 
@@ -49,6 +53,9 @@ under `/benchbase/benchbase-config` so they do not overwrite BenchBase's built-i
 2. Choose a shared compare label and run both targets with the same `RUN_LABEL`.
 3. Inspect results under `results/<compare-label>/tpcc/<engine>/`.
 4. Open notebooks as needed to visualize throughput and latency.
+5. Inspect `dbfs_query_trace.csv` and `postgres_query_trace.csv`, or use the
+  comparison notebook to rank query shapes by total time, mean latency, and
+  max latency.
 
 If you want to keep the same compose environment and change only the
  BenchBase config file, place another XML file under `benchbase-config/` and run:

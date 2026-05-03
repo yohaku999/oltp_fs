@@ -10,6 +10,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 
 class DbfsStatementHandler extends DbfsProxyHandler {
     protected final DbfsConnectionState state;
@@ -24,6 +25,11 @@ class DbfsStatementHandler extends DbfsProxyHandler {
 
     DbfsStatementHandler(DbfsConnectionState state) {
         this.state = state;
+    }
+
+    @FunctionalInterface
+    protected interface SqlExecution<T> {
+        T run() throws SQLException;
     }
 
     @Override
@@ -50,8 +56,8 @@ class DbfsStatementHandler extends DbfsProxyHandler {
         if (name.equals("executeQuery") && args.length == 1) {
             ensureOpen();
             String sql = normalizedSql(args[0]);
-            SqlTraceSampler.record("QUERY", sql, () -> sql);
-            QueryResult result = state.client().executeQuery(sql, List.of());
+            QueryResult result = executeWithTrace("QUERY", sql, () -> sql,
+                    () -> state.client().executeQuery(sql, List.of()));
             currentResultSet = DbfsJdbcProxyFactory.newResultSet(result);
             updateCount = -1;
             return currentResultSet;
@@ -59,8 +65,8 @@ class DbfsStatementHandler extends DbfsProxyHandler {
         if ((name.equals("executeUpdate") || name.equals("executeLargeUpdate")) && args.length >= 1) {
             ensureOpen();
             String sql = normalizedSql(args[0]);
-            SqlTraceSampler.record("UPDATE", sql, () -> sql);
-            int updated = state.client().executeUpdate(sql, List.of());
+            int updated = executeWithTrace("UPDATE", sql, () -> sql,
+                    () -> state.client().executeUpdate(sql, List.of()));
             currentResultSet = null;
             updateCount = updated;
             if (name.equals("executeLargeUpdate")) {
@@ -72,14 +78,15 @@ class DbfsStatementHandler extends DbfsProxyHandler {
             ensureOpen();
             String sql = normalizedSql(args[0]);
             if (looksLikeQuery(sql)) {
-                SqlTraceSampler.record("QUERY", sql, () -> sql);
-                currentResultSet = DbfsJdbcProxyFactory.newResultSet(state.client().executeQuery(sql, List.of()));
+                QueryResult result = executeWithTrace("QUERY", sql, () -> sql,
+                        () -> state.client().executeQuery(sql, List.of()));
+                currentResultSet = DbfsJdbcProxyFactory.newResultSet(result);
                 updateCount = -1;
                 return true;
             }
 
-            SqlTraceSampler.record("UPDATE", sql, () -> sql);
-            updateCount = state.client().executeUpdate(sql, List.of());
+            updateCount = executeWithTrace("UPDATE", sql, () -> sql,
+                    () -> state.client().executeUpdate(sql, List.of()));
             currentResultSet = null;
             return false;
         }
@@ -213,6 +220,39 @@ class DbfsStatementHandler extends DbfsProxyHandler {
         }
     }
 
+    protected <T> T executeWithTrace(
+            String kind,
+            String shapeKey,
+            Supplier<String> renderedSqlSupplier,
+            SqlExecution<T> execution) throws SQLException {
+        SqlTraceSampler.record(kind, shapeKey, renderedSqlSupplier);
+        long startedAtNanos = System.nanoTime();
+        try {
+            T result = execution.run();
+            SqlTraceSampler.recordTiming(
+                    kind,
+                    shapeKey,
+                    renderedSqlSupplier,
+                    elapsedMicros(startedAtNanos),
+                    true,
+                    null);
+            return result;
+        } catch (SQLException | RuntimeException exception) {
+            SqlTraceSampler.recordTiming(
+                    kind,
+                    shapeKey,
+                    renderedSqlSupplier,
+                    elapsedMicros(startedAtNanos),
+                    false,
+                    exception.getClass().getSimpleName());
+            throw exception;
+        }
+    }
+
+    private long elapsedMicros(long startedAtNanos) {
+        return (System.nanoTime() - startedAtNanos) / 1000;
+    }
+
     private Object unwrapStatement(Object proxy, Class<?> targetType) throws SQLException {
         if (targetType.isInstance(proxy)) {
             return proxy;
@@ -238,8 +278,12 @@ final class DbfsPreparedStatementHandler extends DbfsStatementHandler {
         if (name.equals("executeQuery") && args.length == 0) {
             ensureOpen();
             List<Object> ordered = orderedParameters(parameters);
-            SqlTraceSampler.record("QUERY", sql, () -> SqlLiteralRenderer.render(sql, ordered));
-            ResultSet resultSet = DbfsJdbcProxyFactory.newResultSet(state.client().executeQuery(sql, ordered));
+            QueryResult result = executeWithTrace(
+                    "QUERY",
+                    sql,
+                    () -> SqlLiteralRenderer.render(sql, ordered),
+                    () -> state.client().executeQuery(sql, ordered));
+            ResultSet resultSet = DbfsJdbcProxyFactory.newResultSet(result);
             setCurrentResultSet(resultSet);
             setUpdateCount(-1);
             return resultSet;
@@ -247,8 +291,11 @@ final class DbfsPreparedStatementHandler extends DbfsStatementHandler {
         if ((name.equals("executeUpdate") || name.equals("executeLargeUpdate")) && args.length == 0) {
             ensureOpen();
             List<Object> ordered = orderedParameters(parameters);
-            SqlTraceSampler.record("UPDATE", sql, () -> SqlLiteralRenderer.render(sql, ordered));
-            int updated = state.client().executeUpdate(sql, ordered);
+            int updated = executeWithTrace(
+                    "UPDATE",
+                    sql,
+                    () -> SqlLiteralRenderer.render(sql, ordered),
+                    () -> state.client().executeUpdate(sql, ordered));
             setCurrentResultSet(null);
             setUpdateCount(updated);
             if (name.equals("executeLargeUpdate")) {
@@ -260,14 +307,21 @@ final class DbfsPreparedStatementHandler extends DbfsStatementHandler {
             ensureOpen();
             List<Object> ordered = orderedParameters(parameters);
             if (looksLikeQuery(sql)) {
-                SqlTraceSampler.record("QUERY", sql, () -> SqlLiteralRenderer.render(sql, ordered));
-                setCurrentResultSet(DbfsJdbcProxyFactory.newResultSet(state.client().executeQuery(sql, ordered)));
+                QueryResult result = executeWithTrace(
+                        "QUERY",
+                        sql,
+                        () -> SqlLiteralRenderer.render(sql, ordered),
+                        () -> state.client().executeQuery(sql, ordered));
+                setCurrentResultSet(DbfsJdbcProxyFactory.newResultSet(result));
                 setUpdateCount(-1);
                 return true;
             }
 
-            SqlTraceSampler.record("UPDATE", sql, () -> SqlLiteralRenderer.render(sql, ordered));
-            setUpdateCount(state.client().executeUpdate(sql, ordered));
+            setUpdateCount(executeWithTrace(
+                    "UPDATE",
+                    sql,
+                    () -> SqlLiteralRenderer.render(sql, ordered),
+                    () -> state.client().executeUpdate(sql, ordered)));
             setCurrentResultSet(null);
             return false;
         }
@@ -293,8 +347,11 @@ final class DbfsPreparedStatementHandler extends DbfsStatementHandler {
             int[] updateCounts = new int[batchParameters.size()];
             for (int index = 0; index < batchParameters.size(); index += 1) {
                 List<Object> batch = batchParameters.get(index);
-                SqlTraceSampler.record("UPDATE", sql, () -> SqlLiteralRenderer.render(sql, batch));
-                updateCounts[index] = state.client().executeUpdate(sql, batch);
+                updateCounts[index] = executeWithTrace(
+                        "UPDATE",
+                        sql,
+                        () -> SqlLiteralRenderer.render(sql, batch),
+                        () -> state.client().executeUpdate(sql, batch));
             }
             batchParameters.clear();
             setCurrentResultSet(null);
@@ -306,8 +363,11 @@ final class DbfsPreparedStatementHandler extends DbfsStatementHandler {
             long[] updateCounts = new long[batchParameters.size()];
             for (int index = 0; index < batchParameters.size(); index += 1) {
                 List<Object> batch = batchParameters.get(index);
-                SqlTraceSampler.record("UPDATE", sql, () -> SqlLiteralRenderer.render(sql, batch));
-                updateCounts[index] = state.client().executeUpdate(sql, batch);
+                updateCounts[index] = executeWithTrace(
+                        "UPDATE",
+                        sql,
+                        () -> SqlLiteralRenderer.render(sql, batch),
+                        () -> state.client().executeUpdate(sql, batch));
             }
             batchParameters.clear();
             setCurrentResultSet(null);
