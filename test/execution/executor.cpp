@@ -549,6 +549,40 @@ TEST_F(ExecutorTest, UpdateFallsBackToHeapScanForNonIndexedPredicate) {
     EXPECT_EQ("row_107", singleVarcharValue(rows107.front()));
 }
 
+TEST_F(ExecutorTest, UpdateAppliesSelfPlusLiteralExpression) {
+  const std::string table_name = uniqueTableName("update_expression_test");
+
+  executor::create_table(CreateTableParser(
+      "CREATE TABLE " + table_name + " ("
+      "id int NOT NULL, "
+      "amount decimal(12, 2) NOT NULL, "
+      "PRIMARY KEY (id))"));
+
+  {
+    Table table = Table::getTable(table_name);
+    executor::insert(*pool_, table,
+                     InsertParser("INSERT INTO " + table_name +
+                                  " VALUES (1, 10.5)"),
+                     *wal_);
+
+    executor::update(*pool_, table,
+                     UpdateParser("UPDATE " + table_name +
+                                  " SET amount = amount + 2.5 WHERE id = 1"),
+                     *wal_);
+  }
+
+  std::vector<TypedRow> rows = executor::read(
+      *pool_, SelectParser("SELECT amount FROM " + table_name +
+                           " WHERE id = 1"));
+  ASSERT_EQ(rows.size(), 1u);
+  ASSERT_EQ(rows[0].values.size(), 1u);
+  ASSERT_TRUE(std::holds_alternative<Column::DoubleType>(rows[0].values[0]));
+  EXPECT_DOUBLE_EQ(std::get<Column::DoubleType>(rows[0].values[0]), 13.0);
+
+  executor::drop_table(DropTableParser("DROP TABLE " + table_name));
+  EXPECT_FALSE(Table::isPersisted(table_name));
+}
+
 TEST_F(ExecutorTest, InsertPageOverflow) {
   try {
     Table& table = *table_;

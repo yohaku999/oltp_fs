@@ -1,5 +1,6 @@
 #include "execution/parsers/parser_ast_helpers.h"
 #include "execution/comparison_predicate.h"
+
 #include <stdexcept>
 #include <string>
 
@@ -32,6 +33,18 @@ Op parseComparisonOp(const nlohmann::json& expr) {
     return Op::Le;
   }
   throw std::runtime_error("Unsupported comparison operator: " + op);
+}
+
+UpdateBinaryOperator parseUpdateBinaryOperator(const nlohmann::json& expr) {
+  const std::string op =
+      expr.at("name").at(0).at("String").at("sval").get<std::string>();
+  if (op == "+") {
+    return UpdateBinaryOperator::Add;
+  }
+  if (op == "-") {
+    return UpdateBinaryOperator::Subtract;
+  }
+  throw std::runtime_error("Unsupported UPDATE operator: " + op);
 }
 
 void extractPredicatesFromNode(const nlohmann::json& node, const Schema& schema,
@@ -174,6 +187,43 @@ FieldValue parseConstFieldValue(const nlohmann::json& item,
   }
 
   throw std::runtime_error("Unknown column type in parser AST helper");
+}
+
+UnboundUpdateValue parseUpdateAssignmentValue(
+    const nlohmann::json& expression, const Schema& schema,
+    const std::string& target_column_name, Column::Type target_type) {
+  if (expression.contains("A_Const")) {
+    return parseConstFieldValue(expression, target_type);
+  }
+
+  if (!expression.contains("A_Expr")) {
+    throw std::runtime_error(
+        "UPDATE supports only literal assignment or self plus/minus literal.");
+  }
+
+  const auto& binary_expr = expression.at("A_Expr");
+  const auto& lhs = binary_expr.at("lexpr");
+  const auto& rhs = binary_expr.at("rexpr");
+  if (!lhs.contains("ColumnRef") || !rhs.contains("A_Const")) {
+    throw std::runtime_error(
+        "UPDATE arithmetic must be in the form target = target +/- literal.");
+  }
+
+  const ColumnRef column_ref = ::parseColumnRef(lhs.at("ColumnRef"));
+  if (column_ref.column_name != target_column_name) {
+    throw std::runtime_error(
+        "UPDATE arithmetic supports only self plus/minus literal.");
+  }
+
+  const int column_index = schema.getColumnIndex(column_ref.column_name);
+  if (column_index < 0) {
+    throw std::runtime_error("Unknown UPDATE expression column: " +
+                             column_ref.column_name);
+  }
+
+  return UnboundSelfArithmeticUpdate{
+      parseUpdateBinaryOperator(binary_expr),
+      parseConstFieldValue(rhs, target_type)};
 }
 
 std::vector<UnboundComparisonPredicate> parseWhereClausePredicates(

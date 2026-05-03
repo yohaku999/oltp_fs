@@ -4,6 +4,14 @@
 
 namespace binder {
 
+namespace {
+
+bool isNumericType(Column::Type type) {
+  return type == Column::Type::Integer || type == Column::Type::Double;
+}
+
+}  // namespace
+
 BoundColumnRef bindColumnRef(const ColumnRef& column_ref,
                              const std::vector<Table>& tables) {
   std::size_t joined_column_offset = 0;
@@ -101,6 +109,51 @@ std::vector<BoundComparisonPredicate> bindPredicates(
   }
 
   return bound_predicates;
+}
+
+std::vector<BoundUpdateAssignment> bindUpdateAssignments(
+    const std::vector<UnboundUpdateAssignment>& assignments,
+    const Table& table) {
+  std::vector<BoundUpdateAssignment> bound_assignments;
+  bound_assignments.reserve(assignments.size());
+
+  for (const auto& assignment : assignments) {
+    const int column_index =
+        table.schema().getColumnIndex(assignment.target_column_name);
+    if (column_index < 0) {
+      throw std::runtime_error("Unknown UPDATE target column: " +
+                               assignment.target_column_name);
+    }
+
+    const std::size_t target_column_index = static_cast<std::size_t>(column_index);
+    const Column::Type target_type =
+        table.schema().columns().at(target_column_index).getType();
+
+    if (const auto* literal = std::get_if<FieldValue>(&assignment.value)) {
+      bound_assignments.push_back(
+          BoundUpdateAssignment{target_column_index, *literal});
+      continue;
+    }
+
+    if (!isNumericType(target_type)) {
+      throw std::runtime_error(
+          "UPDATE arithmetic requires a numeric target column.");
+    }
+
+    const auto& arithmetic = std::get<UnboundSelfArithmeticUpdate>(assignment.value);
+    if (!std::holds_alternative<Column::IntegerType>(arithmetic.literal) &&
+        !std::holds_alternative<Column::DoubleType>(arithmetic.literal)) {
+      throw std::runtime_error(
+          "UPDATE arithmetic requires a numeric literal.");
+    }
+
+    bound_assignments.push_back(BoundUpdateAssignment{
+        target_column_index,
+        BoundSelfArithmeticUpdate{target_column_index, arithmetic.op,
+                                  arithmetic.literal}});
+  }
+
+  return bound_assignments;
 }
 
 }  // namespace binder

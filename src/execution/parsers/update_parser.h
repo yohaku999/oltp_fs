@@ -4,7 +4,7 @@
 #include <vector>
 
 #include "execution/comparison_predicate.h"
-#include "tuple/typed_row.h"
+#include "execution/update_assignment.h"
 #include "execution/parsers/pg_query_json_parser.h"
 
 class Schema;
@@ -18,8 +18,8 @@ class UpdateParser : private PgQueryJsonParser {
 
   std::vector<UnboundComparisonPredicate> extractComparisonPredicates(
       const Schema& schema) const;
-  TypedRow extractUpdatedRow(const Schema& schema,
-                             const TypedRow& original_row) const;
+  std::vector<UnboundUpdateAssignment> extractAssignments(
+    const Schema& schema) const;
 
  private:
   const nlohmann::json& updateStatement() const;

@@ -42,6 +42,59 @@
 
 namespace {
 
+FieldValue evaluateBoundUpdateValue(const BoundUpdateValue& value,
+                                    const TypedRow& original_row,
+                                    const Schema& schema,
+                                    std::size_t target_column_index) {
+  if (const auto* literal = std::get_if<FieldValue>(&value)) {
+    return *literal;
+  }
+
+  const auto& arithmetic = std::get<BoundSelfArithmeticUpdate>(value);
+  const FieldValue& original_value =
+      original_row.values.at(arithmetic.target_column_index);
+  const Column::Type target_type =
+      schema.columns().at(target_column_index).getType();
+
+  if (target_type == Column::Type::Integer) {
+    const int lhs = std::get<Column::IntegerType>(original_value);
+    const int rhs = std::get<Column::IntegerType>(arithmetic.literal);
+    if (arithmetic.op == UpdateBinaryOperator::Add) {
+      return lhs + rhs;
+    }
+    return lhs - rhs;
+  }
+
+  if (target_type == Column::Type::Double) {
+    const double lhs = std::holds_alternative<Column::DoubleType>(original_value)
+                           ? std::get<Column::DoubleType>(original_value)
+                           : static_cast<double>(
+                                 std::get<Column::IntegerType>(original_value));
+    const double rhs = std::holds_alternative<Column::DoubleType>(arithmetic.literal)
+                           ? std::get<Column::DoubleType>(arithmetic.literal)
+                           : static_cast<double>(
+                                 std::get<Column::IntegerType>(arithmetic.literal));
+    if (arithmetic.op == UpdateBinaryOperator::Add) {
+      return lhs + rhs;
+    }
+    return lhs - rhs;
+  }
+
+  throw std::runtime_error("Unsupported UPDATE arithmetic target type.");
+}
+
+TypedRow applyUpdateAssignments(const TypedRow& original_row,
+                                const std::vector<BoundUpdateAssignment>& assignments,
+                                const Schema& schema) {
+  TypedRow updated_row = original_row;
+  for (const auto& assignment : assignments) {
+    updated_row.values[assignment.target_column_index] =
+        evaluateBoundUpdateValue(assignment.value, original_row, schema,
+                                 assignment.target_column_index);
+  }
+  return updated_row;
+}
+
 template <typename Item, typename Source>
 std::vector<Item> collectItems(Source& source) {
   source.open();
@@ -164,6 +217,9 @@ void insertRow(BufferPool& pool, Table& table, const TypedRow& row, WAL& wal) {
 std::size_t updateMatchingRows(BufferPool& pool, Table& table,
                                const std::vector<UnboundComparisonPredicate>& predicates,
                                const UpdateParser& parser, WAL& wal) {
+  const std::vector<BoundUpdateAssignment> bound_assignments =
+    binder::bindUpdateAssignments(parser.extractAssignments(table.schema()),
+                  table);
   const std::vector<RID> rids =
       collectRidsNarrowedByPredicates(pool, table, predicates);
   const std::vector<BoundComparisonPredicate> bound_predicates =
@@ -184,7 +240,8 @@ std::size_t updateMatchingRows(BufferPool& pool, Table& table,
       continue;
     }
 
-    updated_rows.push_back(parser.extractUpdatedRow(table.schema(), original_row));
+    updated_rows.push_back(
+        applyUpdateAssignments(original_row, bound_assignments, table.schema()));
   }
 
   const std::size_t removed_count = removeMatchingRows(pool, table, predicates, wal);
