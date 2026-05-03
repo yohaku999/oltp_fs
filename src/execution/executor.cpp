@@ -166,7 +166,6 @@ std::size_t removeMatchingRows(BufferPool& pool, Table& table,
 void insertRow(BufferPool& pool, Table& table, const TypedRow& row, WAL& wal) {
   const auto index_file = table.indexFile();
   std::optional<std::string> key;
-  // index fileがあるかを確認している。それでもいいけど、tableにindexがあるか？とか、index更新してって頼めば？
   if (index_file.has_value()) {
     key = table.extractIndexKey(row);
     LOG_INFO("Inserting record with key {} into table {}.",
@@ -174,7 +173,6 @@ void insertRow(BufferPool& pool, Table& table, const TypedRow& row, WAL& wal) {
              table.name());
     std::optional<RID> existing_rid =
         BTreeCursor::findRID(pool, index_file->get(), key.value());
-    // ここで重複チェックしているけど、そもそもこの仕様必要なの？単純に全てのindex更新をtryすればいいのでは？
     if (existing_rid.has_value()) {
       throw std::runtime_error(
           "Duplicate key is not allowed for indexed table: " + table.name());
