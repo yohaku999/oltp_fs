@@ -293,6 +293,44 @@ TEST_F(ExecutorTest, ReadSelectCountIgnoresNullValues) {
   EXPECT_FALSE(Table::isPersisted(table_name));
 }
 
+TEST_F(ExecutorTest, ReadSelectReturnsCountDistinctForSingleColumn) {
+  const std::string table_name = uniqueTableName("count_distinct_test");
+
+  executor::create_table(CreateTableParser(
+      "CREATE TABLE " + table_name + " ("
+      "id int, "
+      "note varchar)"));
+
+  {
+    Table table = Table::getTable(table_name);
+    executor::insert(*pool_, table,
+                     InsertParser("INSERT INTO " + table_name +
+                                  " VALUES (1, 'alpha')"),
+                     *wal_);
+    executor::insert(*pool_, table,
+                     InsertParser("INSERT INTO " + table_name +
+                                  " VALUES (2, 'alpha')"),
+                     *wal_);
+    executor::insert(*pool_, table,
+                     InsertParser("INSERT INTO " + table_name +
+                                  " VALUES (3, 'beta')"),
+                     *wal_);
+    executor::insert(*pool_, table,
+                     InsertParser("INSERT INTO " + table_name +
+                                  " (id) VALUES (4)"),
+                     *wal_);
+  }
+
+  std::vector<TypedRow> rows = executor::read(
+      *pool_, SelectParser("SELECT COUNT(DISTINCT note) FROM " + table_name));
+  ASSERT_EQ(rows.size(), 1u);
+  ASSERT_EQ(rows[0].values.size(), 1u);
+  EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[0]), 2);
+
+  executor::drop_table(DropTableParser("DROP TABLE " + table_name));
+  EXPECT_FALSE(Table::isPersisted(table_name));
+}
+
 TEST_F(ExecutorTest, InsertAndGetMultipleRecords) {
   Table& table = *table_;
   std::vector<std::pair<int, std::string>> records = {

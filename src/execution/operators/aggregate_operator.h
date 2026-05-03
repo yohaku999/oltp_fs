@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <optional>
+#include <set>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -69,6 +70,29 @@ class AggregateOperator : public Operator {
     long long count_ = 0;
   };
 
+  class CountDistinctAccumulator : public AggregateAccumulator {
+   public:
+    explicit CountDistinctAccumulator(BoundColumnRef argument)
+        : argument_(std::move(argument)) {}
+
+    void accumulate(const TypedRow& row) override {
+      const FieldValue& value = row.values[argument_.column_index];
+      if (std::holds_alternative<std::monostate>(value)) {
+        return;
+      }
+
+      distinct_values_.insert(value);
+    }
+
+    FieldValue finalize() const override {
+      return static_cast<Column::IntegerType>(distinct_values_.size());
+    }
+
+   private:
+    BoundColumnRef argument_;
+    std::set<FieldValue> distinct_values_;
+  };
+
   class SumAccumulator : public AggregateAccumulator {
    public:
     explicit SumAccumulator(BoundColumnRef argument)
@@ -101,6 +125,10 @@ class AggregateOperator : public Operator {
       const BoundAggregateCall& aggregate_call) {
     switch (aggregate_call.function) {
       case AggregateFunction::Count:
+        if (aggregate_call.is_distinct) {
+          return std::make_unique<CountDistinctAccumulator>(
+              std::get<BoundColumnRef>(aggregate_call.argument));
+        }
         return std::make_unique<CountAccumulator>(aggregate_call.argument);
       case AggregateFunction::Sum:
         return std::make_unique<SumAccumulator>(

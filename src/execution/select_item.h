@@ -24,6 +24,7 @@ using BoundAggregateArgument =
 struct UnboundAggregateCall {
   AggregateFunction function;
   UnboundAggregateArgument argument;
+  bool is_distinct = false;
 };
 
 using UnboundSelectItem =
@@ -32,6 +33,7 @@ using UnboundSelectItem =
 struct BoundAggregateCall {
   AggregateFunction function;
   BoundAggregateArgument argument;
+  bool is_distinct = false;
 };
 
 using BoundSelectItem = std::variant<BoundColumnRef, BoundAggregateCall>;
