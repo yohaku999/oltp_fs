@@ -166,6 +166,7 @@ std::size_t removeMatchingRows(BufferPool& pool, Table& table,
 void insertRow(BufferPool& pool, Table& table, const TypedRow& row, WAL& wal) {
   const auto index_file = table.indexFile();
   std::optional<std::string> key;
+  // index fileがあるかを確認している。それでもいいけど、tableにindexがあるか？とか、index更新してって頼めば？
   if (index_file.has_value()) {
     key = table.extractIndexKey(row);
     LOG_INFO("Inserting record with key {} into table {}.",
@@ -173,6 +174,7 @@ void insertRow(BufferPool& pool, Table& table, const TypedRow& row, WAL& wal) {
              table.name());
     std::optional<RID> existing_rid =
         BTreeCursor::findRID(pool, index_file->get(), key.value());
+    // ここで重複チェックしているけど、そもそもこの仕様必要なの？単純に全てのindex更新をtryすればいいのでは？
     if (existing_rid.has_value()) {
       throw std::runtime_error(
           "Duplicate key is not allowed for indexed table: " + table.name());
@@ -184,33 +186,17 @@ void insertRow(BufferPool& pool, Table& table, const TypedRow& row, WAL& wal) {
   RecordSerializer cell(table.schema(), row);
   const std::vector<std::byte>& serialized_cell = cell.serializedBytes();
 
-  int target_page_id = table.heapFile().getMaxPageID();
-  Page* heap_page = pool.pinPage(target_page_id, table.heapFile());
-  auto inserted_slot_id = heap_page->insertCell(serialized_cell);
-  if (!inserted_slot_id.has_value()) {
-    pool.unpinPage(heap_page, table.heapFile());
-    target_page_id = pool.createPage(PageKind::Heap, table.heapFile());
-    heap_page = pool.pinPage(target_page_id, table.heapFile());
-    inserted_slot_id = heap_page->insertCell(serialized_cell);
-    if (!inserted_slot_id.has_value()) {
-      throw std::runtime_error(
-          "Failed to insert record cell into a new heap page due to "
-          "insufficient space.");
-    }
-  }
+  const RID inserted_rid =
+      heap_file_access::appendCell(pool, table.heapFile(), serialized_cell);
 
   wal.write(WALRecord::RecordType::INSERT,
-            static_cast<uint16_t>(target_page_id),
-            InsertRedoBody(static_cast<uint16_t>(inserted_slot_id.value()),
-                           serialized_cell)
-                .encode());
-
-  pool.unpinPage(heap_page, table.heapFile());
+            inserted_rid.heap_page_id,
+            InsertRedoBody(inserted_rid.slot_id, serialized_cell).encode());
 
   if (index_file.has_value()) {
     BTreeCursor::insertIntoIndex(pool, index_file->get(), key.value(),
-                                 static_cast<uint16_t>(target_page_id),
-                                 static_cast<uint16_t>(inserted_slot_id.value()));
+                                 inserted_rid.heap_page_id,
+                                 inserted_rid.slot_id);
   }
 }
 
