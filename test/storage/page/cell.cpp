@@ -4,11 +4,12 @@
 
 #include <vector>
 
+#include "storage/index/index_key.h"
 #include "storage/index/intermediate_cell.h"
 #include "storage/index/leaf_cell.h"
 
 TEST(CellTest, IntermediateCellRoundTrip) {
-  IntermediateCell original(500, 77777);
+  IntermediateCell original(500, index_key::encodeInteger(77777));
   std::vector<std::byte> serialized = original.serialize();
 
   IntermediateCell decoded =
@@ -20,7 +21,7 @@ TEST(CellTest, IntermediateCellRoundTrip) {
 }
 
 TEST(CellTest, LeafCellRoundTrip) {
-  LeafCell original(11111, 999, 15);
+  LeafCell original(index_key::encodeInteger(11111), 999, 15);
   std::vector<std::byte> serialized = original.serialize();
   LeafCell decoded =
       LeafCell::decodeCell(reinterpret_cast<char*>(serialized.data()));
@@ -31,7 +32,7 @@ TEST(CellTest, LeafCellRoundTrip) {
 }
 
 TEST(CellTest, IntermediateCellInvalidFlag) {
-  IntermediateCell cell(500, 77777);
+  IntermediateCell cell(500, index_key::encodeInteger(77777));
   std::vector<std::byte> serialized = cell.serialize();
   char* cell_bytes = reinterpret_cast<char*>(serialized.data());
   EXPECT_TRUE(Cell::isValid(cell_bytes));
@@ -40,7 +41,7 @@ TEST(CellTest, IntermediateCellInvalidFlag) {
 }
 
 TEST(CellTest, LeafCellInvalidFlag) {
-  LeafCell cell(11111, 999, 15);
+  LeafCell cell(index_key::encodeInteger(11111), 999, 15);
   std::vector<std::byte> serialized = cell.serialize();
   char* cell_bytes = reinterpret_cast<char*>(serialized.data());
   EXPECT_TRUE(Cell::isValid(cell_bytes));

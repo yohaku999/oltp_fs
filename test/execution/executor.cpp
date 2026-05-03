@@ -43,7 +43,7 @@ class ExecutorTest : public ::testing::Test {
         kTableName,
         Schema(std::vector<Column>{Column("id", Column::Type::Integer),
                                    Column("value", Column::Type::Varchar)})));
-    table_->createIndex("id");
+    table_->createIndex({"id"});
 
     for (const auto& [key, value] : std::vector<std::pair<int, std::string>>{
              {101, "row_101"},
@@ -79,7 +79,7 @@ class ExecutorTest : public ::testing::Test {
         kJoinTableName,
         Schema(std::vector<Column>{Column("code", Column::Type::Integer),
                                    Column("label", Column::Type::Varchar)}));
-    join_table.createIndex("code");
+    join_table.createIndex({"code"});
     return join_table;
   }
 
@@ -626,11 +626,107 @@ TEST_F(ExecutorTest, CreateAndDropTable) {
     EXPECT_EQ(new_table.schema().columns()[0].getType(), Column::Type::Integer);
     EXPECT_EQ(new_table.schema().columns()[1].getName(), "name");
     EXPECT_EQ(new_table.schema().columns()[1].getType(), Column::Type::Varchar);
-    ASSERT_TRUE(new_table.indexedColumnName().has_value());
-    EXPECT_EQ(new_table.indexedColumnName().value(), "id");
+    EXPECT_EQ(new_table.indexedColumnNames(),
+          (std::vector<std::string>{"id"}));
   }
 
   executor::drop_table(DropTableParser("DROP TABLE new_table"));
+  EXPECT_FALSE(Table::isPersisted(new_table_name));
+}
+
+TEST_F(ExecutorTest, CreateTableBuildsIndexFromSingleColumnPrimaryKey) {
+  const std::string new_table_name = uniqueTableName("primary_key_index_test");
+
+  executor::create_table(CreateTableParser(
+      "CREATE TABLE " + new_table_name + " ("
+      "id int NOT NULL, "
+      "name varchar(10) NOT NULL, "
+      "PRIMARY KEY (id))"));
+
+  {
+    Table new_table = Table::getTable(new_table_name);
+    EXPECT_EQ(new_table.indexedColumnNames(),
+          (std::vector<std::string>{"id"}));
+    ASSERT_TRUE(new_table.indexFile().has_value());
+  }
+
+  executor::drop_table(DropTableParser("DROP TABLE " + new_table_name));
+  EXPECT_FALSE(Table::isPersisted(new_table_name));
+}
+
+TEST_F(ExecutorTest, CreateTableRejectsDuplicateCompositePrimaryKeyRows) {
+  const std::string new_table_name = uniqueTableName("composite_primary_key_test");
+
+  executor::create_table(CreateTableParser(
+      "CREATE TABLE " + new_table_name + " ("
+      "warehouse_id int NOT NULL, "
+      "district_id int NOT NULL, "
+      "customer_id int NOT NULL, "
+      "balance decimal(12, 2) NOT NULL, "
+      "PRIMARY KEY (warehouse_id, district_id, customer_id))"));
+
+    {
+    Table table = Table::getTable(new_table_name);
+    ASSERT_TRUE(table.indexFile().has_value());
+    EXPECT_EQ(table.indexedColumnNames(),
+          (std::vector<std::string>{"warehouse_id", "district_id",
+                      "customer_id"}));
+    executor::insert(*pool_, table,
+             InsertParser(
+               "INSERT INTO " + new_table_name +
+               " VALUES (1, 2, 3, 10.0)"),
+             *wal_);
+
+    EXPECT_THROW(
+      executor::insert(*pool_, table,
+               InsertParser(
+                 "INSERT INTO " + new_table_name +
+                 " VALUES (1, 2, 3, 20.0)"),
+               *wal_),
+      std::runtime_error);
+    }
+
+  executor::drop_table(DropTableParser("DROP TABLE " + new_table_name));
+  EXPECT_FALSE(Table::isPersisted(new_table_name));
+}
+
+TEST_F(ExecutorTest, ReadSelectUsesCompositePrimaryKeyPath) {
+  const std::string new_table_name = uniqueTableName("composite_primary_key_read_test");
+
+  executor::create_table(CreateTableParser(
+      "CREATE TABLE " + new_table_name + " ("
+      "warehouse_id int NOT NULL, "
+      "district_id int NOT NULL, "
+      "customer_id int NOT NULL, "
+      "name varchar(16) NOT NULL, "
+      "PRIMARY KEY (warehouse_id, district_id, customer_id))"));
+
+  {
+    Table table = Table::getTable(new_table_name);
+    executor::insert(*pool_, table,
+                     InsertParser(
+                         "INSERT INTO " + new_table_name +
+                         " VALUES (1, 2, 3, 'target')"),
+                     *wal_);
+    executor::insert(*pool_, table,
+                     InsertParser(
+                         "INSERT INTO " + new_table_name +
+                         " VALUES (1, 2, 4, 'other')"),
+                     *wal_);
+  }
+
+  std::vector<TypedRow> rows = executor::read(
+      *pool_, SelectParser("SELECT name FROM " + new_table_name +
+                           " WHERE warehouse_id = 1"
+                           " AND district_id = 2"
+                           " AND customer_id = 3"));
+
+  ASSERT_EQ(rows.size(), 1u);
+  ASSERT_EQ(rows[0].values.size(), 1u);
+  ASSERT_TRUE(std::holds_alternative<Column::VarcharType>(rows[0].values[0]));
+  EXPECT_EQ(std::get<Column::VarcharType>(rows[0].values[0]), "target");
+
+  executor::drop_table(DropTableParser("DROP TABLE " + new_table_name));
   EXPECT_FALSE(Table::isPersisted(new_table_name));
 }
 

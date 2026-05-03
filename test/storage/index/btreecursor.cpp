@@ -11,6 +11,7 @@
 #include "storage/runtime/bufferpool.h"
 #include "storage/runtime/file.h"
 #include "storage/page/page.h"
+#include "storage/index/index_key.h"
 #include "storage/wal/wal.h"
 
 class BTreeCursorTest : public ::testing::Test {
@@ -64,12 +65,14 @@ TEST_F(BTreeCursorTest, InsertIntoIndexAndFindRecordLocation) {
   std::vector<int> keys = {1, 42, 100};
 
   for (int key : keys) {
-    BTreeCursor::insertIntoIndex(*pool_, *index_file_, key, heap_page_id,
-                                 slot_id);
+    BTreeCursor::insertIntoIndex(*pool_, *index_file_,
+                                 index_key::encodeInteger(key),
+                                 heap_page_id, slot_id);
   }
 
   for (int key : keys) {
-    auto rid = BTreeCursor::findRID(*pool_, *index_file_, key);
+    auto rid =
+        BTreeCursor::findRID(*pool_, *index_file_, index_key::encodeInteger(key));
     ASSERT_TRUE(rid.has_value());
     EXPECT_EQ(rid->heap_page_id, heap_page_id);
     EXPECT_EQ(rid->slot_id, slot_id);
@@ -84,8 +87,9 @@ TEST_F(BTreeCursorTest, InsertManyKeysTriggersSplitAndIsSearchable) {
 
   const int num_keys = 500;
   for (int key = 0; key < num_keys; ++key) {
-    BTreeCursor::insertIntoIndex(*pool_, *index_file_, key, heap_page_id,
-                                 slot_id);
+    BTreeCursor::insertIntoIndex(*pool_, *index_file_,
+                                 index_key::encodeInteger(key),
+                                 heap_page_id, slot_id);
   }
 
   const int max_page_after = index_file_->getMaxPageID();
@@ -93,7 +97,8 @@ TEST_F(BTreeCursorTest, InsertManyKeysTriggersSplitAndIsSearchable) {
       << "index did not allocate any new pages";
 
   for (int key = 0; key < num_keys; ++key) {
-    auto rid = BTreeCursor::findRID(*pool_, *index_file_, key);
+    auto rid =
+        BTreeCursor::findRID(*pool_, *index_file_, index_key::encodeInteger(key));
     ASSERT_TRUE(rid.has_value()) << "missing index entry for key=" << key;
     EXPECT_EQ(rid->heap_page_id, heap_page_id);
     EXPECT_EQ(rid->slot_id, slot_id);

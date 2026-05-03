@@ -1,6 +1,7 @@
 #pragma once
 
 #include <optional>
+#include <string>
 
 #include "intermediate_cell.h"
 #include "leaf_cell.h"
@@ -22,10 +23,11 @@ class LeafIndexPage {
   const Page& page() const { return page_; }
 
   LeafCell cellAt(int slot_id) const;
-  bool hasKey(int key) const;
-  std::optional<RID> findRef(int key, bool do_invalidate);
+  bool hasKey(const std::string& key) const;
+  std::optional<RID> findRef(const std::string& key, bool do_invalidate);
 
-  void transferAndCompactTo(LeafIndexPage& dst, char* separate_key);
+  void transferAndCompactTo(LeafIndexPage& dst,
+                            const std::string& separate_key);
 
  private:
   Page& page_;
@@ -44,8 +46,9 @@ class InternalIndexPage {
 
   IntermediateCell cellAt(int slot_id) const;
   uint16_t rightMostChildPageId() const;
-  uint16_t findChildPage(int key);
-  void transferAndCompactTo(InternalIndexPage& dst, char* separate_key);
+  uint16_t findChildPage(const std::string& key);
+  void transferAndCompactTo(InternalIndexPage& dst,
+                            const std::string& separate_key);
 
  private:
   Page& page_;

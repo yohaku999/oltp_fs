@@ -10,12 +10,14 @@
 #include "execution/operators/filter_operator.h"
 #include "execution/operators/aggregate_operator.h"
 #include "execution/binder.h"
+#include "execution/index_lookup_planner.h"
 #include "execution/operators/heap_fetch_operator.h"
 #include "execution/operators/index_scan_operator.h"
 #include "execution/operators/limit_operator.h"
 #include "execution/operator.h"
 #include "execution/operators/orderby_operator.h"
 #include "execution/operators/projection_operator.h"
+#include "execution/operators/rid_operator.h"
 #include "execution/parsers/create_index_parser.h"
 #include "execution/parsers/create_table_parser.h"
 #include "execution/parsers/delete_parser.h"
@@ -26,6 +28,7 @@
 #include "execution/operators/seq_scan_operator.h"
 #include "execution/operators/loop_join_operator.h"
 #include "storage/index/btreecursor.h"
+#include "storage/index/index_key.h"
 #include "storage/page/cell.h"
 #include "storage/page/page.h"
 #include "storage/record/heap_file_access.h"
@@ -38,38 +41,6 @@
 #include "catalog/table.h"
 
 namespace {
-
-std::vector<UnboundComparisonPredicate> collectPredicatesForIndexedColumn(
-    const Table& table,
-    const std::vector<UnboundComparisonPredicate>& predicates,
-    std::size_t indexed_column_index) {
-  std::vector<UnboundComparisonPredicate> index_predicates;
-  const std::string& indexed_column_name =
-      table.schema().columns().at(indexed_column_index).getName();
-  for (const auto& predicate : predicates) {
-    // index predicate must be in the form of "column op value" or "value op column",
-    // where column is the indexed column and value is a constant value for now.
-    // We currently use only equality predicates for index narrowing.
-    // TODO: change this limit when implementing hash join.
-    const auto* column_ref = std::get_if<ColumnRef>(&predicate.left);
-    const auto* value = std::get_if<FieldValue>(&predicate.right);
-    if (column_ref == nullptr || value == nullptr) {
-      column_ref = std::get_if<ColumnRef>(&predicate.right);
-      value = std::get_if<FieldValue>(&predicate.left);
-    }
-    if (column_ref == nullptr || value == nullptr) {
-      continue;
-    }
-    if (column_ref->column_name != indexed_column_name) {
-      continue;
-    }
-    if (predicate.op != Op::Eq) {
-      continue;
-    }
-    index_predicates.push_back(predicate);
-  }
-  return index_predicates;
-}
 
 template <typename Item, typename Source>
 std::vector<Item> collectItems(Source& source) {
@@ -90,25 +61,13 @@ std::vector<Item> collectItems(Source& source) {
 std::vector<RID> collectRidsNarrowedByPredicates(
     BufferPool& pool, Table& table,
     const std::vector<UnboundComparisonPredicate>& predicates) {
-  const std::optional<std::size_t> indexed_column_index =
-      table.indexedColumnIndex();
-  if (!indexed_column_index.has_value()) {
+  IndexLookupPlan plan = IndexLookupPlanner::plan(table, predicates);
+  if (!plan.canUseIndex()) {
     return heap_file_access::collectRids(pool, table.heapFile());
   }
 
-  std::vector<UnboundComparisonPredicate> index_predicates = collectPredicatesForIndexedColumn(
-      table, predicates, indexed_column_index.value());
-  if (index_predicates.empty()) {
-    return heap_file_access::collectRids(pool, table.heapFile());
-  }
-
-  const auto index_file = table.indexFile();
-  if (!index_file.has_value()) {
-    return heap_file_access::collectRids(pool, table.heapFile());
-  }
-
-  IndexScanOperator scan(pool, index_file->get(),
-                         DiscreteIntegerIndexPredicates{std::move(index_predicates)});
+  IndexScanOperator scan(pool, table.requireIndexFile(),
+                         std::move(plan.encoded_keys));
   return collectItems<RID>(scan);
 }
 
@@ -137,7 +96,7 @@ std::size_t removeMatchingRows(BufferPool& pool, Table& table,
 
     const auto index_file = table.indexFile();
     if (index_file.has_value()) {
-      const int key = table.extractIndexKey(row);
+      const std::string key = table.extractIndexKey(row);
       BTreeCursor::findRID(pool, index_file->get(), key, true);
     }
 
@@ -153,17 +112,17 @@ std::size_t removeMatchingRows(BufferPool& pool, Table& table,
 
 void insertRow(BufferPool& pool, Table& table, const TypedRow& row, WAL& wal) {
   const auto index_file = table.indexFile();
-  std::optional<int> key;
+  std::optional<std::string> key;
   if (index_file.has_value()) {
     key = table.extractIndexKey(row);
-    LOG_INFO("Inserting record with key {} into table {}.", key.value(),
+    LOG_INFO("Inserting record with key {} into table {}.",
+             index_key::formatForDebug(key.value()),
              table.name());
     std::optional<RID> existing_rid =
         BTreeCursor::findRID(pool, index_file->get(), key.value());
     if (existing_rid.has_value()) {
       throw std::runtime_error(
-          "Key " + std::to_string(key.value()) +
-          " already exists. Duplicate keys are not allowed.");
+          "Duplicate key is not allowed for indexed table: " + table.name());
     }
   } else {
     LOG_INFO("Inserting record into table {}.", table.name());
@@ -238,19 +197,15 @@ std::size_t updateMatchingRows(BufferPool& pool, Table& table,
 
 std::unique_ptr<Operator> buildReadSource(
     BufferPool& pool, Table& table,
-    const std::vector<UnboundComparisonPredicate>& index_predicates) {
-
-  // sequential scan
-  if (index_predicates.empty()) {
+    const std::vector<UnboundComparisonPredicate>& predicates) {
+  IndexLookupPlan plan = IndexLookupPlanner::plan(table, predicates);
+  if (!plan.canUseIndex()) {
     return std::make_unique<SeqScanOperator>(pool, table.heapFile(),
                                              table.schema());
   }
 
-  // index scan
-  const auto index_file = table.indexFile();
   auto scan = std::make_unique<IndexScanOperator>(
-      pool, index_file->get(),
-      DiscreteIntegerIndexPredicates{std::move(index_predicates)});
+      pool, table.requireIndexFile(), std::move(plan.encoded_keys));
   return std::make_unique<HeapFetchOperator>(std::move(scan), pool,
                                              table.heapFile(), table.schema());
 }
@@ -263,7 +218,6 @@ std::unique_ptr<Operator> buildReadSource(
 - multi-column records are supported by RecordSerializer and RecordCellView
 - E2E uses Table-backed fixtures
 - key is still passed separately from TypedRow in executor::insert/update
-- range scan still drops below executor into IndexScan + HeapFetch directly
  * 
  * 
  */
@@ -291,17 +245,7 @@ std::vector<TypedRow> executor::read(BufferPool& pool,
 
   std::vector<std::unique_ptr<Operator>> sources;
   for (auto& table : tables) {
-    std::unique_ptr<Operator> source;
-    if (const std::optional<std::size_t> indexed_column_index =
-            table.indexedColumnIndex();
-        indexed_column_index.has_value()) {
-      std::vector<UnboundComparisonPredicate> index_predicates;
-      index_predicates = collectPredicatesForIndexedColumn(
-          table, predicates, indexed_column_index.value());
-      source = buildReadSource(pool, table, std::move(index_predicates));
-    } else {
-      source = buildReadSource(pool, table, {});
-    }
+    std::unique_ptr<Operator> source = buildReadSource(pool, table, predicates);
     sources.push_back(std::move(source));
   }
   
@@ -377,8 +321,14 @@ std::vector<TypedRow> executor::read(BufferPool& pool,
 }
 
 void executor::create_table(const CreateTableParser& parser) {
-  Table::initialize(parser.extractTableName(),
-                    parser.extractSchema());
+  Table table = Table::initialize(parser.extractTableName(),
+                                  parser.extractSchema());
+
+  const std::vector<std::string> primary_key_columns =
+      parser.extractPrimaryKeyColumnNames();
+  if (!primary_key_columns.empty()) {
+    table.createIndex(primary_key_columns);
+  }
 }
 
 void executor::create_index(const CreateIndexParser& parser) {
@@ -388,8 +338,7 @@ void executor::create_index(const CreateIndexParser& parser) {
   }
 
   Table table = Table::getTable(parser.extractTableName());
-  // TODO: currently only supports single-column indexes.
-  table.createIndex(column_names.front());
+  table.createIndex(column_names);
 }
 
 void executor::drop_table(const DropTableParser& parser) {

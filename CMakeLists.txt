@@ -59,6 +59,7 @@ add_library(dbfs_src
     src/storage/wal/wal.cpp
     src/execution/binder.cpp
     src/execution/comparison_predicate.cpp
+    src/execution/index_lookup_planner.cpp
     src/execution/select_item.cpp
     src/execution/parsers/parser_ast_helpers.cpp
     src/execution/parsers/pg_query_json_parser.cpp
@@ -109,6 +110,9 @@ target_link_libraries(file_test dbfs_src GTest::gtest_main)
 add_executable(btreecursor_test test/storage/index/btreecursor.cpp)
 target_link_libraries(btreecursor_test dbfs_src GTest::gtest_main)
 
+add_executable(index_key_test test/storage/index/index_key.cpp)
+target_link_libraries(index_key_test dbfs_src GTest::gtest_main)
+
 add_executable(executor_test test/execution/executor.cpp)
 target_link_libraries(executor_test dbfs_src GTest::gtest_main)
 
@@ -150,6 +154,7 @@ add_test(NAME CellTest COMMAND cell_test)
 add_test(NAME PageTest COMMAND page_test)
 add_test(NAME FileTest COMMAND file_test)
 add_test(NAME BTreeCursorTest COMMAND btreecursor_test)
+add_test(NAME IndexKeyTest COMMAND index_key_test)
 add_test(NAME FrameDirectoryTest COMMAND frame_directory_test)
 add_test(NAME WALBodyTest COMMAND wal_body_test)
 add_test(NAME WALRecordTest COMMAND wal_record_test)

@@ -8,6 +8,7 @@
 #include "execution/operators/heap_fetch_operator.h"
 #include "logging.h"
 #include "storage/index/btreecursor.h"
+#include "storage/index/index_key.h"
 #include "storage/page/page.h"
 #include "storage/record/record_cell.h"
 #include "storage/record/record_serializer.h"
@@ -20,21 +21,29 @@ namespace {
 
 std::string indexFileName(
     const std::string& table_name,
-    const std::optional<std::string>& indexed_column_name) {
-  if (!indexed_column_name.has_value()) {
+    const std::vector<std::string>& indexed_column_names) {
+  if (indexed_column_names.empty()) {
     return table_name + ".index";
   }
-  return table_name + "." + indexed_column_name.value() + ".index";
+
+  std::string suffix;
+  for (std::size_t index = 0; index < indexed_column_names.size(); ++index) {
+    if (index > 0) {
+      suffix += "__";
+    }
+    suffix += indexed_column_names[index];
+  }
+  return table_name + "." + suffix + ".index";
 }
 
 }  // namespace
 
 Table::Table(std::string name, Schema schema,
              std::optional<std::string> index_path,
-             std::optional<std::string> indexed_column_name)
+             std::vector<std::string> indexed_column_names)
     : name_(std::move(name)),
       schema_(std::move(schema)),
-      indexed_column_name_(std::move(indexed_column_name)),
+      indexed_column_names_(std::move(indexed_column_names)),
       index_file_(index_path.has_value()
                       ? std::optional<File>(
                             std::in_place, preparePath(index_path.value()))
@@ -47,7 +56,7 @@ Table Table::initialize(const std::string& table_name, const Schema& schema) {
   }
 
   try {
-    Table table(table_name, schema, std::nullopt, std::nullopt);
+    Table table(table_name, schema, std::nullopt, {});
 
     std::array<char, Page::PAGE_SIZE_BYTE> heap_page_buffer{};
     Page::initializeNew(heap_page_buffer.data(), PageKind::Heap, 0, 0);
@@ -61,21 +70,26 @@ Table Table::initialize(const std::string& table_name, const Schema& schema) {
   }
 }
 
-void Table::createIndex(const std::string& column_name) {
-  if (schema_.getColumnIndex(column_name) < 0) {
-    throw std::runtime_error("Index references unknown column: " + column_name);
+void Table::createIndex(const std::vector<std::string>& column_names) {
+  if (column_names.empty()) {
+    throw std::runtime_error("Index requires at least one column.");
   }
-  if (indexed_column_name_.has_value()) {
-    if (indexed_column_name_.value() == column_name) {
+  for (const std::string& column_name : column_names) {
+    if (schema_.getColumnIndex(column_name) < 0) {
+      throw std::runtime_error("Index references unknown column: " +
+                               column_name);
+    }
+  }
+  if (!indexed_column_names_.empty()) {
+    if (indexed_column_names_ == column_names) {
       return;
     }
-    throw std::runtime_error("Table already has an index on column: " +
-                             indexed_column_name_.value());
+    throw std::runtime_error("Table already has an index.");
   }
 
-  const std::string index_path = defaultIndexPath(name_, column_name);
+  const std::string index_path = defaultIndexPath(name_, column_names);
   index_file_.emplace(preparePath(index_path));
-  indexed_column_name_ = column_name;
+  indexed_column_names_ = column_names;
 
   try {
     std::array<char, Page::PAGE_SIZE_BYTE> index_root_buffer{};
@@ -84,10 +98,10 @@ void Table::createIndex(const std::string& column_name) {
 
     TableMetadataStore::write(
         name_, schema_,
-        {PersistedIndexMetadata{index_file_->getFilePath(), indexed_column_name_}});
+        {PersistedIndexMetadata{index_file_->getFilePath(), indexed_column_names_}});
   } catch (...) {
     index_file_.reset();
-    indexed_column_name_.reset();
+    indexed_column_names_.clear();
     removeFileIfExists(index_path);
     TableMetadataStore::write(name_, schema_, {});
     throw;
@@ -100,14 +114,14 @@ Table Table::getTable(const std::string& table_name) {
   }
   PersistedTableMetadata metadata = TableMetadataStore::read(table_name);
   std::optional<std::string> index_path;
-  std::optional<std::string> indexed_column_name;
+  std::vector<std::string> indexed_column_names;
   if (!metadata.indexes.empty()) {
     PersistedIndexMetadata index = std::move(metadata.indexes.front());
     index_path = std::move(index.index_path);
-    indexed_column_name = std::move(index.indexed_column_name);
+    indexed_column_names = std::move(index.indexed_column_names);
   }
   return Table(table_name, std::move(metadata.schema), std::move(index_path),
-               std::move(indexed_column_name));
+               std::move(indexed_column_names));
 }
 
 bool Table::isPersisted(const std::string& table_name) {
@@ -136,9 +150,9 @@ void Table::removeBackingFilesFor(const std::string& table_name) {
 
 std::string Table::defaultIndexPath(
     const std::string& table_name,
-    const std::optional<std::string>& indexed_column_name) {
+  const std::vector<std::string>& indexed_column_names) {
   return (std::filesystem::path("data") /
-          indexFileName(table_name, indexed_column_name))
+      indexFileName(table_name, indexed_column_names))
       .string();
 }
 
@@ -165,27 +179,65 @@ void Table::removeFileIfExists(const std::string& path) {
 }
 
 bool Table::hasIndexForColumn(const std::string& column_name) const {
-  return indexed_column_name_.has_value() &&
-         indexed_column_name_.value() == column_name;
+  return std::find(indexed_column_names_.begin(), indexed_column_names_.end(),
+                   column_name) != indexed_column_names_.end();
 }
 
-int Table::extractIndexKey(const TypedRow& row) const {
-  const std::optional<std::size_t> indexed_column_index = indexedColumnIndex();
-  // TODO: only available for single-column integer access indexes for now.
-  return std::get<Column::IntegerType>(row.values[indexed_column_index.value()]);
+std::string Table::extractIndexKey(const TypedRow& row) const {
+  const std::vector<std::size_t> indexed_column_indexes = indexedColumnIndexes();
+  return index_key::encodeRow(schema_, row, indexed_column_indexes);
 }
 
-std::optional<std::size_t> Table::indexedColumnIndex() const {
-  if (!indexed_column_name_.has_value()) {
+/**
+ * Attempts to build an exact match index key for the given column values.
+ * Require all of the indexed columns to be present in the input, but allow the input to contain additional columns that are not part of the index.
+ * Returns nullopt if any of the indexed columns are not present in the input.
+ */
+std::optional<std::string> Table::tryBuildExactMatchIndexKey(
+    const std::vector<ExactMatchIndexColumnValue>& exact_match_values) const {
+  if (indexed_column_names_.empty()) {
     return std::nullopt;
   }
 
-  const int column_index = schema_.getColumnIndex(indexed_column_name_.value());
-  if (column_index < 0) {
-    return std::nullopt;
+  std::vector<std::optional<FieldValue>> key_values(indexed_column_names_.size());
+  for (const auto& column_value : exact_match_values) {
+    for (std::size_t index = 0; index < indexed_column_names_.size(); ++index) {
+      if (indexed_column_names_[index] != column_value.column_name) {
+        continue;
+      }
+
+      key_values[index] = column_value.value;
+      break;
+    }
   }
 
-  return static_cast<std::size_t>(column_index);
+  const std::vector<std::size_t> indexed_column_indexes = indexedColumnIndexes();
+  std::string key;
+  for (std::size_t index = 0; index < indexed_column_indexes.size(); ++index) {
+    if (!key_values[index].has_value()) {
+      return std::nullopt;
+    }
+
+    key += index_key::encodeFieldValue(
+        key_values[index].value(),
+        schema_.columns()[indexed_column_indexes[index]].getType());
+  }
+
+  return key;
+}
+
+std::vector<std::size_t> Table::indexedColumnIndexes() const {
+  std::vector<std::size_t> column_indexes;
+  column_indexes.reserve(indexed_column_names_.size());
+  for (const std::string& column_name : indexed_column_names_) {
+    const int column_index = schema_.getColumnIndex(column_name);
+    if (column_index < 0) {
+      throw std::runtime_error("Index references unknown column: " +
+                               column_name);
+    }
+    column_indexes.push_back(static_cast<std::size_t>(column_index));
+  }
+  return column_indexes;
 }
 
 std::optional<std::reference_wrapper<File>> Table::indexFile() {

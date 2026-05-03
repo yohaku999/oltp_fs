@@ -18,17 +18,21 @@
  */
 class BTreeCursor {
  public:
-  static std::optional<RID> findRID(BufferPool& pool, File& indexFile, int key,
+  static std::optional<RID> findRID(BufferPool& pool, File& indexFile,
+                                    const std::string& key,
                                     bool do_invalidate = false);
-  static int findLeafPageID(BufferPool& pool, File& indexFile, int key);
+  static int findLeafPageID(BufferPool& pool, File& indexFile,
+                            const std::string& key);
   static void splitPage(BufferPool& pool, File& indexFile, Page* old_page);
-  static void insertIntoIndex(BufferPool& pool, File& indexFile, int key,
+  static void insertIntoIndex(BufferPool& pool, File& indexFile,
+                              const std::string& key,
                               uint16_t heap_page_id, uint16_t slot_id);
   static void splitLeafPage(BufferPool& pool, File& index_file, Page& old_page,
-                            Page& parent_page, char* separate_key);
+                            Page& parent_page,
+                            const std::string& separate_key);
   static void splitInternalPage(BufferPool& pool, File& index_file,
                                 Page& old_page, Page& parent_page,
-                                char* separate_key);
+                                const std::string& separate_key);
   static Page* ensureParentPage(BufferPool& pool, File& index_file,
                                 Page& old_page);
 

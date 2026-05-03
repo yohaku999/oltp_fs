@@ -4,9 +4,8 @@
 
 /**
  * The structure of leaf cell is as follows:
- * | key size (2 bytes) | heap page ID (2 bytes) | slot ID (2 bytes) | key (4
- * bytes) | The value range of pageID, slotID, cell key is 0~4095 for now, so we
- * can use uint16_t to store them.
+ * | key size (2 bytes) | heap page ID (2 bytes) | slot ID (2 bytes) | key
+ * bytes |
  */
 LeafCell LeafCell::decodeCell(char* data_p) {
   data_p += Cell::FLAG_FIELD_SIZE;
@@ -19,14 +18,15 @@ LeafCell LeafCell::decodeCell(char* data_p) {
   uint16_t slot_id = readValue<uint16_t>(data_p);
   data_p += sizeof(uint16_t);
 
-  int key = readValue<int>(data_p);
-  return LeafCell(key, heap_page_id, slot_id);
+  std::string key(data_p, data_p + key_size);
+  return LeafCell(std::move(key), heap_page_id, slot_id);
 }
 
-int LeafCell::getKey(const char* data_p) {
-  // Skip: FLAG (1 byte) + key_size (2 bytes) + heap_page_id (2 bytes) + slot_id
-  // (2 bytes)
-  return readValue<int>(data_p + Cell::FLAG_FIELD_SIZE + sizeof(uint16_t) * 3);
+std::string LeafCell::getKey(const char* data_p) {
+  const uint16_t key_size =
+      readValue<uint16_t>(data_p + Cell::FLAG_FIELD_SIZE);
+  const char* key_p = data_p + Cell::FLAG_FIELD_SIZE + sizeof(uint16_t) * 3;
+  return std::string(key_p, key_p + key_size);
 }
 
 std::vector<std::byte> LeafCell::serialize() const {
@@ -42,7 +42,7 @@ std::vector<std::byte> LeafCell::serialize() const {
   dst += sizeof(uint16_t);
   std::memcpy(dst, &slot_id_, sizeof(uint16_t));
   dst += sizeof(uint16_t);
-  std::memcpy(dst, &key_, sizeof(int));
+  std::memcpy(dst, key_.data(), key_.size());
 
   return buffer;
 }

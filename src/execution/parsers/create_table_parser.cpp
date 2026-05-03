@@ -55,3 +55,27 @@ Schema CreateTableParser::extractSchema() const {
 
   return Schema(columns);
 }
+
+std::vector<std::string> CreateTableParser::extractPrimaryKeyColumnNames() const {
+  const auto& table_elements = statementNode().at("CreateStmt").at("tableElts");
+
+  for (const auto& table_element : table_elements) {
+    if (!table_element.contains("Constraint")) {
+      continue;
+    }
+
+    const auto& constraint = table_element.at("Constraint");
+    if (constraint.value("contype", "") != "CONSTR_PRIMARY") {
+      continue;
+    }
+
+    std::vector<std::string> primary_key_columns;
+    for (const auto& key : constraint.at("keys")) {
+      primary_key_columns.push_back(
+          key.at("String").at("sval").get<std::string>());
+    }
+    return primary_key_columns;
+  }
+
+  return {};
+}

@@ -17,6 +17,11 @@
 class BufferPool;
 class WAL;
 
+struct ExactMatchIndexColumnValue {
+  std::string column_name;
+  FieldValue value;
+};
+
 class Table {
  public:
   static Table initialize(const std::string& table_name, const Schema& schema);
@@ -27,16 +32,18 @@ class Table {
 
   static void removeBackingFilesFor(const std::string& table_name);
 
-  void createIndex(const std::string& column_name);
+  void createIndex(const std::vector<std::string>& column_names);
 
   const std::string& name() const { return name_; }
   const Schema& schema() const { return schema_; }
   bool hasIndexForColumn(const std::string& column_name) const;
-  int extractIndexKey(const TypedRow& row) const;
-  const std::optional<std::string>& indexedColumnName() const {
-    return indexed_column_name_;
+  std::string extractIndexKey(const TypedRow& row) const;
+  std::optional<std::string> tryBuildExactMatchIndexKey(
+      const std::vector<ExactMatchIndexColumnValue>& exact_match_values) const;
+  const std::vector<std::string>& indexedColumnNames() const {
+    return indexed_column_names_;
   }
-  std::optional<std::size_t> indexedColumnIndex() const;
+  std::vector<std::size_t> indexedColumnIndexes() const;
   std::optional<std::reference_wrapper<File>> indexFile();
   File& requireIndexFile();
   File& heapFile() { return heap_file_; }
@@ -44,11 +51,11 @@ class Table {
  private:
         Table(std::string name, Schema schema,
           std::optional<std::string> index_path,
-          std::optional<std::string> indexed_column_name);
+          std::vector<std::string> indexed_column_names);
 
   static std::string defaultIndexPath(
         const std::string& table_name,
-        const std::optional<std::string>& indexed_column_name);
+        const std::vector<std::string>& indexed_column_names);
 
   static std::string defaultHeapPath(const std::string& table_name);
 
@@ -60,7 +67,7 @@ class Table {
 
   std::string name_;
   Schema schema_;
-  std::optional<std::string> indexed_column_name_;
+  std::vector<std::string> indexed_column_names_;
   std::optional<File> index_file_;
   File heap_file_;
 };

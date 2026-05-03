@@ -9,6 +9,7 @@
 #include <string>
 
 #include "storage/page/cell.h"
+#include "storage/index/index_key.h"
 #include "storage/index/index_page.h"
 #include "storage/record/record_cell.h"
 #include "storage/record/record_serializer.h"
@@ -20,6 +21,10 @@ RecordSerializer serializeSingleVarcharRecord(const std::string& value) {
       std::vector<Column>{Column("value", Column::Type::Varchar)}};
   TypedRow row{{value}};
   return RecordSerializer(schema, row);
+}
+
+std::string encodeIntKey(int value) {
+  return index_key::encodeInteger(value);
 }
 
 }  // namespace
@@ -38,14 +43,14 @@ TEST(PageTest, InsertLeafPageAndFind) {
   for (int i = 0; i < static_cast<int>(std::size(entries)); ++i) {
     const Entry& entry = entries[i];
     auto slot_id_opt = page->insertCell(
-        LeafCell(entry.key, entry.heap_page_id, entry.slot_id));
+      LeafCell(encodeIntKey(entry.key), entry.heap_page_id, entry.slot_id));
     ASSERT_TRUE(slot_id_opt.has_value());
     EXPECT_TRUE(page->isDirty());
     int slot_id = slot_id_opt.value();
     EXPECT_EQ(i, slot_id);
 
     LeafIndexPage leaf(*page);
-    auto ref_opt = leaf.findRef(entry.key, false);
+    auto ref_opt = leaf.findRef(encodeIntKey(entry.key), false);
     ASSERT_TRUE(ref_opt.has_value());
     EXPECT_EQ(entry.heap_page_id, ref_opt->heap_page_id);
     EXPECT_EQ(entry.slot_id, ref_opt->slot_id);
@@ -64,28 +69,29 @@ TEST(PageTest, TransferCellsToCompactsSourcePage) {
         Page::initializeNew(dst_data.data(), PageKind::LeafIndex, 0, 2));
 
   for (int key = 1; key <= 4; ++key) {
-    auto slot_id_opt = src_page->insertCell(LeafCell(key, 0, 0));
+    auto slot_id_opt = src_page->insertCell(LeafCell(encodeIntKey(key), 0, 0));
     ASSERT_TRUE(slot_id_opt.has_value());
   }
 
   // Use key 3 as the split boundary and verify that compaction leaves the
   // source and destination pages in the expected partitioned state.
-  LeafCell separate_cell(3, 0, 0);
+    LeafCell separate_cell(encodeIntKey(3), 0, 0);
   std::vector<std::byte> separate_serialized = separate_cell.serialize();
   LeafIndexPage src_leaf(*src_page);
   LeafIndexPage dst_leaf(*dst_page);
   src_leaf.transferAndCompactTo(
-      dst_leaf, reinterpret_cast<char*>(separate_serialized.data()));
+      dst_leaf,
+      LeafCell::getKey(reinterpret_cast<char*>(separate_serialized.data())));
 
-  EXPECT_TRUE(dst_leaf.hasKey(1));
-  EXPECT_TRUE(dst_leaf.hasKey(2));
-  EXPECT_TRUE(dst_leaf.hasKey(3));
-  EXPECT_FALSE(dst_leaf.hasKey(4));
+    EXPECT_TRUE(dst_leaf.hasKey(encodeIntKey(1)));
+    EXPECT_TRUE(dst_leaf.hasKey(encodeIntKey(2)));
+    EXPECT_TRUE(dst_leaf.hasKey(encodeIntKey(3)));
+    EXPECT_FALSE(dst_leaf.hasKey(encodeIntKey(4)));
 
-  EXPECT_FALSE(src_leaf.hasKey(1));
-  EXPECT_FALSE(src_leaf.hasKey(2));
-  EXPECT_FALSE(src_leaf.hasKey(3));
-  EXPECT_TRUE(src_leaf.hasKey(4));
+    EXPECT_FALSE(src_leaf.hasKey(encodeIntKey(1)));
+    EXPECT_FALSE(src_leaf.hasKey(encodeIntKey(2)));
+    EXPECT_FALSE(src_leaf.hasKey(encodeIntKey(3)));
+    EXPECT_TRUE(src_leaf.hasKey(encodeIntKey(4)));
 
   // Layout: byte 0 = node type, byte 1 = slot count.
   uint8_t src_slot_count = static_cast<uint8_t>(src_data[1]);
@@ -112,7 +118,7 @@ TEST(PageTest, InsertLeafPageRunsOutOfSpace) {
 
   for (size_t attempt = 0; attempt < max_attempts; ++attempt) {
     std::memcpy(page_snapshot.data(), page->data(), Page::PAGE_SIZE_BYTE);
-    LeafCell cell(100000 + static_cast<int>(attempt),
+    LeafCell cell(encodeIntKey(100000 + static_cast<int>(attempt)),
                   static_cast<uint16_t>(attempt),
                   static_cast<uint16_t>(attempt));
     auto slot_id_opt = page->insertCell(cell);
@@ -144,7 +150,7 @@ TEST(PageTest, InsertIntermediatePageAndFind) {
 
   for (const Entry& entry : entries) {
     auto slot_id_opt =
-        page->insertCell(IntermediateCell(entry.page_id, entry.key));
+      page->insertCell(IntermediateCell(entry.page_id, encodeIntKey(entry.key)));
     ASSERT_TRUE(slot_id_opt.has_value());
     EXPECT_TRUE(page->isDirty());
   }
@@ -152,20 +158,20 @@ TEST(PageTest, InsertIntermediatePageAndFind) {
   InternalIndexPage internal(*page);
 
   for (const Entry& entry : entries) {
-    uint16_t child_page = internal.findChildPage(entry.key);
+    uint16_t child_page = internal.findChildPage(encodeIntKey(entry.key));
     EXPECT_EQ(entry.page_id, child_page);
   }
 
   uint16_t child_page_for_large_key =
-      internal.findChildPage(entries[2].key + 1);
+      internal.findChildPage(encodeIntKey(entries[2].key + 1));
   EXPECT_EQ(entries[1].page_id, child_page_for_large_key);
 
   uint16_t child_page_for_small_key =
-      internal.findChildPage(entries[2].key - 1);
+      internal.findChildPage(encodeIntKey(entries[2].key - 1));
   EXPECT_EQ(entries[2].page_id, child_page_for_small_key);
 
   uint16_t child_page_for_largest_key =
-      internal.findChildPage(entries[1].key + 1);
+      internal.findChildPage(encodeIntKey(entries[1].key + 1));
   EXPECT_EQ(right_most_child_page_id, child_page_for_largest_key);
 }
 
@@ -217,7 +223,7 @@ TEST(PageTest, InvalidateSlotSetsFlag) {
     EXPECT_FALSE(Cell::isValid(cell_data));
   };
 
-  assertInvalidation(PageKind::LeafIndex, LeafCell(42, 100, 7));
+  assertInvalidation(PageKind::LeafIndex, LeafCell(encodeIntKey(42), 100, 7));
   std::string payload = "page-record";
   RecordSerializer record = serializeSingleVarcharRecord(payload);
   assertSerializedInvalidation(PageKind::Heap, record.serializedBytes());
@@ -228,12 +234,12 @@ TEST(PageTest, LeafSearchSkipsInvalidEntries) {
   auto page = std::make_unique<Page>(
       Page::initializeNew(page_data.data(), PageKind::LeafIndex, 0, 1));
 
-  auto slot_id_opt = page->insertCell(LeafCell(123, 1, 1));
+  auto slot_id_opt = page->insertCell(LeafCell(encodeIntKey(123), 1, 1));
   page->invalidateSlot(slot_id_opt.value());
 
   LeafIndexPage leaf(*page);
-  EXPECT_FALSE(leaf.hasKey(123));
-  EXPECT_FALSE(leaf.findRef(123, false).has_value());
+  EXPECT_FALSE(leaf.hasKey(encodeIntKey(123)));
+  EXPECT_FALSE(leaf.findRef(encodeIntKey(123), false).has_value());
 }
 
 TEST(PageTest, LeafInsertInvalidateReuseSlot) {
@@ -242,17 +248,17 @@ TEST(PageTest, LeafInsertInvalidateReuseSlot) {
       Page::initializeNew(page_data.data(), PageKind::LeafIndex, 0, 1));
   EXPECT_TRUE(page->isDirty());
 
-  auto first_slot = page->insertCell(LeafCell(1, 1, 1));
+  auto first_slot = page->insertCell(LeafCell(encodeIntKey(1), 1, 1));
   ASSERT_TRUE(first_slot.has_value());
   page->invalidateSlot(first_slot.value());
   LeafIndexPage leaf(*page);
-  EXPECT_FALSE(leaf.hasKey(1));
+  EXPECT_FALSE(leaf.hasKey(encodeIntKey(1)));
 
-  auto second_slot = page->insertCell(LeafCell(1, 1, 1));
+  auto second_slot = page->insertCell(LeafCell(encodeIntKey(1), 1, 1));
   ASSERT_TRUE(second_slot.has_value());
-  EXPECT_TRUE(leaf.hasKey(1));
+  EXPECT_TRUE(leaf.hasKey(encodeIntKey(1)));
 
-  auto ref = leaf.findRef(1, false);
+  auto ref = leaf.findRef(encodeIntKey(1), false);
   ASSERT_TRUE(ref.has_value());
   EXPECT_EQ(ref->heap_page_id, 1);
   EXPECT_EQ(ref->slot_id, 1);

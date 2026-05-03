@@ -8,7 +8,7 @@
 
 struct PersistedIndexMetadata {
   std::string index_path;
-  std::optional<std::string> indexed_column_name;
+  std::vector<std::string> indexed_column_names;
 };
 
 struct PersistedTableMetadata {

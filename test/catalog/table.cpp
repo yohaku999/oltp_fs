@@ -44,7 +44,7 @@ class TableTest : public ::testing::Test {
         kTableName,
         Schema(std::vector<Column>{Column("id", Column::Type::Integer),
                                    Column("value", Column::Type::Varchar)}));
-    table.createIndex("id");
+    table.createIndex({"id"});
     return table;
   }
 
@@ -121,9 +121,9 @@ TEST_F(TableTest, InitializeCreatesReadableTableBootstrap) {
   EXPECT_EQ(reopened.schema().columns()[0].getType(), Column::Type::Integer);
   EXPECT_EQ(reopened.schema().columns()[1].getName(), "value");
   EXPECT_EQ(reopened.schema().columns()[1].getType(), Column::Type::Varchar);
-  EXPECT_FALSE(reopened.indexedColumnName().has_value());
+  EXPECT_TRUE(reopened.indexedColumnNames().empty());
 
-  table.createIndex("id");
+  table.createIndex({"id"});
   EXPECT_TRUE(table.hasIndexForColumn("id"));
   ASSERT_TRUE(table.indexFile().has_value());
   EXPECT_EQ(table.indexFile()->get().getRootPageID(), 0u);
@@ -135,13 +135,16 @@ TEST_F(TableTest, InitializeCreatesReadableTableBootstrap) {
   ASSERT_EQ(metadata["indexes"].size(), 1u);
   EXPECT_EQ(metadata["indexes"][0]["indexFile"].get<std::string>(),
             "data/table_test_table.id.index");
-  EXPECT_EQ(metadata["indexes"][0]["indexedColumn"].get<std::string>(),
+  ASSERT_TRUE(metadata["indexes"][0].contains("indexedColumns"));
+  ASSERT_TRUE(metadata["indexes"][0]["indexedColumns"].is_array());
+  ASSERT_EQ(metadata["indexes"][0]["indexedColumns"].size(), 1u);
+  EXPECT_EQ(metadata["indexes"][0]["indexedColumns"][0].get<std::string>(),
             "id");
 
   Table indexed_reopened = Table::getTable(kTableName);
-  ASSERT_TRUE(indexed_reopened.indexedColumnName().has_value());
-  EXPECT_EQ(indexed_reopened.indexedColumnName().value(), "id");
-    ASSERT_TRUE(indexed_reopened.indexFile().has_value());
+  EXPECT_EQ(indexed_reopened.indexedColumnNames(),
+            (std::vector<std::string>{"id"}));
+  ASSERT_TRUE(indexed_reopened.indexFile().has_value());
 
   std::array<char, Page::PAGE_SIZE_BYTE> index_page_buffer{};
   EXPECT_NO_THROW(
@@ -164,6 +167,20 @@ TEST_F(TableTest, InsertIndexFindRIDAndReadRowRoundTrip) {
   ASSERT_EQ(rows.size(), 1u);
   TypedRow restored = rows.front();
   EXPECT_EQ(singleVarcharValue(restored), "table-value");
+}
+
+TEST_F(TableTest, HasIndexForColumnChecksCompositeIndexMembership) {
+  Table table = Table::initialize(
+      kTableName,
+      Schema(std::vector<Column>{Column("warehouse_id", Column::Type::Integer),
+                                 Column("district_id", Column::Type::Integer),
+                                 Column("value", Column::Type::Varchar)}));
+
+  table.createIndex({"warehouse_id", "district_id"});
+
+  EXPECT_TRUE(table.hasIndexForColumn("warehouse_id"));
+  EXPECT_TRUE(table.hasIndexForColumn("district_id"));
+  EXPECT_FALSE(table.hasIndexForColumn("value"));
 }
 
 TEST_F(TableTest, InsertHeapRecordWithWalWritesInsertRecord) {

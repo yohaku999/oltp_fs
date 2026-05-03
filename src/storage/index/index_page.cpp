@@ -4,27 +4,29 @@
 #include <cstring>
 #include <vector>
 
+#include "index_key.h"
 #include "logging.h"
 
 LeafCell LeafIndexPage::cellAt(int slot_id) const {
   return LeafCell::decodeCell(page_.getSlotCellStart(slot_id));
 }
 
-bool LeafIndexPage::hasKey(int key) const {
+bool LeafIndexPage::hasKey(const std::string& key) const {
   for (int idx = 0; idx < page_.getSlotCount(); ++idx) {
     char* cell_data = page_.data() + page_.getCellOffsetOnXthPointer(idx);
     if (!Cell::isValid(cell_data)) {
       continue;
     }
     LeafCell cell = cellAt(idx);
-    if (cell.key() == key) {
+    if (index_key::compare(cell.key(), key) == 0) {
       return true;
     }
   }
   return false;
 }
 
-std::optional<RID> LeafIndexPage::findRef(int key, bool do_invalidate) {
+std::optional<RID> LeafIndexPage::findRef(const std::string& key,
+                                          bool do_invalidate) {
   /**
    * PERFORMANCE:Same consideration as Page::findLeafRef; kept verbatim.
    */
@@ -35,22 +37,22 @@ std::optional<RID> LeafIndexPage::findRef(int key, bool do_invalidate) {
       continue;
     }
     LeafCell cell = cellAt(idx);
-    if (cell.key() == key) {
+    if (index_key::compare(cell.key(), key) == 0) {
       if (do_invalidate) {
         LOG_DEBUG("LeafIndexPage::findRef invalidating slot {} for key {}", idx,
-                  key);
+                  index_key::formatForDebug(key));
         page_.invalidateSlot(idx);
       }
       return RID{cell.heap_page_id(), cell.slot_id()};
     }
   }
-  LOG_INFO("LeafIndexPage::findRef key {} not found in this page.", key);
+  LOG_INFO("LeafIndexPage::findRef key {} not found in this page.",
+           index_key::formatForDebug(key));
   return std::nullopt;
 }
 
 void LeafIndexPage::transferAndCompactTo(LeafIndexPage& dst,
-                                         char* separate_key) {
-  int separate_key_value = LeafCell::getKey(separate_key);
+                                         const std::string& separate_key) {
 
   const int slot_count = page_.getSlotCount();
   for (int idx = 0; idx < slot_count; ++idx) {
@@ -59,8 +61,8 @@ void LeafIndexPage::transferAndCompactTo(LeafIndexPage& dst,
       continue;
     }
 
-    int cell_key = LeafCell::getKey(cell_data);
-    if (cell_key <= separate_key_value) {
+    const std::string cell_key = LeafCell::getKey(cell_data);
+    if (index_key::compare(cell_key, separate_key) <= 0) {
       dst.page_.insertCell(LeafCell::decodeCell(cell_data));
       page_.invalidateSlot(idx);
     }
@@ -117,7 +119,7 @@ uint16_t InternalIndexPage::rightMostChildPageId() const {
   return page_.rightMostChildPageId();
 }
 
-uint16_t InternalIndexPage::findChildPage(int key) {
+uint16_t InternalIndexPage::findChildPage(const std::string& key) {
   std::vector<IntermediateCell> cells;
   cells.reserve(page_.getSlotCount());
   for (int idx = 0; idx < page_.getSlotCount(); ++idx) {
@@ -130,11 +132,11 @@ uint16_t InternalIndexPage::findChildPage(int key) {
 
   std::sort(cells.begin(), cells.end(),
             [](const IntermediateCell& a, const IntermediateCell& b) {
-              return a.key() < b.key();
+              return index_key::compare(a.key(), b.key()) < 0;
             });
 
   for (const IntermediateCell& cell : cells) {
-    if (cell.key() >= key) {
+    if (index_key::compare(cell.key(), key) >= 0) {
       return cell.page_id();
     }
   }
@@ -144,8 +146,7 @@ uint16_t InternalIndexPage::findChildPage(int key) {
 }
 
 void InternalIndexPage::transferAndCompactTo(InternalIndexPage& dst,
-                                             char* separate_key) {
-  int separate_key_value = IntermediateCell::getKey(separate_key);
+                                             const std::string& separate_key) {
 
   const int slot_count = page_.getSlotCount();
   for (int idx = 0; idx < slot_count; ++idx) {
@@ -154,8 +155,8 @@ void InternalIndexPage::transferAndCompactTo(InternalIndexPage& dst,
       continue;
     }
 
-    int cell_key = IntermediateCell::getKey(cell_data);
-    if (cell_key <= separate_key_value) {
+    const std::string cell_key = IntermediateCell::getKey(cell_data);
+    if (index_key::compare(cell_key, separate_key) <= 0) {
       dst.page_.insertCell(IntermediateCell::decodeCell(cell_data));
       page_.invalidateSlot(idx);
     }

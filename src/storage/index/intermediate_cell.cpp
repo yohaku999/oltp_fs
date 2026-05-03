@@ -4,11 +4,7 @@
 
 /**
  * The structure of intermediate cell is as follows:
- * | key size (2 bytes) | page ID (2 bytes) | key (4 bytes) |
- * The value range of pageID, cell key is 0~4095 for now, so we can use uint16_t
- * to store them. key size is the size of key in bytes, which is 4 for now since
- * we only support int as key type, but we can support variable length key in
- * the future by using key size to indicate the size of key.
+ * | key size (2 bytes) | page ID (2 bytes) | key bytes |
  */
 IntermediateCell IntermediateCell::decodeCell(char* data_p) {
   data_p += Cell::FLAG_FIELD_SIZE;
@@ -16,13 +12,16 @@ IntermediateCell IntermediateCell::decodeCell(char* data_p) {
   char* page_id_p = data_p + sizeof(uint16_t);
   uint16_t cell_pageID = readValue<uint16_t>(page_id_p);
   char* key_p = page_id_p + sizeof(uint16_t);
-  int cell_key = readValue<int>(key_p);
-  return IntermediateCell(cell_pageID, cell_key);
+  std::string cell_key(key_p, key_p + key_size);
+  return IntermediateCell(cell_pageID, std::move(cell_key));
 }
 
-int IntermediateCell::getKey(const char* data_p) {
+std::string IntermediateCell::getKey(const char* data_p) {
   // Skip: FLAG (1 byte) + key_size (2 bytes) + page_id (2 bytes)
-  return readValue<int>(data_p + Cell::FLAG_FIELD_SIZE + sizeof(uint16_t) * 2);
+  const uint16_t key_size =
+      readValue<uint16_t>(data_p + Cell::FLAG_FIELD_SIZE);
+  const char* key_p = data_p + Cell::FLAG_FIELD_SIZE + sizeof(uint16_t) * 2;
+  return std::string(key_p, key_p + key_size);
 }
 
 std::vector<std::byte> IntermediateCell::serialize() const {
@@ -35,7 +34,7 @@ std::vector<std::byte> IntermediateCell::serialize() const {
   dst += sizeof(uint16_t);
   std::memcpy(dst, &page_id_, sizeof(uint16_t));
   dst += sizeof(uint16_t);
-  std::memcpy(dst, &key_, sizeof(int));
+  std::memcpy(dst, key_.data(), key_.size());
 
   return buffer;
 }

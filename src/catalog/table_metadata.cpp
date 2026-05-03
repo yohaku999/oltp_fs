@@ -34,9 +34,7 @@ void TableMetadataStore::write(
   for (const auto& index : indexes) {
     metadata["indexes"].push_back(
         {{"indexFile", index.index_path},
-         {"indexedColumn", index.indexed_column_name.has_value()
-                               ? nlohmann::json(index.indexed_column_name.value())
-                               : nlohmann::json(nullptr)}});
+         {"indexedColumns", index.indexed_column_names}});
   }
   metadata["columns"] = nlohmann::json::array();
   for (const auto& column : schema.columns()) {
@@ -84,14 +82,24 @@ PersistedTableMetadata TableMetadataStore::readFromPath(
         throw std::runtime_error(
             "invalid table metadata: index requires indexFile");
       }
-      std::optional<std::string> indexed_column_name;
-      if (index_json.contains("indexedColumn") &&
-          index_json["indexedColumn"].is_string()) {
-        indexed_column_name = index_json["indexedColumn"].get<std::string>();
+      std::vector<std::string> indexed_column_names;
+      if (index_json.contains("indexedColumns") &&
+          index_json["indexedColumns"].is_array()) {
+        for (const auto& indexed_column_json : index_json["indexedColumns"]) {
+          if (!indexed_column_json.is_string()) {
+            throw std::runtime_error(
+                "invalid table metadata: indexedColumns must be strings");
+          }
+          indexed_column_names.push_back(indexed_column_json.get<std::string>());
+        }
+      } else if (index_json.contains("indexedColumn") &&
+                 index_json["indexedColumn"].is_string()) {
+        indexed_column_names.push_back(
+            index_json["indexedColumn"].get<std::string>());
       }
       indexes.push_back(
           PersistedIndexMetadata{index_json["indexFile"].get<std::string>(),
-                                 std::move(indexed_column_name)});
+                                 std::move(indexed_column_names)});
     }
   }
 
