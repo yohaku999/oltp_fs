@@ -45,6 +45,7 @@ std::vector<UnboundSelectItem> SelectParser::extractSelectItems() const {
     if (value.contains("FuncCall")) {
       const auto& func_call = value.at("FuncCall");
       const auto& func_name_node = func_call.at("funcname");
+      const bool is_distinct = func_call.value("agg_distinct", false);
 
       std::string function_name =
           func_name_node.at(0).at("String").at("sval").get<std::string>();
@@ -54,24 +55,36 @@ std::vector<UnboundSelectItem> SelectParser::extractSelectItems() const {
                        return static_cast<char>(std::tolower(ch));
                      });
       if (function_name == "sum") {
+        if (is_distinct) {
+          throw std::runtime_error(
+              "DISTINCT is not supported for aggregate function: sum");
+        }
+
         const auto& args = func_call.at("args");
         select_items.push_back(UnboundAggregateCall{
             AggregateFunction::Sum,
-            parseColumnRef(args.at(0).at("ColumnRef"))});
+            parseColumnRef(args.at(0).at("ColumnRef")),
+            false});
         continue;
       }
 
       if (function_name == "count") {
         if (func_call.value("agg_star", false)) {
+          if (is_distinct) {
+            throw std::runtime_error(
+                "COUNT(DISTINCT *) is not supported.");
+          }
+
           select_items.push_back(UnboundAggregateCall{
-              AggregateFunction::Count, AggregateAllColumnsArgument{}});
+              AggregateFunction::Count, AggregateAllColumnsArgument{}, false});
           continue;
         }
 
         const auto& args = func_call.at("args");
         select_items.push_back(UnboundAggregateCall{
             AggregateFunction::Count,
-            parseColumnRef(args.at(0).at("ColumnRef"))});
+            parseColumnRef(args.at(0).at("ColumnRef")),
+            is_distinct});
         continue;
       }
 
