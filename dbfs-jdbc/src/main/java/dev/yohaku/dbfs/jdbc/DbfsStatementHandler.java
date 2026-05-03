@@ -49,27 +49,36 @@ class DbfsStatementHandler extends DbfsProxyHandler {
         }
         if (name.equals("executeQuery") && args.length == 1) {
             ensureOpen();
-            QueryResult result = state.client().executeQuery(normalizedSql(args[0]), List.of());
+            String sql = normalizedSql(args[0]);
+            SqlTraceSampler.record("QUERY", sql, () -> sql);
+            QueryResult result = state.client().executeQuery(sql, List.of());
             currentResultSet = DbfsJdbcProxyFactory.newResultSet(result);
             updateCount = -1;
             return currentResultSet;
         }
         if ((name.equals("executeUpdate") || name.equals("executeLargeUpdate")) && args.length >= 1) {
             ensureOpen();
-            int updated = state.client().executeUpdate(normalizedSql(args[0]), List.of());
+            String sql = normalizedSql(args[0]);
+            SqlTraceSampler.record("UPDATE", sql, () -> sql);
+            int updated = state.client().executeUpdate(sql, List.of());
             currentResultSet = null;
             updateCount = updated;
-            return name.equals("executeLargeUpdate") ? (long) updated : updated;
+            if (name.equals("executeLargeUpdate")) {
+                return (long) updated;
+            }
+            return updated;
         }
         if (name.equals("execute") && args.length >= 1) {
             ensureOpen();
             String sql = normalizedSql(args[0]);
             if (looksLikeQuery(sql)) {
+                SqlTraceSampler.record("QUERY", sql, () -> sql);
                 currentResultSet = DbfsJdbcProxyFactory.newResultSet(state.client().executeQuery(sql, List.of()));
                 updateCount = -1;
                 return true;
             }
 
+            SqlTraceSampler.record("UPDATE", sql, () -> sql);
             updateCount = state.client().executeUpdate(sql, List.of());
             currentResultSet = null;
             return false;
@@ -215,6 +224,7 @@ class DbfsStatementHandler extends DbfsProxyHandler {
 final class DbfsPreparedStatementHandler extends DbfsStatementHandler {
     private final String sql;
     private final Map<Integer, Object> parameters = new LinkedHashMap<>();
+    private final List<List<Object>> batchParameters = new ArrayList<>();
 
     DbfsPreparedStatementHandler(DbfsConnectionState state, String sql) {
         super(state);
@@ -227,27 +237,37 @@ final class DbfsPreparedStatementHandler extends DbfsStatementHandler {
 
         if (name.equals("executeQuery") && args.length == 0) {
             ensureOpen();
-            ResultSet resultSet = DbfsJdbcProxyFactory.newResultSet(state.client().executeQuery(sql, orderedParameters(parameters)));
+            List<Object> ordered = orderedParameters(parameters);
+            SqlTraceSampler.record("QUERY", sql, () -> SqlLiteralRenderer.render(sql, ordered));
+            ResultSet resultSet = DbfsJdbcProxyFactory.newResultSet(state.client().executeQuery(sql, ordered));
             setCurrentResultSet(resultSet);
             setUpdateCount(-1);
             return resultSet;
         }
         if ((name.equals("executeUpdate") || name.equals("executeLargeUpdate")) && args.length == 0) {
             ensureOpen();
-            int updated = state.client().executeUpdate(sql, orderedParameters(parameters));
+            List<Object> ordered = orderedParameters(parameters);
+            SqlTraceSampler.record("UPDATE", sql, () -> SqlLiteralRenderer.render(sql, ordered));
+            int updated = state.client().executeUpdate(sql, ordered);
             setCurrentResultSet(null);
             setUpdateCount(updated);
-            return name.equals("executeLargeUpdate") ? (long) updated : updated;
+            if (name.equals("executeLargeUpdate")) {
+                return (long) updated;
+            }
+            return updated;
         }
         if (name.equals("execute") && args.length == 0) {
             ensureOpen();
+            List<Object> ordered = orderedParameters(parameters);
             if (looksLikeQuery(sql)) {
-                setCurrentResultSet(DbfsJdbcProxyFactory.newResultSet(state.client().executeQuery(sql, orderedParameters(parameters))));
+                SqlTraceSampler.record("QUERY", sql, () -> SqlLiteralRenderer.render(sql, ordered));
+                setCurrentResultSet(DbfsJdbcProxyFactory.newResultSet(state.client().executeQuery(sql, ordered)));
                 setUpdateCount(-1);
                 return true;
             }
 
-            setUpdateCount(state.client().executeUpdate(sql, orderedParameters(parameters)));
+            SqlTraceSampler.record("UPDATE", sql, () -> SqlLiteralRenderer.render(sql, ordered));
+            setUpdateCount(state.client().executeUpdate(sql, ordered));
             setCurrentResultSet(null);
             return false;
         }
@@ -259,6 +279,40 @@ final class DbfsPreparedStatementHandler extends DbfsStatementHandler {
             Integer index = (Integer) args[0];
             parameters.put(index, normalizeParameterValue(name, args));
             return null;
+        }
+        if (name.equals("addBatch") && args.length == 0) {
+            batchParameters.add(orderedParameters(parameters));
+            return null;
+        }
+        if (name.equals("clearBatch")) {
+            batchParameters.clear();
+            return null;
+        }
+        if (name.equals("executeBatch")) {
+            ensureOpen();
+            int[] updateCounts = new int[batchParameters.size()];
+            for (int index = 0; index < batchParameters.size(); index += 1) {
+                List<Object> batch = batchParameters.get(index);
+                SqlTraceSampler.record("UPDATE", sql, () -> SqlLiteralRenderer.render(sql, batch));
+                updateCounts[index] = state.client().executeUpdate(sql, batch);
+            }
+            batchParameters.clear();
+            setCurrentResultSet(null);
+            setUpdateCount(updateCounts.length == 0 ? 0 : updateCounts[updateCounts.length - 1]);
+            return updateCounts;
+        }
+        if (name.equals("executeLargeBatch")) {
+            ensureOpen();
+            long[] updateCounts = new long[batchParameters.size()];
+            for (int index = 0; index < batchParameters.size(); index += 1) {
+                List<Object> batch = batchParameters.get(index);
+                SqlTraceSampler.record("UPDATE", sql, () -> SqlLiteralRenderer.render(sql, batch));
+                updateCounts[index] = state.client().executeUpdate(sql, batch);
+            }
+            batchParameters.clear();
+            setCurrentResultSet(null);
+            setUpdateCount(updateCounts.length == 0 ? 0 : updateCounts[updateCounts.length - 1]);
+            return updateCounts;
         }
         if (name.equals("addBatch") && args.length == 0) {
             return null;

@@ -66,9 +66,25 @@ final class DbfsResultSetHandler extends DbfsProxyHandler {
             Object value = value(args[0]);
             return value == null ? 0 : ((Number) value).intValue();
         }
+        if (name.equals("getShort")) {
+            Object value = value(args[0]);
+            return value == null ? (short) 0 : ((Number) value).shortValue();
+        }
         if (name.equals("getLong")) {
             Object value = value(args[0]);
             return value == null ? 0L : ((Number) value).longValue();
+        }
+        if (name.equals("getFloat")) {
+            Object value = value(args[0]);
+            return value == null ? 0.0f : ((Number) value).floatValue();
+        }
+        if (name.equals("getDouble")) {
+            Object value = value(args[0]);
+            return value == null ? 0.0d : ((Number) value).doubleValue();
+        }
+        if (name.equals("getTimestamp")) {
+            Object value = value(args[0]);
+            return value == null ? null : java.sql.Timestamp.class.cast(value);
         }
         if (name.equals("getBoolean")) {
             Object value = value(args[0]);

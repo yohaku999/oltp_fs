@@ -16,6 +16,8 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.SQLFeatureNotSupportedException;
 import java.sql.Statement;
+import java.sql.Timestamp;
+import java.util.Arrays;
 
 import org.junit.jupiter.api.Test;
 
@@ -77,6 +79,17 @@ class DbfsDriverTest {
                 assertTrue(ignored);
             });
         }
+    }
+
+    @Test
+    void sqlLiteralRendererRendersRepresentativePreparedStatementSql() {
+        String rendered = SqlLiteralRenderer.render(
+                "INSERT INTO order_line VALUES (?, ?, ?, ?)",
+            Arrays.asList(1, "O'Brian", null, Timestamp.valueOf("2026-04-18 00:16:32.005")));
+
+        assertEquals(
+                "INSERT INTO order_line VALUES (1, 'O''Brian', NULL, '2026-04-18 00:16:32.005')",
+                rendered);
     }
 
     @Test

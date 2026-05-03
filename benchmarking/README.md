@@ -38,22 +38,22 @@ under `/benchbase/benchbase-config` so they do not overwrite BenchBase's built-i
 - `results/`
   - Raw outputs produced by BenchBase runs.
   - Recommended structure:
-    - `results/tpcc/postgres/<run-label>/...`
-    - `results/tpcc/dbfs/<run-label>/...`
+    - `results/<compare-label>/tpcc/postgres/...`
+    - `results/<compare-label>/tpcc/dbfs/...`
 - `notebooks/`
   - Jupyter notebooks for analysis and visualization.
 
 ## 3. Typical workflow
 
 1. Ensure Docker is available.
-2. Run `scripts/run_postgres_tpcc_docker.sh -c ../benchbase-config/postgres_tpcc_docker.xml`
-3. Inspect results under `results/tpcc/postgres/<run-label>/`.
+2. Choose a shared compare label and run both targets with the same `RUN_LABEL`.
+3. Inspect results under `results/<compare-label>/tpcc/<engine>/`.
 4. Open notebooks as needed to visualize throughput and latency.
 
 If you want to keep the same compose environment and change only the
  BenchBase config file, place another XML file under `benchbase-config/` and run:
 
-`./benchmarking/scripts/run_postgres_tpcc_docker.sh -c benchmarking/benchbase-config/your_config.xml`
+`RUN_LABEL=20260503-compare ./benchmarking/scripts/run_postgres_tpcc_docker.sh -c benchmarking/benchbase-config/your_config.xml`
 
 The PostgreSQL TPCC config in this repository uses:
 

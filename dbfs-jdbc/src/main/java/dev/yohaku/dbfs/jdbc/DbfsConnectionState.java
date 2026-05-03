@@ -14,7 +14,7 @@ final class QueryResult {
         this.columns = List.copyOf(columns);
         List<List<Object>> immutableRows = new ArrayList<>(rows.size());
         for (List<Object> row : rows) {
-            immutableRows.add(List.copyOf(row));
+            immutableRows.add(java.util.Collections.unmodifiableList(new ArrayList<>(row)));
         }
         this.rows = List.copyOf(immutableRows);
     }
@@ -81,7 +81,7 @@ final class DbfsConnectionState {
             properties.putAll(info);
         }
 
-        return new DbfsConnectionState(url, properties, new NoopDbfsClient());
+        return new DbfsConnectionState(url, properties, new InMemoryDbfsClient(url));
     }
 
     String url() {

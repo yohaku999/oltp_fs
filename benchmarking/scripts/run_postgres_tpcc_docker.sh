@@ -64,13 +64,24 @@ fi
 CONTAINER_CONFIG="/benchbase/benchbase-config/${BENCHBASE_CONFIG_PATH#"${CONFIG_ROOT}/"}"
 
 WORKLOAD="tpcc"
-ENGINE="postgres"
+if grep -q '<driver>dev.yohaku.dbfs.jdbc.DbfsDriver</driver>' "${BENCHBASE_CONFIG_PATH}"; then
+  ENGINE="dbfs"
+elif grep -q '<driver>org.postgresql.Driver</driver>' "${BENCHBASE_CONFIG_PATH}"; then
+  ENGINE="postgres"
+else
+  echo "Unable to determine benchmark engine from ${BENCHBASE_CONFIG_PATH}" >&2
+  exit 1
+fi
 RUN_LABEL=${RUN_LABEL:-"$(date +%Y%m%d-%H%M%S)"}
-RESULTS_SUBDIR="${WORKLOAD}/${ENGINE}/${RUN_LABEL}"
+RESULTS_SUBDIR="${RUN_LABEL}/${WORKLOAD}/${ENGINE}"
 
 mkdir -p "${RESULTS_ROOT}"
 
 compose_cmd=(docker compose -f "${COMPOSE_FILE}")
+benchbase_env_args=()
+if [[ -n "${DBFS_SQL_TRACE_SAMPLE_FILE:-}" ]]; then
+  benchbase_env_args+=( -e "DBFS_SQL_TRACE_SAMPLE_FILE=${DBFS_SQL_TRACE_SAMPLE_FILE}" )
+fi
 
 echo "Starting PostgreSQL compose service..."
 "${compose_cmd[@]}" up -d postgres
@@ -91,17 +102,29 @@ done
 RESULTS_DIR_CONTAINER="/benchbase/results/${RESULTS_SUBDIR}"
 
 echo "Running BenchBase compose service..."
+echo "  Compare:    ${RUN_LABEL}"
 echo "  Workload:   ${WORKLOAD}"
+echo "  Engine:     ${ENGINE}"
 echo "  Config:     ${CONTAINER_CONFIG}"
 echo "  Results:    ${RESULTS_DIR_CONTAINER} (mounted to ${RESULTS_ROOT})"
 
-"${compose_cmd[@]}" run --rm benchbase \
-  -b "${WORKLOAD}" \
-  -c "${CONTAINER_CONFIG}" \
-  --create=true \
-  --load=true \
-  --execute=true \
-  -d "${RESULTS_DIR_CONTAINER}"
+if [[ ${#benchbase_env_args[@]} -gt 0 ]]; then
+  "${compose_cmd[@]}" run --rm "${benchbase_env_args[@]}" benchbase \
+    -b "${WORKLOAD}" \
+    -c "${CONTAINER_CONFIG}" \
+    --create=true \
+    --load=true \
+    --execute=true \
+    -d "${RESULTS_DIR_CONTAINER}"
+else
+  "${compose_cmd[@]}" run --rm benchbase \
+    -b "${WORKLOAD}" \
+    -c "${CONTAINER_CONFIG}" \
+    --create=true \
+    --load=true \
+    --execute=true \
+    -d "${RESULTS_DIR_CONTAINER}"
+fi
 
 HOST_RESULTS_DIR="${RESULTS_ROOT}/${RESULTS_SUBDIR}"
 

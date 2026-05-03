@@ -1,10 +1,3 @@
-# BenchBase TPCC sampled SQL trace
-# Run label: sql-trace-literalized-20260418b
-# Completed: EXIT
-# Note: this file contains one representative sample for each distinct executed SQL shape from the completed benchmark run.
-# Note: JDBC-side literal rendering is enabled for sampled logging, so params are embedded in sql and omitted as a separate field.
-# Source sample: /Users/yohasebe/Documents/dbfs/benchmarking/results/dbfs_tpcc_trace_sample.log
-# Source results: /Users/yohasebe/Documents/dbfs/benchmarking/results/tpcc/postgres/sql-trace-literalized-20260418b
 [UPDATE sample] sql=DROP TABLE IF EXISTS history CASCADE
 [UPDATE sample] sql=DROP TABLE IF EXISTS new_order CASCADE
 [UPDATE sample] sql=DROP TABLE IF EXISTS order_line CASCADE
