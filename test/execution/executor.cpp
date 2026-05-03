@@ -283,6 +283,49 @@ TEST_F(ExecutorTest, InsertAndReadTypedRow) {
   EXPECT_EQ(std::get<Column::VarcharType>(restored.values[1]), "typed-value");
 }
 
+TEST_F(ExecutorTest, InsertMapsExplicitColumnListToSchemaOrder) {
+  Table& table = *table_;
+
+  executor::insert(
+      *pool_, table,
+      InsertParser(
+          "INSERT INTO executor_test_table (value, id) VALUES ('reordered', 11)"),
+      *wal_);
+
+  std::vector<TypedRow> rows = executor::read(
+      *pool_, SelectParser("SELECT id, value FROM executor_test_table WHERE id = 11"));
+  ASSERT_EQ(rows.size(), 1u);
+  ASSERT_EQ(rows[0].values.size(), 2u);
+  EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[0]), 11);
+  EXPECT_EQ(std::get<Column::VarcharType>(rows[0].values[1]), "reordered");
+}
+
+TEST_F(ExecutorTest, InsertFillsOmittedColumnsWithNull) {
+  const std::string table_name = uniqueTableName("partial_insert_test");
+
+  executor::create_table(CreateTableParser(
+      "CREATE TABLE " + table_name + " ("
+      "id int, "
+      "note varchar)"));
+
+  {
+    Table table = Table::getTable(table_name);
+    executor::insert(*pool_, table,
+                     InsertParser("INSERT INTO " + table_name + " (id) VALUES (7)"),
+                     *wal_);
+  }
+
+  std::vector<TypedRow> rows = executor::read(
+      *pool_, SelectParser("SELECT id, note FROM " + table_name + " WHERE id = 7"));
+  ASSERT_EQ(rows.size(), 1u);
+  ASSERT_EQ(rows[0].values.size(), 2u);
+  EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[0]), 7);
+  EXPECT_TRUE(std::holds_alternative<std::monostate>(rows[0].values[1]));
+
+  executor::drop_table(DropTableParser("DROP TABLE " + table_name));
+  EXPECT_FALSE(Table::isPersisted(table_name));
+}
+
 TEST_F(ExecutorTest, ReadSelectUsesIndexedPredicatePath) {
   SelectParser parser("SELECT value FROM executor_test_table WHERE id = 104");
   std::vector<TypedRow> rows = executor::read(*pool_, parser);

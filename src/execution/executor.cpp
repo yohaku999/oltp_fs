@@ -404,7 +404,7 @@ void executor::drop_table(const DropTableParser& parser) {
 
 void executor::insert(BufferPool& pool, Table& table, const InsertParser& parser,
                       WAL& wal) {
-  const TypedRow row = parser.extractRow();
+  const TypedRow row = parser.extractRow(table.schema());
   insertRow(pool, table, row, wal);
 }
 

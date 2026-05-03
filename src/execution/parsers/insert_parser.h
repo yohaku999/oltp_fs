@@ -14,5 +14,5 @@ class InsertParser : private PgQueryJsonParser {
   ~InsertParser() = default;
 
   std::string extractTableName() const;
-  TypedRow extractRow() const;
+  TypedRow extractRow(const Schema& schema) const;
 };
