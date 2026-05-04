@@ -12,6 +12,15 @@ Repository-managed benchmark configs are mounted into the BenchBase container
 under `/benchbase/benchbase-config` so they do not overwrite BenchBase's built-in
 `/benchbase/config` directory.
 
+This DBMS currently runs as an embedded library invoked directly from a JDBC driver.
+Therefore, the buffer pool is process-local and not shared across independent client processes.
+
+This design is sufficient for studying storage-engine internals such as page caching,
+WAL ordering, B-tree page access, and flush/eviction policies.
+
+However, it does not model a client-server DBMS with a shared global buffer pool,
+network protocol overhead, or centralized connection/process management.
+
 ## 1. Requirements
 
 - Docker with `docker compose`
