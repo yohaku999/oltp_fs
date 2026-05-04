@@ -12,14 +12,23 @@ Repository-managed benchmark configs are mounted into the BenchBase container
 under `/benchbase/benchbase-config` so they do not overwrite BenchBase's built-in
 `/benchbase/config` directory.
 
-This DBMS currently runs as an embedded library invoked directly from a JDBC driver.
-Therefore, the buffer pool is process-local and not shared across independent client processes.
+## Embedded Execution Model
 
-This design is sufficient for studying storage-engine internals such as page caching,
-WAL ordering, B-tree page access, and flush/eviction policies.
+This DBMS currently runs as an embedded library invoked directly from a JDBC
+driver. Therefore, the buffer pool is process-local and not shared across
+independent client processes.
 
-However, it does not model a client-server DBMS with a shared global buffer pool,
-network protocol overhead, or centralized connection/process management.
+This design is sufficient for studying storage-engine internals such as page
+caching, WAL ordering, B-tree page access, and flush/eviction policies.
+
+However, it does not model a client-server DBMS with a shared global buffer
+pool, network protocol overhead, or centralized connection/process management.
+
+```text
+Java benchmark / JDBC process
+  └─ JNI or native library
+       └─ your C++ RDBMS
+```
 
 ## 1. Requirements
 
@@ -64,15 +73,19 @@ network protocol overhead, or centralized connection/process management.
 3. Inspect results under `results/<compare-label>/tpcc/<engine>/`.
 4. Open notebooks as needed to visualize throughput and latency.
 5. Inspect `dbfs_query_trace.csv` and `postgres_query_trace.csv`, or use the
-  comparison notebook to rank query shapes by total time, mean latency, and
-  max latency. Both files use client-side JDBC shapes; if you need
-  PostgreSQL server-side rewritten SQL, inspect `pg_stat_statements`
-  separately inside the container.
+   comparison notebook to rank query shapes by total time, mean latency, and
+   max latency. Both files use client-side JDBC shapes; if you need
+   PostgreSQL server-side rewritten SQL, inspect `pg_stat_statements`
+   separately inside the container.
 
-If you want to keep the same compose environment and change only the
- BenchBase config file, place another XML file under `benchbase-config/` and run:
+If you want to keep the same compose environment and change only the BenchBase
+config file, place another XML file under `benchbase-config/` and run:
 
-`RUN_LABEL=20260503-compare ./benchmarking/scripts/run_postgres_tpcc_docker.sh -c benchmarking/benchbase-config/your_config.xml`
+```bash
+RUN_LABEL=20260503-compare \
+  ./benchmarking/scripts/run_postgres_tpcc_docker.sh \
+  -c benchmarking/benchbase-config/your_config.xml
+```
 
 The PostgreSQL TPCC config in this repository uses:
 
