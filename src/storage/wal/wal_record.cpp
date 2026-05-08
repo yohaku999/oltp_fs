@@ -1,5 +1,6 @@
 #include "wal_record.h"
 
+#include <cstring>
 #include <stdexcept>
 
 std::vector<std::byte> WALRecord::serialize() const {

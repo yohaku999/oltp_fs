@@ -281,7 +281,7 @@ std::vector<TypedRow> executor::read(BufferPool& pool,
 
   const std::vector<UnboundComparisonPredicate> predicates =
       parser.extractComparisonPredicates(joined_schema);
-    const std::vector<UnboundSelectItem> select_items =
+  const std::vector<UnboundSelectItem> select_items =
       parser.extractSelectItems();
 
   std::vector<std::unique_ptr<Operator>> sources;

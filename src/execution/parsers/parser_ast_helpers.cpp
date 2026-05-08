@@ -143,6 +143,40 @@ ColumnRef parseColumnRef(const nlohmann::json& column_ref) {
   throw std::runtime_error("Unsupported column reference shape.");
 }
 
+int parseConstIntegerValue(const nlohmann::json& item) {
+  const auto& constant = item.at("A_Const");
+  const auto integer_it = constant.find("ival");
+  if (integer_it == constant.end()) {
+    throw std::runtime_error("Unsupported integer constant");
+  }
+
+  const auto& integer_value = *integer_it;
+  if (integer_value.is_number_integer()) {
+    return integer_value.get<int>();
+  }
+  if (integer_value.is_string()) {
+    return std::stoi(integer_value.get<std::string>());
+  }
+  if (!integer_value.is_object()) {
+    throw std::runtime_error("Unsupported integer constant shape");
+  }
+
+  const auto nested_value_it = integer_value.find("ival");
+  if (nested_value_it == integer_value.end()) {
+    return 0;
+  }
+
+  const auto& nested_value = *nested_value_it;
+  if (nested_value.is_number_integer()) {
+    return nested_value.get<int>();
+  }
+  if (nested_value.is_string()) {
+    return std::stoi(nested_value.get<std::string>());
+  }
+
+  throw std::runtime_error("Unsupported integer constant shape");
+}
+
 FieldValue parseConstFieldValue(const nlohmann::json& item,
                                Column::Type column_type) {
   const auto& constant = item.at("A_Const");
@@ -153,8 +187,7 @@ FieldValue parseConstFieldValue(const nlohmann::json& item,
   switch (column_type) {
     case Column::Type::Integer:
       if (constant.contains("ival")) {
-        return static_cast<Column::IntegerType>(
-            constant.at("ival").at("ival").get<int>());
+        return static_cast<Column::IntegerType>(parseConstIntegerValue(item));
       }
       if (constant.contains("fval")) {
         return static_cast<Column::IntegerType>(std::stod(
@@ -166,8 +199,7 @@ FieldValue parseConstFieldValue(const nlohmann::json& item,
         return std::stod(constant.at("fval").at("fval").get<std::string>());
       }
       if (constant.contains("ival")) {
-        return static_cast<Column::DoubleType>(
-            constant.at("ival").at("ival").get<int>());
+        return static_cast<Column::DoubleType>(parseConstIntegerValue(item));
       }
       if (constant.contains("sval")) {
         return std::stod(constant.at("sval").at("sval").get<std::string>());
@@ -178,7 +210,7 @@ FieldValue parseConstFieldValue(const nlohmann::json& item,
         return constant.at("sval").at("sval").get<std::string>();
       }
       if (constant.contains("ival")) {
-        return std::to_string(constant.at("ival").at("ival").get<int>());
+        return std::to_string(parseConstIntegerValue(item));
       }
       if (constant.contains("fval")) {
         return constant.at("fval").at("fval").get<std::string>();

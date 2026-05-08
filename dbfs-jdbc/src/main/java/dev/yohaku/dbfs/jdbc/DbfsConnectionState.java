@@ -81,7 +81,7 @@ final class DbfsConnectionState {
             properties.putAll(info);
         }
 
-        return new DbfsConnectionState(url, properties, new InMemoryDbfsClient(url));
+        return new DbfsConnectionState(url, properties, new ImplDbfsClient(url));
     }
 
     String url() {

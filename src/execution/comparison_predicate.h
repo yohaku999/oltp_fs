@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <string>
 #include <variant>
+#include <vector>
 
 #include "tuple/field_value.h"
 

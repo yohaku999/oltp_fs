@@ -60,16 +60,20 @@ std::optional<int> Page::insertCell(
     const std::vector<std::byte>& serialized_cell) {
   LOG_INFO("Attempting to insert serialized cell into page ID {}", getPageID());
 
-  uint16_t new_cell_offset = getSlotDirectoryOffset() - serialized_cell.size();
-  char* cell_data_start = page_buffer_ + new_cell_offset;
-  char* next_slot_pointer = page_buffer_ + Page::HEADDER_SIZE_BYTE +
-                            Page::CELL_POINTER_SIZE * (getSlotCount() + 1);
-  const bool has_space_for_new_cell = cell_data_start > next_slot_pointer;
-  if (!has_space_for_new_cell) {
+  const size_t current_cell_offset = getSlotDirectoryOffset();
+  const size_t next_slot_offset =
+      Page::HEADDER_SIZE_BYTE +
+      Page::CELL_POINTER_SIZE * (static_cast<size_t>(getSlotCount()) + 1);
+  if (serialized_cell.size() > current_cell_offset ||
+      current_cell_offset - serialized_cell.size() < next_slot_offset) {
     LOG_INFO(
         "This page does not have enough space to insert the cell anymore.");
     return std::nullopt;
   }
+
+  uint16_t new_cell_offset =
+      static_cast<uint16_t>(current_cell_offset - serialized_cell.size());
+  char* cell_data_start = page_buffer_ + new_cell_offset;
 
   std::memcpy(cell_data_start, serialized_cell.data(), serialized_cell.size());
 

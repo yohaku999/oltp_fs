@@ -22,7 +22,7 @@ FetchContent_MakeAvailable(nlohmann_json)
 # External libpg_query (PostgreSQL parser as a C library)
 ExternalProject_Add(libpg_query_proj
     GIT_REPOSITORY https://github.com/pganalyze/libpg_query.git
-    GIT_TAG v4.2.0
+    GIT_TAG 17-6.2.2
     PREFIX ${CMAKE_BINARY_DIR}/libpg_query
     CONFIGURE_COMMAND ""
     BUILD_COMMAND make
@@ -80,6 +80,7 @@ add_library(dbfs_src
     src/catalog/table_metadata.cpp
     src/catalog/table.cpp
     src/logging.cpp
+    src/server/server.cpp
 )
 
 target_include_directories(dbfs_src PUBLIC src)
@@ -147,6 +148,9 @@ add_executable(lsn_allocator_test test/storage/wal/lsn_allocator.cpp)
 target_link_libraries(lsn_allocator_test dbfs_src GTest::gtest_main)
 add_executable(wal_test test/storage/wal/wal.cpp)
 target_link_libraries(wal_test dbfs_src GTest::gtest_main)
+
+add_executable(dbfs_server src/server/main.cpp)
+target_link_libraries(dbfs_server dbfs_src)
 
 enable_testing()
 add_test(NAME BufferPoolTest COMMAND bufferpool_test)

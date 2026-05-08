@@ -1,0 +1,6 @@
+build/
+.git/
+.venv/
+benchmarking/results/
+data/
+dbfs-jdbc/target/

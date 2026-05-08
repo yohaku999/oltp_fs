@@ -143,7 +143,7 @@ std::optional<std::size_t> SelectParser::extractLimitCount() const {
     return std::nullopt;
   }
   const auto& limit_count = *limit_count_it;
-  const int limit = limit_count.at("A_Const").at("ival").at("ival").get<int>();
+  const int limit = parseConstIntegerValue(limit_count);
   return static_cast<std::size_t>(limit);
 }
 

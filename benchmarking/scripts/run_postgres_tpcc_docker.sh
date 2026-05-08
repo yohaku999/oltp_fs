@@ -62,7 +62,7 @@ fi
 
 if grep -Eq "<driver>(${DBFS_DRIVER_CLASS}|${TRACING_POSTGRES_DRIVER_CLASS})</driver>" "${BENCHBASE_CONFIG_PATH}"; then
   echo "Building dbfs-jdbc jar for BenchBase classpath..."
-  (cd "${DBFS_JDBC_ROOT}" && mvn -q -DskipTests package)
+  (cd "${DBFS_JDBC_ROOT}" && mvn -q -DskipTests package dependency:copy-dependencies -DincludeScope=runtime)
 fi
 
 CONTAINER_CONFIG="/benchbase/benchbase-config/${BENCHBASE_CONFIG_PATH#"${CONFIG_ROOT}/"}"
@@ -99,21 +99,39 @@ if [[ -n "${trace_sample_file}" ]]; then
   benchbase_env_args+=( -e "SQL_TRACE_SAMPLE_FILE=${trace_sample_file}" )
 fi
 
-echo "Starting PostgreSQL compose service..."
-"${compose_cmd[@]}" up -d postgres
+if [[ "${ENGINE}" == "postgres" ]]; then
+  echo "Starting PostgreSQL compose service..."
+  "${compose_cmd[@]}" up -d postgres
 
-echo "Waiting for PostgreSQL compose service to become ready..."
-for i in {1..60}; do
-  if "${compose_cmd[@]}" exec -T postgres pg_isready -U "${POSTGRES_USER_NAME}" -d "${POSTGRES_DB_NAME}" >/dev/null 2>&1; then
-    echo "PostgreSQL is ready."
-    break
-  fi
-  sleep 1
-  if [[ $i -eq 60 ]]; then
-    echo "ERROR: PostgreSQL did not become ready in time." >&2
-    exit 1
-  fi
-done
+  echo "Waiting for PostgreSQL compose service to become ready..."
+  for i in {1..60}; do
+    if "${compose_cmd[@]}" exec -T postgres pg_isready -U "${POSTGRES_USER_NAME}" -d "${POSTGRES_DB_NAME}" >/dev/null 2>&1; then
+      echo "PostgreSQL is ready."
+      break
+    fi
+    sleep 1
+    if [[ $i -eq 60 ]]; then
+      echo "ERROR: PostgreSQL did not become ready in time." >&2
+      exit 1
+    fi
+  done
+else
+  echo "Starting dbfs compose service..."
+  "${compose_cmd[@]}" up -d --force-recreate dbfs
+
+  echo "Waiting for dbfs compose service to become ready..."
+  for i in {1..60}; do
+    if "${compose_cmd[@]}" exec -T dbfs nc -z localhost 25432 >/dev/null 2>&1; then
+      echo "dbfs is ready."
+      break
+    fi
+    sleep 1
+    if [[ $i -eq 60 ]]; then
+      echo "ERROR: dbfs did not become ready in time." >&2
+      exit 1
+    fi
+  done
+fi
 
 echo "Running BenchBase compose service..."
 echo "  Compare:    ${RUN_LABEL}"

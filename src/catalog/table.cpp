@@ -84,7 +84,10 @@ void Table::createIndex(const std::vector<std::string>& column_names) {
     if (indexed_column_names_ == column_names) {
       return;
     }
-    throw std::runtime_error("Table already has an index.");
+    LOG_WARN(
+        "Ignoring additional index on table {} because only one index is supported.",
+        name_);
+    return;
   }
 
   const std::string index_path = defaultIndexPath(name_, column_names);

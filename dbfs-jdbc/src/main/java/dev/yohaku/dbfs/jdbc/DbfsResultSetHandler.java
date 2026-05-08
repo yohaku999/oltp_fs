@@ -3,6 +3,7 @@ package dev.yohaku.dbfs.jdbc;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.SQLFeatureNotSupportedException;
+import java.sql.Timestamp;
 import java.util.List;
 
 final class DbfsResultSetHandler extends DbfsProxyHandler {
@@ -84,7 +85,7 @@ final class DbfsResultSetHandler extends DbfsProxyHandler {
         }
         if (name.equals("getTimestamp")) {
             Object value = value(args[0]);
-            return value == null ? null : java.sql.Timestamp.class.cast(value);
+            return coerceTimestamp(value);
         }
         if (name.equals("getBoolean")) {
             Object value = value(args[0]);
@@ -104,6 +105,9 @@ final class DbfsResultSetHandler extends DbfsProxyHandler {
             Object rawValue = value(args[0]);
             if (rawValue == null) {
                 return null;
+            }
+            if (targetType == Timestamp.class) {
+                return coerceTimestamp(rawValue);
             }
             return targetType.cast(rawValue);
         }
@@ -128,6 +132,26 @@ final class DbfsResultSetHandler extends DbfsProxyHandler {
             return proxy;
         }
         throw new SQLFeatureNotSupportedException("Cannot unwrap ResultSet to " + targetType.getName());
+    }
+
+    private Timestamp coerceTimestamp(Object value) throws SQLException {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Timestamp) {
+            return (Timestamp) value;
+        }
+        if (value instanceof java.util.Date) {
+            return new Timestamp(((java.util.Date) value).getTime());
+        }
+        if (value instanceof CharSequence) {
+            try {
+                return Timestamp.valueOf(value.toString());
+            } catch (IllegalArgumentException exception) {
+                throw new SQLException("Cannot convert value to Timestamp: " + value, exception);
+            }
+        }
+        throw new SQLException("Cannot convert value to Timestamp: " + value);
     }
 
     private Object value(Object columnSpecifier) throws SQLException {

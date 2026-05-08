@@ -1,6 +1,7 @@
 #pragma once
 
 #include <optional>
+#include <stdexcept>
 #include <string>
 
 #include "intermediate_cell.h"

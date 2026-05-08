@@ -137,6 +137,24 @@ TEST(PageTest, InsertLeafPageRunsOutOfSpace) {
   EXPECT_GT(successful_inserts, 0u);
 }
 
+TEST(PageTest, InsertOversizedHeapRecordDoesNotCorruptPage) {
+  std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
+  auto page = std::make_unique<Page>(
+      Page::initializeNew(page_data.data(), PageKind::Heap, 0, 1));
+  std::array<char, Page::PAGE_SIZE_BYTE> page_snapshot{};
+
+  std::string oversized_payload(Page::PAGE_SIZE_BYTE, 'x');
+  RecordSerializer record = serializeSingleVarcharRecord(oversized_payload);
+
+  std::memcpy(page_snapshot.data(), page->data(), Page::PAGE_SIZE_BYTE);
+  auto slot_id_opt = page->insertCell(record.serializedBytes());
+
+  EXPECT_FALSE(slot_id_opt.has_value());
+  EXPECT_EQ(
+      0,
+      std::memcmp(page->data(), page_snapshot.data(), Page::PAGE_SIZE_BYTE));
+}
+
 TEST(PageTest, InsertIntermediatePageAndFind) {
   std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
   uint16_t right_most_child_page_id = 999;

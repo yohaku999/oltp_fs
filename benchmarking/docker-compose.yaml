@@ -1,4 +1,20 @@
 services:
+  dbfs:
+    build:
+      context: ..
+      dockerfile: benchmarking/dbfs-server.Dockerfile
+    environment:
+      DBFS_PORT: 25432
+    ports:
+      - 25432:25432
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - nc -z localhost 25432
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
   postgres:
     image: ${POSTGRES_IMAGE:-postgres:latest}
     command:
@@ -36,7 +52,7 @@ services:
       - -lc
       - |
         cd /benchbase/profiles/$${BENCHBASE_PROFILE:-postgres}
-        exec java -cp "benchbase.jar:/benchbase/user-jars/*" com.oltpbenchmark.DBWorkload "$@"
+        exec java -cp "benchbase.jar:/benchbase/user-jars/*:/benchbase/user-jars/dependency/*" com.oltpbenchmark.DBWorkload "$@"
       - --
     volumes:
       - ./results:/benchbase/results

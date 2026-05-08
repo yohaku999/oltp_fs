@@ -46,6 +46,23 @@ class BTreeCursorTest : public ::testing::Test {
   }
 };
 
+namespace {
+
+std::string encodeCustomerPrimaryKey(int warehouse_id, int district_id,
+                                     int customer_id) {
+  std::string key;
+  key.reserve(15);
+  key.push_back('I');
+  key += index_key::encodeInteger(warehouse_id);
+  key.push_back('I');
+  key += index_key::encodeInteger(district_id);
+  key.push_back('I');
+  key += index_key::encodeInteger(customer_id);
+  return key;
+}
+
+}  // namespace
+
 // NOTE: Missing WAL/pageLSN invariants tests
 //
 // At this stage we intentionally do not test that the WAL record's payload
@@ -102,5 +119,25 @@ TEST_F(BTreeCursorTest, InsertManyKeysTriggersSplitAndIsSearchable) {
     ASSERT_TRUE(rid.has_value()) << "missing index entry for key=" << key;
     EXPECT_EQ(rid->heap_page_id, heap_page_id);
     EXPECT_EQ(rid->slot_id, slot_id);
+  }
+}
+
+TEST_F(BTreeCursorTest, InsertCompositeKeysAcrossInternalSplitsRemainsSearchable) {
+  const uint16_t heap_page_id = 11;
+
+  const int num_keys = 30000;
+  for (int customer_id = 1; customer_id <= num_keys; ++customer_id) {
+    BTreeCursor::insertIntoIndex(*pool_, *index_file_,
+                                 encodeCustomerPrimaryKey(1, 7, customer_id),
+                                 heap_page_id,
+                                 static_cast<uint16_t>(customer_id % 65535));
+  }
+
+  for (int customer_id : {1, 2, 127, 4096, 16384, 2297, 30000}) {
+    auto rid = BTreeCursor::findRID(*pool_, *index_file_,
+                                    encodeCustomerPrimaryKey(1, 7, customer_id));
+    ASSERT_TRUE(rid.has_value()) << "missing composite index entry for customer_id="
+                                 << customer_id;
+    EXPECT_EQ(rid->heap_page_id, heap_page_id);
   }
 }

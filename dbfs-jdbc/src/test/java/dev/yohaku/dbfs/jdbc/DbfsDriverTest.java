@@ -18,6 +18,7 @@ import java.sql.SQLFeatureNotSupportedException;
 import java.sql.Statement;
 import java.sql.Timestamp;
 import java.util.Arrays;
+import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
@@ -96,6 +97,20 @@ class DbfsDriverTest {
     void unsupportedOperationsFailExplicitly() throws SQLException {
         try (Connection connection = DriverManager.getConnection("jdbc:dbfs:local")) {
             assertThrows(SQLFeatureNotSupportedException.class, () -> connection.prepareCall("CALL run_tpcc()"));
+        }
+    }
+
+    @Test
+    void resultSetCoercesStringTimestamps() throws SQLException {
+        Timestamp expected = Timestamp.valueOf("2026-05-06 03:10:14.123");
+        QueryResult result = new QueryResult(
+                List.of("C_SINCE"),
+                List.of(List.of("2026-05-06 03:10:14.123")));
+
+        try (ResultSet resultSet = DbfsJdbcProxyFactory.newResultSet(result)) {
+            assertTrue(resultSet.next());
+            assertEquals(expected, resultSet.getTimestamp("C_SINCE"));
+            assertEquals(expected, resultSet.getObject(1, Timestamp.class));
         }
     }
 }

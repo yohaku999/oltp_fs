@@ -194,6 +194,34 @@ TEST_F(ExecutorTest, ReadSelectAppliesOrderByBeforeProjectionOnJoinedRows) {
   EXPECT_EQ(std::get<Column::IntegerType>(rows[1].values[1]), 1);
 }
 
+TEST_F(ExecutorTest, InsertParsesZeroIntegerLiteralValues) {
+  const std::string table_name = uniqueTableName("zero_literal_table");
+  {
+    Table zero_table = Table::initialize(
+        table_name,
+        Schema(std::vector<Column>{Column("id", Column::Type::Integer),
+                                   Column("count", Column::Type::Integer),
+                                   Column("note", Column::Type::Varchar)}));
+
+    executor::insert(*pool_, zero_table,
+                     InsertParser("INSERT INTO " + table_name +
+                                  " VALUES (7, 0, 'ok')"),
+                     *wal_);
+
+    std::vector<TypedRow> rows = executor::read(
+        *pool_, SelectParser("SELECT id, count, note FROM " + table_name +
+                             " WHERE id = 7"));
+
+    ASSERT_EQ(rows.size(), 1u);
+    ASSERT_EQ(rows[0].values.size(), 3u);
+    EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[0]), 7);
+    EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[1]), 0);
+    EXPECT_EQ(std::get<Column::VarcharType>(rows[0].values[2]), "ok");
+  }
+
+  Table::removeBackingFilesFor(table_name);
+}
+
 TEST_F(ExecutorTest, ReadSelectHandlesThousandByThousandJoinInput) {
   Table join_table = initializeJoinTable();
 
