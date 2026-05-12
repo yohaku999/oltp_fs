@@ -17,7 +17,6 @@
 #include "execution/operator.h"
 #include "execution/operators/orderby_operator.h"
 #include "execution/operators/projection_operator.h"
-#include "execution/operators/rid_operator.h"
 #include "execution/parsers/create_index_parser.h"
 #include "execution/parsers/create_table_parser.h"
 #include "execution/parsers/delete_parser.h"
@@ -236,7 +235,7 @@ std::size_t updateMatchingRows(BufferPool& pool, Table& table,
   return removed_count;
 }
 
-std::unique_ptr<Operator> buildReadSource(
+std::unique_ptr<TypedRowOperator> buildReadSource(
     BufferPool& pool, Table& table,
     const std::vector<UnboundComparisonPredicate>& predicates) {
   IndexLookupPlan plan = IndexLookupPlanner::plan(table, predicates);
@@ -284,9 +283,9 @@ std::vector<TypedRow> executor::read(BufferPool& pool,
   const std::vector<UnboundSelectItem> select_items =
       parser.extractSelectItems();
 
-  std::vector<std::unique_ptr<Operator>> sources;
+  std::vector<std::unique_ptr<TypedRowOperator>> sources;
   for (auto& table : tables) {
-    std::unique_ptr<Operator> source = buildReadSource(pool, table, predicates);
+    std::unique_ptr<TypedRowOperator> source = buildReadSource(pool, table, predicates);
     sources.push_back(std::move(source));
   }
   
@@ -308,7 +307,7 @@ std::vector<TypedRow> executor::read(BufferPool& pool,
   }
 
   // join
-  std::unique_ptr<Operator> pipeline;
+  std::unique_ptr<TypedRowOperator> pipeline;
   if (sources.size() == 1) {
     pipeline = std::move(sources.front());
   } else {

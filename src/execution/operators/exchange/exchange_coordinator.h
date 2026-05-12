@@ -9,6 +9,7 @@
 #include <thread>
 #include <vector>
 
+#include "execution/operator.h"
 #include "execution/operators/closable_queue.h"
 #include "execution/operators/exchange/exchange_consumer_operator.h"
 #include "execution/operators/exchange/exchange_producer_operator.h"
@@ -26,7 +27,7 @@ class ExchangeCoordinator {
                       size_t producer_threads_count,
                       size_t consumer_threads_count,
                       DispatchRule dispatch_rule,
-                      std::function<std::unique_ptr<Operator>(size_t)> child_factory,
+                      std::function<std::unique_ptr<Operator<T>>(size_t)> child_factory,
                       std::optional<std::function<size_t(const T&)>> partition_hash_fn = std::nullopt) {
     queues_.reserve(consumer_threads_count);
     consumers_.reserve(consumer_threads_count);
@@ -59,7 +60,7 @@ class ExchangeCoordinator {
     join();
   }
 
-  void start() {
+  void startOnce() {
     std::call_once(start_once_, [this]() {
       if (producers_.empty()) {
         for (const auto& queue : queues_) {

@@ -10,9 +10,9 @@
 #include "execution/operator.h"
 #include "execution/select_item.h"
 
-class AggregateOperator : public Operator {
+class AggregateOperator : public TypedRowOperator {
  public:
-  AggregateOperator(std::unique_ptr<Operator> child,
+  AggregateOperator(std::unique_ptr<TypedRowOperator> child,
                     std::vector<BoundAggregateCall> aggregate_calls)
       : child_(std::move(child)),
         aggregate_calls_(std::move(aggregate_calls)) {}
@@ -163,7 +163,7 @@ class AggregateOperator : public Operator {
     return result_row;
   }
 
-  std::unique_ptr<Operator> child_;
+  std::unique_ptr<TypedRowOperator> child_;
   std::vector<BoundAggregateCall> aggregate_calls_;
   std::vector<std::unique_ptr<AggregateAccumulator>> accumulators_;
   TypedRow result_row_;

@@ -6,6 +6,8 @@
 #include "storage/runtime/bufferpool.h"
 #include "storage/index/rid.h"
 
+class IntermediateCell;
+
 /**
  * BTreeCursor is an arbitration layer that coordinates BufferPool and File to
  * execute B-Tree index traversal and modification of index page as a single
@@ -27,12 +29,12 @@ class BTreeCursor {
   static void insertIntoIndex(BufferPool& pool, File& indexFile,
                               const std::string& key,
                               uint16_t heap_page_id, uint16_t slot_id);
-  static void splitLeafPage(BufferPool& pool, File& index_file, Page& old_page,
-                            Page& parent_page,
-                            const std::string& separate_key);
-  static void splitInternalPage(BufferPool& pool, File& index_file,
-                                Page& old_page, Page& parent_page,
-                                const std::string& separate_key);
+  static IntermediateCell splitLeafPage(BufferPool& pool, File& index_file,
+                                        Page& old_page,
+                                        const std::string& separate_key);
+  static IntermediateCell splitInternalPage(BufferPool& pool, File& index_file,
+                                            Page& old_page,
+                                            const std::string& separate_key);
   static Page* ensureParentPage(BufferPool& pool, File& index_file,
                                 Page& old_page);
 

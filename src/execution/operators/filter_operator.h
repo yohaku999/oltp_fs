@@ -10,9 +10,9 @@
 #include "execution/comparison_predicate.h"
 #include "execution/operator.h"
 
-class FilterOperator : public Operator {
+class FilterOperator : public TypedRowOperator {
  public:
-  FilterOperator(std::unique_ptr<Operator> child,
+  FilterOperator(std::unique_ptr<TypedRowOperator> child,
                  std::vector<BoundComparisonPredicate> predicates)
       : child_(std::move(child)),
         predicates_(std::move(predicates)) {}
@@ -32,6 +32,6 @@ class FilterOperator : public Operator {
   void close() override { child_->close(); }
 
  private:
-  std::unique_ptr<Operator> child_;
+  std::unique_ptr<TypedRowOperator> child_;
   std::vector<BoundComparisonPredicate> predicates_;
 };

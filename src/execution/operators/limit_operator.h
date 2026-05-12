@@ -6,9 +6,9 @@
 
 #include "execution/operator.h"
 
-class LimitOperator : public Operator {
+class LimitOperator : public TypedRowOperator {
  public:
-  LimitOperator(std::unique_ptr<Operator> child, std::size_t limit)
+  LimitOperator(std::unique_ptr<TypedRowOperator> child, std::size_t limit)
       : child_(std::move(child)), limit_(limit), emitted_count_(0) {}
 
   void open() override {
@@ -36,7 +36,7 @@ class LimitOperator : public Operator {
   }
 
  private:
-  std::unique_ptr<Operator> child_;
+  std::unique_ptr<TypedRowOperator> child_;
   std::size_t limit_;
   std::size_t emitted_count_;
 };

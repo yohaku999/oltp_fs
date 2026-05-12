@@ -7,20 +7,20 @@
 
 #include "execution/operator.h"
 
-class LoopJoinOperator : public Operator {
+class LoopJoinOperator : public TypedRowOperator {
  public:
-  explicit LoopJoinOperator(std::vector<std::unique_ptr<Operator>> children);
+  explicit LoopJoinOperator(std::vector<std::unique_ptr<TypedRowOperator>> children);
 
   void open() override;
   std::optional<TypedRow> next() override;
   void close() override;
 
  private:
-    std::vector<TypedRow> materializeSourceRows(Operator& child) const;
+    std::vector<TypedRow> materializeSourceRows(TypedRowOperator& child) const;
     TypedRow buildJoinedRow() const;
     void advanceSourceRowCursors();
 
-  std::vector<std::unique_ptr<Operator>> children_;
+  std::vector<std::unique_ptr<TypedRowOperator>> children_;
     std::vector<std::vector<TypedRow>> materialized_source_rows_;
     std::vector<std::size_t> source_row_cursors_;
   bool exhausted_ = true;

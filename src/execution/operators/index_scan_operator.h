@@ -8,7 +8,7 @@
 class BufferPool;
 class File;
 
-#include "execution/operators/rid_operator.h"
+#include "execution/operator.h"
 
 class IndexScanOperator : public RidOperator {
  public:

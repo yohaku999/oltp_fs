@@ -3,7 +3,7 @@
 #include <utility>
 
 LoopJoinOperator::LoopJoinOperator(
-    std::vector<std::unique_ptr<Operator>> children)
+  std::vector<std::unique_ptr<TypedRowOperator>> children)
     : children_(std::move(children)) {}
 
 void LoopJoinOperator::open() {
@@ -48,7 +48,7 @@ void LoopJoinOperator::close() {
 }
 
 std::vector<TypedRow> LoopJoinOperator::materializeSourceRows(
-    Operator& child) const {
+  TypedRowOperator& child) const {
   std::vector<TypedRow> rows;
   child.open();
   while (std::optional<TypedRow> row = child.next()) {

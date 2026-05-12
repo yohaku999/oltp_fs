@@ -1,6 +1,5 @@
 #include "heap_fetch_operator.h"
 
-#include "execution/operators/rid_operator.h"
 #include "schema/schema.h"
 #include "storage/index/rid.h"
 #include "storage/page/page.h"

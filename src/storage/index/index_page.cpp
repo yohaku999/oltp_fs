@@ -147,6 +147,8 @@ uint16_t InternalIndexPage::findChildPage(const std::string& key) {
 
 void InternalIndexPage::transferAndCompactTo(InternalIndexPage& dst,
                                              const std::string& separate_key) {
+  const uint16_t original_right_most_child = page_.rightMostChildPageId();
+  std::optional<IntermediateCell> separator_cell;
 
   const int slot_count = page_.getSlotCount();
   for (int idx = 0; idx < slot_count; ++idx) {
@@ -156,11 +158,24 @@ void InternalIndexPage::transferAndCompactTo(InternalIndexPage& dst,
     }
 
     const std::string cell_key = IntermediateCell::getKey(cell_data);
-    if (index_key::compare(cell_key, separate_key) <= 0) {
+    const int compare = index_key::compare(cell_key, separate_key);
+    if (compare < 0) {
       dst.page_.insertCell(IntermediateCell::decodeCell(cell_data));
+      page_.invalidateSlot(idx);
+    } else if (compare == 0) {
+      separator_cell = IntermediateCell::decodeCell(cell_data);
       page_.invalidateSlot(idx);
     }
   }
+
+  if (!separator_cell.has_value()) {
+    throw std::logic_error(
+        "InternalIndexPage::transferAndCompactTo: separator cell not found");
+  }
+
+  dst.page_.setRightMostChildPageId(separator_cell->page_id());
+  dst.page_.markDirty();
+  page_.setRightMostChildPageId(original_right_most_child);
 
   uint16_t old_slot_count = page_.getSlotCount();
 

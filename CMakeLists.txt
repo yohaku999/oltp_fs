@@ -132,6 +132,9 @@ target_link_libraries(limit_operator_test dbfs_src GTest::gtest_main)
 add_executable(orderby_operator_test test/execution/orderby_operator.cpp)
 target_link_libraries(orderby_operator_test dbfs_src GTest::gtest_main)
 
+add_executable(exchange_operator_test test/execution/exchange_operator.cpp)
+target_link_libraries(exchange_operator_test dbfs_src GTest::gtest_main)
+
 add_executable(table_test test/catalog/table.cpp)
 target_link_libraries(table_test dbfs_src GTest::gtest_main)
 
@@ -170,4 +173,5 @@ add_test(NAME FilterOperatorTest COMMAND filter_operator_test)
 add_test(NAME LimitOperatorTest COMMAND limit_operator_test)
 add_test(NAME LoopJoinOperatorTest COMMAND loop_join_operator_test)
 add_test(NAME OrderByOperatorTest COMMAND orderby_operator_test)
+add_test(NAME ExchangeOperatorTest COMMAND exchange_operator_test)
 add_test(NAME TableTest COMMAND table_test)

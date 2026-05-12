@@ -34,7 +34,7 @@ TEST(LoopJoinOperatorTest, ReturnsCartesianProductForTwoSources) {
   right_rows.push_back(makeJoinRow({Column::VarcharType("a")}));
   right_rows.push_back(makeJoinRow({Column::VarcharType("b")}));
 
-  std::vector<std::unique_ptr<Operator>> children;
+  std::vector<std::unique_ptr<TypedRowOperator>> children;
   children.push_back(std::make_unique<StubRowOperator>(std::move(left_rows)));
   children.push_back(std::make_unique<StubRowOperator>(std::move(right_rows)));
 
@@ -78,7 +78,7 @@ TEST(LoopJoinOperatorTest, SupportsMultipleSources) {
   source2_rows.push_back(makeJoinRow({Column::IntegerType(10)}));
   source2_rows.push_back(makeJoinRow({Column::IntegerType(20)}));
 
-  std::vector<std::unique_ptr<Operator>> children;
+  std::vector<std::unique_ptr<TypedRowOperator>> children;
   children.push_back(std::make_unique<StubRowOperator>(std::move(source0_rows)));
   children.push_back(std::make_unique<StubRowOperator>(std::move(source1_rows)));
   children.push_back(std::make_unique<StubRowOperator>(std::move(source2_rows)));
@@ -121,7 +121,7 @@ TEST(LoopJoinOperatorTest, ReturnsNoRowsWhenAnySourceIsEmpty) {
 
   std::vector<TypedRow> empty_rows;
 
-  std::vector<std::unique_ptr<Operator>> children;
+  std::vector<std::unique_ptr<TypedRowOperator>> children;
   children.push_back(std::make_unique<StubRowOperator>(std::move(left_rows)));
   children.push_back(std::make_unique<StubRowOperator>(std::move(empty_rows)));
 

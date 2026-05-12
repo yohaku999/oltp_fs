@@ -9,16 +9,16 @@
 #include "execution/operator.h"
 #include "execution/operators/exchange/exchange_coordinator.h"
 
-class ExchangeOperator : public Operator {
+template <typename T = TypedRow>
+class ExchangeOperator : public Operator<T> {
  public:
-  using DispatchRule = ExchangeCoordinator<TypedRow>::DispatchRule;
-  using PartitionHashFunction = std::function<size_t(const TypedRow&)>;
-  using ChildFactory = std::function<std::unique_ptr<Operator>(size_t)>;
+  using DispatchRule = typename ExchangeCoordinator<T>::DispatchRule;
+  using PartitionHashFunction = std::function<size_t(const T&)>;
+  using ChildFactory = std::function<std::unique_ptr<Operator<T>>(size_t)>;
 
-  // TODO: Unify RID-oriented operators with the main Operator abstraction and allow this
-  // wrapper to work with arbitrary types. Decide how to handle cases where the number of
-  // consumers equals the number of producers; this may be solvable by configuration alone,
-  // or it may require introducing a batch-oriented operator abstraction.
+  // TODO: Decide how to handle cases where the number of consumers equals the number of
+  // producers; this may be solvable by configuration alone, or it may require introducing
+  // a batch-oriented operator abstraction.
   // If this remains a thin wrapper over the runtime, reconsider whether the internal pieces
   // should be called "operators" at all. Check how the original paper uses that terminology.
   ExchangeOperator(size_t batch_capacity,
@@ -46,10 +46,10 @@ class ExchangeOperator : public Operator {
 
   void open() override {
     coordinator_.consumerAt(consumer_index_).open();
-    coordinator_.start();
+    coordinator_.startOnce();
   }
 
-  std::optional<TypedRow> next() override {
+  std::optional<T> next() override {
     return coordinator_.consumerAt(consumer_index_).next();
   }
 
@@ -59,6 +59,6 @@ class ExchangeOperator : public Operator {
   }
 
  private:
-  ExchangeCoordinator<TypedRow> coordinator_;
+  ExchangeCoordinator<T> coordinator_;
   size_t consumer_index_;
 };

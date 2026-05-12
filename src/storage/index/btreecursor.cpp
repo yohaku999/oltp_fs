@@ -18,6 +18,44 @@
 
 namespace {
 
+void insertIntoParentPage(BufferPool& pool, File& index_file,
+                          Page& parent_page,
+                          const IntermediateCell& separator_cell) {
+  if (parent_page.insertCell(separator_cell).has_value()) {
+    return;
+  }
+
+  // If the separator cell cannot be inserted into the parent page, we need to split the parent page as well. 
+  // This can recursively propagate up to the root, which may require creating a new root page.
+  Page* grandparent_page =
+      BTreeCursor::ensureParentPage(pool, index_file, parent_page);
+    const std::string parent_split_key =
+      IntermediateCell::getKey(parent_page.getSplitKeyCellStart());
+  IntermediateCell promoted_separator =
+      BTreeCursor::splitInternalPage(pool, index_file, parent_page,
+                     parent_split_key);
+  insertIntoParentPage(pool, index_file, *grandparent_page,
+                       promoted_separator);
+
+  Page* target_page = &parent_page;
+  Page* new_page = nullptr;
+  if (index_key::compare(separator_cell.key(), promoted_separator.key()) <=
+      0) {
+    new_page = pool.pinPage(promoted_separator.page_id(), index_file);
+    target_page = new_page;
+  }
+
+  if (!target_page->insertCell(separator_cell).has_value()) {
+    throw std::logic_error(
+        "insertIntoParentPage: separator insertion still failed after split");
+  }
+
+  if (new_page != nullptr) {
+    pool.unpinPage(new_page, index_file);
+  }
+  pool.unpinPage(grandparent_page, index_file);
+}
+
 void dumpIndexPage(const Page& page, std::ostream& os) {
   os << "=== Page " << page.getPageID() << " ("
      << (page.isLeaf() ? "leaf" : "internal") << ") ===\n";
@@ -184,9 +222,9 @@ Page* BTreeCursor::ensureParentPage(BufferPool& pool, File& index_file,
   return parent_page;
 }
 
-void BTreeCursor::splitLeafPage(BufferPool& pool, File& index_file,
-                                Page& old_page, Page& parent_page,
-                                const std::string& separate_key) {
+IntermediateCell BTreeCursor::splitLeafPage(BufferPool& pool, File& index_file,
+                                            Page& old_page,
+                                            const std::string& separate_key) {
   int new_page_id = pool.createPage(PageKind::LeafIndex, index_file);
   Page* new_page = pool.pinPage(new_page_id, index_file);
 
@@ -194,25 +232,24 @@ void BTreeCursor::splitLeafPage(BufferPool& pool, File& index_file,
   LeafIndexPage new_leaf(*new_page);
   old_leaf.transferAndCompactTo(new_leaf, separate_key);
 
-  parent_page.insertCell(IntermediateCell(new_page_id, separate_key));
-
   pool.unpinPage(new_page, index_file);
+  return IntermediateCell(new_page_id, separate_key);
 }
 
-void BTreeCursor::splitInternalPage(BufferPool& pool, File& index_file,
-                                    Page& old_page, Page& parent_page,
-                                    const std::string& separate_key) {
+IntermediateCell BTreeCursor::splitInternalPage(BufferPool& pool,
+                                                File& index_file,
+                                                Page& old_page,
+                                                const std::string& separate_key) {
   int new_page_id = pool.createPage(PageKind::InternalIndex, index_file,
-                                    old_page.getPageID());
+                                    BufferPool::HAS_NO_CHILD);
   Page* new_page = pool.pinPage(new_page_id, index_file);
 
   InternalIndexPage old_internal(old_page);
   InternalIndexPage new_internal(*new_page);
   old_internal.transferAndCompactTo(new_internal, separate_key);
 
-  parent_page.insertCell(IntermediateCell(new_page_id, separate_key));
-
   pool.unpinPage(new_page, index_file);
+  return IntermediateCell(new_page_id, separate_key);
 }
 
 void BTreeCursor::splitPage(BufferPool& pool, File& index_file,
@@ -222,15 +259,21 @@ void BTreeCursor::splitPage(BufferPool& pool, File& index_file,
   auto parent_page = ensureParentPage(pool, index_file, *old_page);
 
   LOG_INFO("Split old page and rewire pointer.");
+  // nulls初期化できないんか？
+  IntermediateCell separator_cell(0, "");
   if (old_page->isLeaf()) {
     const std::string separate_key =
         LeafCell::getKey(old_page->getSplitKeyCellStart());
-    splitLeafPage(pool, index_file, *old_page, *parent_page, separate_key);
+    separator_cell =
+        splitLeafPage(pool, index_file, *old_page, separate_key);
   } else {
     const std::string separate_key =
         IntermediateCell::getKey(old_page->getSplitKeyCellStart());
-    splitInternalPage(pool, index_file, *old_page, *parent_page, separate_key);
+    separator_cell =
+        splitInternalPage(pool, index_file, *old_page, separate_key);
   }
+
+  insertIntoParentPage(pool, index_file, *parent_page, separator_cell);
 
   pool.unpinPage(parent_page, index_file);
 }

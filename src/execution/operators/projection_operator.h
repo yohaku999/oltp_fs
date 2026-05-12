@@ -9,9 +9,9 @@
 
 #include "execution/operator.h"
 
-class ProjectionOperator : public Operator {
+class ProjectionOperator : public TypedRowOperator {
  public:
-  ProjectionOperator(std::unique_ptr<Operator> child,
+  ProjectionOperator(std::unique_ptr<TypedRowOperator> child,
                      std::vector<std::size_t> projection_indices)
       : child_(std::move(child)),
         projection_indices_(std::move(projection_indices)) {}
@@ -37,6 +37,6 @@ class ProjectionOperator : public Operator {
   void close() override { child_->close(); }
 
  private:
-  std::unique_ptr<Operator> child_;
+  std::unique_ptr<TypedRowOperator> child_;
   std::vector<std::size_t> projection_indices_;
 };

@@ -9,7 +9,7 @@
 
 #include "execution/operator.h"
 
-class StubRowOperator : public Operator {
+class StubRowOperator : public TypedRowOperator {
  public:
   explicit StubRowOperator(std::vector<TypedRow> rows)
       : rows_(std::move(rows)) {}

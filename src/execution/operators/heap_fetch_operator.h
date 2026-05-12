@@ -8,11 +8,9 @@ class BufferPool;
 class File;
 class Schema;
 
-class RidOperator;
-
 #include "execution/operator.h"
 
-class HeapFetchOperator : public Operator {
+class HeapFetchOperator : public TypedRowOperator {
  public:
   HeapFetchOperator(std::unique_ptr<RidOperator> child, BufferPool& pool,
                     File& heap_file, const Schema& schema);

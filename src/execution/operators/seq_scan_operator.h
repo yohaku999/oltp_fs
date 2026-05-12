@@ -9,7 +9,7 @@ class BufferPool;
 class File;
 class Schema;
 
-class SeqScanOperator : public Operator {
+class SeqScanOperator : public TypedRowOperator {
  public:
   SeqScanOperator(BufferPool& pool, File& heap_file, const Schema& schema);
 
