@@ -96,3 +96,35 @@ The PostgreSQL TPCC config in this repository uses:
 - password: `password`
 
 Those values match the compose services defined in `docker-compose.yaml`.
+
+## 4. perf + FlameGraph
+
+The compose-based dbfs flow can capture `perf record` data inside the `dbfs`
+container and post-process it into a flamegraph in a separate `flamegraph`
+container.
+
+Example:
+
+```bash
+RUN_LABEL=20260515-perf \
+  ./benchmarking/scripts/run_postgres_tpcc_docker.sh \
+  -c benchmarking/benchbase-config/dbfs_tpcc_docker.xml \
+  --profile-perf \
+  --perf-frequency 199
+```
+
+Profiling outputs are written alongside the normal BenchBase results:
+
+- `results/<compare-label>/tpcc/dbfs/dbfs.perf.data`
+- `results/<compare-label>/tpcc/dbfs/dbfs.perf.script`
+- `results/<compare-label>/tpcc/dbfs/dbfs.perf.folded`
+- `results/<compare-label>/tpcc/dbfs/dbfs_flamegraph.svg`
+
+Notes:
+
+- This flow is intended for the compose-based `dbfs` service only.
+- The `dbfs` image is built with `RelWithDebInfo` and frame pointers to make
+  stack sampling more usable.
+- On macOS with Docker Desktop, `perf` data is still useful for learning and
+  hotspot discovery, but low-level hardware counters may be less reliable than
+  on a native Linux host.

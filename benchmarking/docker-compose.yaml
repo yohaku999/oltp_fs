@@ -3,10 +3,14 @@ services:
     build:
       context: ..
       dockerfile: benchmarking/dbfs-server.Dockerfile
+    cap_add:
+      - SYS_ADMIN
     environment:
       DBFS_PORT: 25432
     ports:
       - 25432:25432
+    security_opt:
+      - seccomp:unconfined
     healthcheck:
       test:
         - CMD-SHELL
@@ -14,6 +18,8 @@ services:
       interval: 2s
       timeout: 5s
       retries: 30
+    volumes:
+      - ./results:/artifacts
 
   postgres:
     image: ${POSTGRES_IMAGE:-postgres:latest}
@@ -58,3 +64,10 @@ services:
       - ./results:/benchbase/results
       - ./benchbase-config:/benchbase/benchbase-config:ro
       - ../dbfs-jdbc/target:/benchbase/user-jars:ro
+
+  flamegraph:
+    build:
+      context: ..
+      dockerfile: benchmarking/flamegraph.Dockerfile
+    volumes:
+      - ./results:/artifacts
