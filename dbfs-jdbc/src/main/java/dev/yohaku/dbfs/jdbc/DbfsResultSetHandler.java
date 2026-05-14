@@ -144,11 +144,19 @@ final class DbfsResultSetHandler extends DbfsProxyHandler {
         if (value instanceof java.util.Date) {
             return new Timestamp(((java.util.Date) value).getTime());
         }
+        if (value instanceof Number) {
+            return new Timestamp(((Number) value).longValue());
+        }
         if (value instanceof CharSequence) {
+            String stringValue = value.toString();
             try {
-                return Timestamp.valueOf(value.toString());
+                return Timestamp.valueOf(stringValue);
             } catch (IllegalArgumentException exception) {
-                throw new SQLException("Cannot convert value to Timestamp: " + value, exception);
+                try {
+                    return new Timestamp(Long.parseLong(stringValue));
+                } catch (NumberFormatException ignored) {
+                    throw new SQLException("Cannot convert value to Timestamp: " + value, exception);
+                }
             }
         }
         throw new SQLException("Cannot convert value to Timestamp: " + value);

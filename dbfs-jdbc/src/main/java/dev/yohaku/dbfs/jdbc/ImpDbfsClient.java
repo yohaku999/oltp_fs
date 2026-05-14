@@ -10,6 +10,8 @@ import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.URI;
 import java.sql.SQLException;
+import java.sql.Timestamp;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -71,13 +73,7 @@ final class ImplDbfsClient implements DbfsClient {
 
             try (DataOutputStream output = new DataOutputStream(new BufferedOutputStream(socket.getOutputStream()));
                  DataInputStream input = new DataInputStream(new BufferedInputStream(socket.getInputStream()))) {
-                Map<String, Object> request = new LinkedHashMap<>();
-                request.put("operation", operation);
-                request.put("database", database);
-                request.put("sql", sql);
-                request.put("parameters", parameters == null ? List.of() : parameters);
-
-                byte[] requestBytes = OBJECT_MAPPER.writeValueAsBytes(request);
+                byte[] requestBytes = encodeRequest(operation, database, sql, parameters);
                 output.writeInt(requestBytes.length);
                 output.write(requestBytes);
                 output.flush();
@@ -96,6 +92,37 @@ final class ImplDbfsClient implements DbfsClient {
         } catch (IOException exception) {
             throw new SQLException("Failed to communicate with dbfs server at " + host + ":" + port, exception);
         }
+    }
+
+    static byte[] encodeRequest(String operation, String database, String sql, List<Object> parameters) throws IOException {
+        Map<String, Object> request = new LinkedHashMap<>();
+        request.put("operation", operation);
+        request.put("database", database);
+        request.put("sql", sql);
+        request.put("parameters", normalizeParameters(parameters));
+        return OBJECT_MAPPER.writeValueAsBytes(request);
+    }
+
+    private static List<Object> normalizeParameters(List<Object> parameters) {
+        if (parameters == null || parameters.isEmpty()) {
+            return List.of();
+        }
+
+        List<Object> normalized = new ArrayList<>(parameters.size());
+        for (Object parameter : parameters) {
+            normalized.add(normalizeParameter(parameter));
+        }
+        return normalized;
+    }
+
+    private static Object normalizeParameter(Object parameter) {
+        if (parameter instanceof Timestamp) {
+            return parameter.toString();
+        }
+        if (parameter instanceof java.util.Date) {
+            return new Timestamp(((java.util.Date) parameter).getTime()).toString();
+        }
+        return parameter;
     }
 
     private void ensureSuccess(RemoteResponse response) throws SQLException {

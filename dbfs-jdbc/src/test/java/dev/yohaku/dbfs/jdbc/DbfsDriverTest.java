@@ -5,9 +5,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.Driver;
 import java.sql.DriverManager;
@@ -22,7 +24,12 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 class DbfsDriverTest {
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
     @Test
     void driverAcceptsDbfsUrls() {
         DbfsDriver driver = new DbfsDriver();
@@ -112,5 +119,42 @@ class DbfsDriverTest {
             assertEquals(expected, resultSet.getTimestamp("C_SINCE"));
             assertEquals(expected, resultSet.getObject(1, Timestamp.class));
         }
+    }
+
+    @Test
+    void resultSetCoercesEpochMillisTimestamps() throws SQLException {
+        long epochMillis = 1_778_785_571_223L;
+        Timestamp expected = new Timestamp(epochMillis);
+        QueryResult result = new QueryResult(
+                List.of("C_SINCE", "H_DATE"),
+                List.of(List.of(String.valueOf(epochMillis), epochMillis)));
+
+        try (ResultSet resultSet = DbfsJdbcProxyFactory.newResultSet(result)) {
+            assertTrue(resultSet.next());
+            assertEquals(expected, resultSet.getTimestamp("C_SINCE"));
+            assertEquals(expected, resultSet.getTimestamp("H_DATE"));
+            assertEquals(expected, resultSet.getObject(1, Timestamp.class));
+            assertEquals(expected, resultSet.getObject(2, Timestamp.class));
+        }
+    }
+
+    @Test
+    void remoteRequestSerializesTimestampParametersAsStrings() throws Exception {
+        Timestamp timestamp = Timestamp.valueOf("2026-05-15 04:12:33.456");
+
+        byte[] encoded = ImplDbfsClient.encodeRequest(
+                "update",
+                "benchbase",
+                "INSERT INTO customer VALUES (?)",
+            Arrays.asList(timestamp, null));
+
+        JsonNode root = OBJECT_MAPPER.readTree(new String(encoded, StandardCharsets.UTF_8));
+        assertEquals("update", root.get("operation").asText());
+        assertEquals("benchbase", root.get("database").asText());
+        assertEquals("INSERT INTO customer VALUES (?)", root.get("sql").asText());
+        assertEquals("2026-05-15 04:12:33.456", root.get("parameters").get(0).asText());
+        assertTrue(root.get("parameters").get(0).isTextual());
+        assertNull(root.get("parameters").get(1).textValue());
+        assertTrue(root.get("parameters").get(1).isNull());
     }
 }
