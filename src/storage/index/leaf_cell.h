@@ -21,7 +21,7 @@ class LeafCell : public Cell {
         slot_id_(slot_id),
         key_(std::move(key)) {}
 
-  const std::string& key() const { return key_; }
+  const std::string& key() const override { return key_; }
   uint16_t heap_page_id() const { return heap_page_id_; }
   uint16_t slot_id() const { return slot_id_; }
   size_t payloadSize() const override {

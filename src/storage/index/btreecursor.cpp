@@ -3,6 +3,7 @@
 #include <spdlog/spdlog.h>
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <ostream>
 #include <stdexcept>
@@ -17,44 +18,6 @@
 #include "storage/record/record_cell.h"
 
 namespace {
-
-void insertIntoParentPage(BufferPool& pool, File& index_file,
-                          Page& parent_page,
-                          const IntermediateCell& separator_cell) {
-  if (parent_page.insertCell(separator_cell).has_value()) {
-    return;
-  }
-
-  // If the separator cell cannot be inserted into the parent page, we need to split the parent page as well. 
-  // This can recursively propagate up to the root, which may require creating a new root page.
-  Page* grandparent_page =
-      BTreeCursor::ensureParentPage(pool, index_file, parent_page);
-    const std::string parent_split_key =
-      IntermediateCell::getKey(parent_page.getSplitKeyCellStart());
-  IntermediateCell promoted_separator =
-      BTreeCursor::splitInternalPage(pool, index_file, parent_page,
-                     parent_split_key);
-  insertIntoParentPage(pool, index_file, *grandparent_page,
-                       promoted_separator);
-
-  Page* target_page = &parent_page;
-  Page* new_page = nullptr;
-  if (index_key::compare(separator_cell.key(), promoted_separator.key()) <=
-      0) {
-    new_page = pool.pinPage(promoted_separator.page_id(), index_file);
-    target_page = new_page;
-  }
-
-  if (!target_page->insertCell(separator_cell).has_value()) {
-    throw std::logic_error(
-        "insertIntoParentPage: separator insertion still failed after split");
-  }
-
-  if (new_page != nullptr) {
-    pool.unpinPage(new_page, index_file);
-  }
-  pool.unpinPage(grandparent_page, index_file);
-}
 
 void dumpIndexPage(const Page& page, std::ostream& os) {
   os << "=== Page " << page.getPageID() << " ("
@@ -127,19 +90,18 @@ int BTreeCursor::findLeafPageID(BufferPool& pool, File& indexFile,
     page->setParentPageID(parent_page_id);
     if (page->isLeaf()) {
       LOG_INFO("Found leaf page ID {} for key {} in index {}", page_id,
-               index_key::formatForDebug(key),
-               indexFile.getFilePath());
+               index_key::formatForDebug(key), indexFile.getFilePath());
       pool.unpinPage(page, indexFile);
       break;
-    } else {
-      InternalIndexPage internal(*page);
-      int child_page_id = internal.findChildPage(key);
-      pool.unpinPage(page, indexFile);
-      LOG_INFO("The child page ID of page ID {} for key {} is {}", page_id,
-               index_key::formatForDebug(key), child_page_id);
-      parent_page_id = page_id;
-      page_id = child_page_id;
     }
+
+    InternalIndexPage internal(*page);
+    int child_page_id = internal.findChildPage(key);
+    pool.unpinPage(page, indexFile);
+    LOG_INFO("The child page ID of page ID {} for key {} is {}", page_id,
+             index_key::formatForDebug(key), child_page_id);
+    parent_page_id = page_id;
+    page_id = child_page_id;
   }
   return page_id;
 }
@@ -148,8 +110,7 @@ std::optional<RID> BTreeCursor::findRID(BufferPool& pool, File& indexFile,
                                         const std::string& key,
                                         bool do_invalidate) {
   LOG_INFO("Finding RID for key {} in index file {}.",
-           index_key::formatForDebug(key),
-           indexFile.getFilePath());
+           index_key::formatForDebug(key), indexFile.getFilePath());
   // NOTE: we decided not to invalidate intermediate nodes during traversal for
   // now. we will come back to this when we start to support concurrency.
   int page_id = findLeafPageID(pool, indexFile, key);
@@ -159,17 +120,16 @@ std::optional<RID> BTreeCursor::findRID(BufferPool& pool, File& indexFile,
   pool.unpinPage(leaf_page, indexFile);
   if (!rid.has_value()) {
     LOG_INFO("Key {} not found in leaf page ID {} of index file {}.",
-             index_key::formatForDebug(key),
-             page_id, indexFile.getFilePath());
+             index_key::formatForDebug(key), page_id,
+             indexFile.getFilePath());
     return std::nullopt;
-  } else {
-    LOG_INFO(
-        "Found RID for key {} in leaf page ID {} of index file {}: "
-        "heap page ID {}, slot ID {}.",
-        index_key::formatForDebug(key), page_id, indexFile.getFilePath(),
-        rid->heap_page_id,
-        rid->slot_id);
   }
+
+  LOG_INFO(
+      "Found RID for key {} in leaf page ID {} of index file {}: "
+      "heap page ID {}, slot ID {}.",
+      index_key::formatForDebug(key), page_id, indexFile.getFilePath(),
+      rid->heap_page_id, rid->slot_id);
   return rid;
 }
 
@@ -181,26 +141,58 @@ void BTreeCursor::insertIntoIndex(BufferPool& pool, File& indexFile,
       "{} into index file {}.",
       index_key::formatForDebug(key), heap_page_id, slot_id,
       indexFile.getFilePath());
-  // find the leaf page to insert the new record.
-  // OPTIMIZE : currently we are traversing the same path twice and can be
-  // omitted.
-  int leaf_page_id = findLeafPageID(pool, indexFile, key);
-  Page* leaf_page = pool.pinPage(leaf_page_id, indexFile);
-  auto leaf_slot_id =
-      leaf_page->insertCell(LeafCell(key, heap_page_id, slot_id));
-  if (!leaf_slot_id.has_value()) {
-    splitPage(pool, indexFile, leaf_page);
-    pool.unpinPage(leaf_page, indexFile);
-    insertIntoIndex(pool, indexFile, key, heap_page_id, slot_id);
-  } else {
-    pool.unpinPage(leaf_page, indexFile);
+  int target_page_id = findLeafPageID(pool, indexFile, key);
+  Page* target_page = pool.pinPage(target_page_id, indexFile);
+  std::unique_ptr<Cell> cell_to_insert =
+      std::make_unique<LeafCell>(key, heap_page_id, slot_id);
+
+  while (true) {
+    auto inserted_slot_id = target_page->insertCell(*cell_to_insert);
+    if (inserted_slot_id.has_value()) {
+      pool.unpinPage(target_page, indexFile);
+      break;
+    }
+
+    Page* parent_page = ensureParentPage(pool, indexFile, *target_page);
+    IntermediateCell separator_cell =
+        splitPage(pool, indexFile, target_page, parent_page);
+
+    // find page to be inserted by comparing the separator key with the key to be inserted, and insert into the page. Note that the separator key is guaranteed to be greater than all keys in the old page, so if the key to be inserted is less than or equal to the separator key, it should be inserted into the old page instead of traversing the whole tree to find correct page to be inserted.
+    Page* retry_page = target_page;
+    Page* new_page = nullptr;
+    if (index_key::compare(cell_to_insert->key(), separator_cell.key()) <=
+        0) {
+      new_page = pool.pinPage(separator_cell.page_id(), indexFile);
+      retry_page = new_page;
+    }
+
+    inserted_slot_id = retry_page->insertCell(*cell_to_insert);
+    if (new_page != nullptr) {
+      pool.unpinPage(new_page, indexFile);
+    }
+    if (!inserted_slot_id.has_value()) {
+      pool.unpinPage(parent_page, indexFile);
+      pool.unpinPage(target_page, indexFile);
+      throw std::logic_error(
+          "BTreeCursor::insertIntoIndex: insertion failed even after split");
+    }
+
+    pool.unpinPage(target_page, indexFile);
+    cell_to_insert = std::make_unique<IntermediateCell>(separator_cell);
+    target_page = parent_page;
   }
+
   LOG_INFO(
       "Inserted index entry for key {} pointing to heap page ID {}, slot ID "
       "{}.",
       index_key::formatForDebug(key), heap_page_id, slot_id);
 }
 
+/**
+ * @brief creates parent page if the old_page is the initial page of the btree.
+ * @param txn The transaction performing the insert.
+ * @return parent page of old_page, which is the new root page of the btree.
+ */
 Page* BTreeCursor::ensureParentPage(BufferPool& pool, File& index_file,
                                     Page& old_page) {
   int parent_page_id;
@@ -222,6 +214,15 @@ Page* BTreeCursor::ensureParentPage(BufferPool& pool, File& index_file,
   return parent_page;
 }
 
+/**
+ * @brief splits the old_page
+ * create new page and move half of the cells from old_page to the new page, then insert a separator cell into the parent page.
+ * @param pool Buffer pool used to pin and unpin index pages during split.
+ * @param index_file Index file to which the pages belong.
+ * @param old_page The page to split.
+ * @param separate_key The key to separate the old page and the new page.
+ * @return the separator cell to be inserted into the parent page.
+ */
 IntermediateCell BTreeCursor::splitLeafPage(BufferPool& pool, File& index_file,
                                             Page& old_page,
                                             const std::string& separate_key) {
@@ -240,8 +241,7 @@ IntermediateCell BTreeCursor::splitInternalPage(BufferPool& pool,
                                                 File& index_file,
                                                 Page& old_page,
                                                 const std::string& separate_key) {
-  int new_page_id = pool.createPage(PageKind::InternalIndex, index_file,
-                                    BufferPool::HAS_NO_CHILD);
+  int new_page_id = pool.createPage(PageKind::InternalIndex, index_file);
   Page* new_page = pool.pinPage(new_page_id, index_file);
 
   InternalIndexPage old_internal(old_page);
@@ -252,30 +252,18 @@ IntermediateCell BTreeCursor::splitInternalPage(BufferPool& pool,
   return IntermediateCell(new_page_id, separate_key);
 }
 
-void BTreeCursor::splitPage(BufferPool& pool, File& index_file,
-                            Page* old_page) {
-  LOG_INFO("splitPage called on page ID {}.", old_page->getPageID());
-
-  auto parent_page = ensureParentPage(pool, index_file, *old_page);
-
+IntermediateCell BTreeCursor::splitPage(BufferPool& pool, File& index_file,
+                            Page* old_page, Page*parent_page) {
   LOG_INFO("Split old page and rewire pointer.");
-  // nulls初期化できないんか？
-  IntermediateCell separator_cell(0, "");
   if (old_page->isLeaf()) {
     const std::string separate_key =
         LeafCell::getKey(old_page->getSplitKeyCellStart());
-    separator_cell =
-        splitLeafPage(pool, index_file, *old_page, separate_key);
+    return splitLeafPage(pool, index_file, *old_page, separate_key);
   } else {
     const std::string separate_key =
         IntermediateCell::getKey(old_page->getSplitKeyCellStart());
-    separator_cell =
-        splitInternalPage(pool, index_file, *old_page, separate_key);
+    return splitInternalPage(pool, index_file, *old_page, separate_key);
   }
-
-  insertIntoParentPage(pool, index_file, *parent_page, separator_cell);
-
-  pool.unpinPage(parent_page, index_file);
 }
 
 void BTreeCursor::dumpTree(BufferPool& pool, File& indexFile,

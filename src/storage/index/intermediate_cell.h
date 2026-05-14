@@ -14,7 +14,7 @@ class IntermediateCell : public Cell {
  public:
   static IntermediateCell decodeCell(char* data_p);
   static std::string getKey(const char* data_p);
-  const std::string& key() const { return key_; }
+  const std::string& key() const override { return key_; }
   uint16_t page_id() const { return page_id_; }
   uint16_t key_size() const { return key_size_; }
   size_t payloadSize() const override {

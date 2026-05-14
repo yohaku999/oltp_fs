@@ -25,7 +25,7 @@ class BTreeCursor {
                                     bool do_invalidate = false);
   static int findLeafPageID(BufferPool& pool, File& indexFile,
                             const std::string& key);
-  static void splitPage(BufferPool& pool, File& indexFile, Page* old_page);
+  static IntermediateCell splitPage(BufferPool& pool, File& indexFile, Page* old_page, Page* parent_page);
   static void insertIntoIndex(BufferPool& pool, File& indexFile,
                               const std::string& key,
                               uint16_t heap_page_id, uint16_t slot_id);

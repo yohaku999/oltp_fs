@@ -121,6 +121,9 @@ char* Page::getSlotCellStart(int slot_id) {
   return cell_data;
 }
 
+/**
+ * @return pointer to the cell to be used for page separation.
+ */
 char* Page::getSplitKeyCellStart() {
   // Since the cell pointers are sorted, just return the key value of the cell
   // that the middle slot pointer points to.
