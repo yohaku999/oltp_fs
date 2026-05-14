@@ -2,9 +2,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <string>
 #include <vector>
 enum class CellKind { Leaf, Intermediate, Record };
-
 /**
  * Base class for page-resident binary units.
  *
@@ -38,6 +38,7 @@ class Cell {
   virtual size_t payloadSize() const = 0;
   virtual std::vector<std::byte> serialize() const = 0;
   virtual CellKind kind() const = 0;
+  virtual const std::string& key() const = 0;
 };
 
 // Little-endian is used for storing data.
