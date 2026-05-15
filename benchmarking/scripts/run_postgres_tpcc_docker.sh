@@ -21,6 +21,9 @@ ENABLE_PERF_PROFILE=0
 PERF_FREQUENCY="${PERF_FREQUENCY:-199}"
 PERF_CALL_GRAPH="${PERF_CALL_GRAPH:-fp}"
 PERF_MMAP_PAGES="${PERF_MMAP_PAGES:-64}"
+FLAMEGRAPH_WIDTH="${FLAMEGRAPH_WIDTH:-1800}"
+FLAMEGRAPH_FONT_SIZE="${FLAMEGRAPH_FONT_SIZE:-14}"
+FLAMEGRAPH_MIN_WIDTH="${FLAMEGRAPH_MIN_WIDTH:-0.5}"
 
 usage() {
   echo "Usage: $0 --config <path> [--profile-perf] [--perf-frequency <hz>] [--perf-mmap-pages <pages>]" >&2
@@ -120,16 +123,23 @@ RUN_LABEL=${RUN_LABEL:-"$(date +%Y%m%d-%H%M%S)"}
 RESULTS_SUBDIR="${RUN_LABEL}/${WORKLOAD}/${ENGINE}"
 HOST_RESULTS_DIR="${RESULTS_ROOT}/${RESULTS_SUBDIR}"
 RESULTS_DIR_CONTAINER="/benchbase/results/${RESULTS_SUBDIR}"
+SETUP_RESULTS_DIR_CONTAINER="${RESULTS_DIR_CONTAINER}/setup"
 ARTIFACTS_DIR_CONTAINER="/artifacts/${RESULTS_SUBDIR}"
 PERF_DATA_CONTAINER="${ARTIFACTS_DIR_CONTAINER}/dbfs.perf.data"
 PERF_RECORD_LOG_CONTAINER="${ARTIFACTS_DIR_CONTAINER}/dbfs.perf.record.log"
 PERF_SCRIPT_CONTAINER="${ARTIFACTS_DIR_CONTAINER}/dbfs.perf.script"
 PERF_FOLDED_CONTAINER="${ARTIFACTS_DIR_CONTAINER}/dbfs.perf.folded"
+PERF_SIMPLIFIED_FOLDED_CONTAINER="${ARTIFACTS_DIR_CONTAINER}/dbfs.perf.simplified.folded"
 FLAMEGRAPH_CONTAINER="${ARTIFACTS_DIR_CONTAINER}/dbfs_flamegraph.svg"
+READ_FLAMEGRAPH_CONTAINER="${ARTIFACTS_DIR_CONTAINER}/dbfs_flamegraph_read.svg"
+WRITE_FLAMEGRAPH_CONTAINER="${ARTIFACTS_DIR_CONTAINER}/dbfs_flamegraph_write.svg"
 HOST_PERF_DATA_FILE="${HOST_RESULTS_DIR}/dbfs.perf.data"
 HOST_PERF_SCRIPT_FILE="${HOST_RESULTS_DIR}/dbfs.perf.script"
 HOST_PERF_FOLDED_FILE="${HOST_RESULTS_DIR}/dbfs.perf.folded"
+HOST_PERF_SIMPLIFIED_FOLDED_FILE="${HOST_RESULTS_DIR}/dbfs.perf.simplified.folded"
 HOST_FLAMEGRAPH_FILE="${HOST_RESULTS_DIR}/dbfs_flamegraph.svg"
+HOST_READ_FLAMEGRAPH_FILE="${HOST_RESULTS_DIR}/dbfs_flamegraph_read.svg"
+HOST_WRITE_FLAMEGRAPH_FILE="${HOST_RESULTS_DIR}/dbfs_flamegraph_write.svg"
 HOST_DBFS_BINARY_FILE="${HOST_RESULTS_DIR}/dbfs_server"
 
 mkdir -p "${HOST_RESULTS_DIR}"
@@ -193,7 +203,30 @@ generate_flamegraph() {
   docker cp "${dbfs_container_id}:/app/dbfs_server" "${HOST_DBFS_BINARY_FILE}"
 
   echo "Generating flamegraph..."
-  "${compose_cmd[@]}" run --rm flamegraph sh -lc "mkdir -p /app && cp '${ARTIFACTS_DIR_CONTAINER}/dbfs_server' /app/dbfs_server && perf script -i '${PERF_DATA_CONTAINER}' > '${PERF_SCRIPT_CONTAINER}' && /opt/FlameGraph/stackcollapse-perf.pl '${PERF_SCRIPT_CONTAINER}' > '${PERF_FOLDED_CONTAINER}' && /opt/FlameGraph/flamegraph.pl --title 'dbfs ${RUN_LABEL} ${WORKLOAD}' '${PERF_FOLDED_CONTAINER}' > '${FLAMEGRAPH_CONTAINER}'"
+  "${compose_cmd[@]}" run --rm flamegraph sh -lc "mkdir -p /app && cp '${ARTIFACTS_DIR_CONTAINER}/dbfs_server' /app/dbfs_server && perf script -i '${PERF_DATA_CONTAINER}' > '${PERF_SCRIPT_CONTAINER}' && /opt/FlameGraph/stackcollapse-perf.pl '${PERF_SCRIPT_CONTAINER}' > '${PERF_FOLDED_CONTAINER}' && perl -pe \"s/nlohmann::json_abi_v[0-9_]+::basic_json<[^;]+>/nlohmann::json/g; s/nlohmann::json_abi_v[0-9_]+::detail::lexer<[^;]+>/nlohmann::json::lexer/g; s/std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >/std::string/g; s/std::__do_uninit_copy<[^;]+>/std::vector copy/g; s/std::allocator_traits<[^;]+>::construct/std::allocator construct/g; s/std::__new_allocator<[^;]+>::allocate/std::allocator allocate/g; s/std::__new_allocator<[^;]+>::deallocate/std::allocator deallocate/g; s/std::__detail::_Map_base<[^;]+>::operator\\[\\]/std::map::operator[]/g;\" '${PERF_FOLDED_CONTAINER}' > '${PERF_SIMPLIFIED_FOLDED_CONTAINER}' && /opt/FlameGraph/flamegraph.pl --title 'dbfs ${RUN_LABEL} ${WORKLOAD}' --subtitle 'simplified symbols, wider view' --width '${FLAMEGRAPH_WIDTH}' --fontsize '${FLAMEGRAPH_FONT_SIZE}' --minwidth '${FLAMEGRAPH_MIN_WIDTH}' --countname samples --hash '${PERF_SIMPLIFIED_FOLDED_CONTAINER}' > '${FLAMEGRAPH_CONTAINER}' && grep -E 'executor::read|LoopJoinOperator|AggregateOperator|FilterOperator|IndexScanOperator|SeqScanOperator|HeapFetchOperator' '${PERF_SIMPLIFIED_FOLDED_CONTAINER}' > /tmp/dbfs-read.folded || true && if test -s /tmp/dbfs-read.folded; then /opt/FlameGraph/flamegraph.pl --title 'dbfs ${RUN_LABEL} read path' --subtitle 'read/query-focused stacks' --width '${FLAMEGRAPH_WIDTH}' --fontsize '${FLAMEGRAPH_FONT_SIZE}' --minwidth '${FLAMEGRAPH_MIN_WIDTH}' --countname samples --hash /tmp/dbfs-read.folded > '${READ_FLAMEGRAPH_CONTAINER}'; fi && grep -E 'executor::insert|updateMatchingRows|removeMatchingRows|BTreeCursor|RecordSerializer|heap_file_access::appendCell' '${PERF_SIMPLIFIED_FOLDED_CONTAINER}' > /tmp/dbfs-write.folded || true && if test -s /tmp/dbfs-write.folded; then /opt/FlameGraph/flamegraph.pl --title 'dbfs ${RUN_LABEL} write path' --subtitle 'write/index-focused stacks' --width '${FLAMEGRAPH_WIDTH}' --fontsize '${FLAMEGRAPH_FONT_SIZE}' --minwidth '${FLAMEGRAPH_MIN_WIDTH}' --countname samples --hash /tmp/dbfs-write.folded > '${WRITE_FLAMEGRAPH_CONTAINER}'; fi"
+}
+
+run_benchbase() {
+  local create_flag="$1"
+  local load_flag="$2"
+  local execute_flag="$3"
+  local results_dir="$4"
+  local include_trace_env="$5"
+  local -a cmd=("${compose_cmd[@]}" run --rm)
+
+  if [[ "${include_trace_env}" -eq 1 && ${#benchbase_env_args[@]} -gt 0 ]]; then
+    cmd+=("${benchbase_env_args[@]}")
+  fi
+
+  cmd+=(benchbase \
+    -b "${WORKLOAD}" \
+    -c "${CONTAINER_CONFIG}" \
+    --create="${create_flag}" \
+    --load="${load_flag}" \
+    --execute="${execute_flag}" \
+    -d "${results_dir}")
+
+  "${cmd[@]}"
 }
 
 trap cleanup EXIT
@@ -267,22 +300,22 @@ echo "  Results:    ${RESULTS_DIR_CONTAINER} (mounted to ${RESULTS_ROOT})"
 
 if [[ "${ENABLE_PERF_PROFILE}" -eq 1 ]]; then
   echo "  perf data:  ${PERF_DATA_CONTAINER}"
+  echo "  setup dir:  ${SETUP_RESULTS_DIR_CONTAINER}"
 fi
-
-benchbase_cmd=("${compose_cmd[@]}" run --rm)
-if [[ ${#benchbase_env_args[@]} -gt 0 ]]; then
-  benchbase_cmd+=("${benchbase_env_args[@]}")
-fi
-benchbase_cmd+=(benchbase \
-    -b "${WORKLOAD}" \
-    -c "${CONTAINER_CONFIG}" \
-    --create=true \
-    --load=true \
-    --execute=true \
-    -d "${RESULTS_DIR_CONTAINER}")
 
 benchbase_exit_code=0
-if "${benchbase_cmd[@]}"; then
+if [[ "${ENABLE_PERF_PROFILE}" -eq 1 ]]; then
+  echo "Preparing BenchBase dataset without perf..."
+  if ! run_benchbase true true false "${SETUP_RESULTS_DIR_CONTAINER}" 0; then
+    benchbase_exit_code=$?
+  else
+    start_perf_profile
+    echo "Running BenchBase execute phase with perf..."
+    if ! run_benchbase false false true "${RESULTS_DIR_CONTAINER}" 1; then
+      benchbase_exit_code=$?
+    fi
+  fi
+elif run_benchbase true true true "${RESULTS_DIR_CONTAINER}" 1; then
   benchbase_exit_code=0
 else
   benchbase_exit_code=$?
@@ -300,7 +333,10 @@ if [[ "${ENABLE_PERF_PROFILE}" -eq 1 ]]; then
   echo "  ${HOST_PERF_DATA_FILE}"
   echo "  ${HOST_PERF_SCRIPT_FILE}"
   echo "  ${HOST_PERF_FOLDED_FILE}"
+  echo "  ${HOST_PERF_SIMPLIFIED_FOLDED_FILE}"
   echo "  ${HOST_FLAMEGRAPH_FILE}"
+  echo "  ${HOST_READ_FLAMEGRAPH_FILE}"
+  echo "  ${HOST_WRITE_FLAMEGRAPH_FILE}"
 fi
 
 echo "NOTE: RBMS remains running as a compose service."

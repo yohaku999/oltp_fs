@@ -113,12 +113,24 @@ RUN_LABEL=20260515-perf \
   --perf-frequency 199
 ```
 
+When `--profile-perf` is enabled, the wrapper runs BenchBase in two steps:
+
+- `create + load` first, without `perf` or JDBC query tracing
+- `execute` second, with `perf` and query tracing enabled
+
+This keeps the generated flamegraph and `dbfs_query_trace.csv` focused on the
+steady-state benchmark phase instead of the bulk load phase.
+
 Profiling outputs are written alongside the normal BenchBase results:
 
 - `results/<compare-label>/tpcc/dbfs/dbfs.perf.data`
 - `results/<compare-label>/tpcc/dbfs/dbfs.perf.script`
 - `results/<compare-label>/tpcc/dbfs/dbfs.perf.folded`
 - `results/<compare-label>/tpcc/dbfs/dbfs_flamegraph.svg`
+
+The setup-only BenchBase outputs, if any, are written under:
+
+- `results/<compare-label>/tpcc/dbfs/setup/`
 
 Notes:
 
