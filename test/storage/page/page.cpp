@@ -247,6 +247,25 @@ TEST(PageTest, InvalidateSlotSetsFlag) {
   assertSerializedInvalidation(PageKind::Heap, record.serializedBytes());
 }
 
+TEST(PageTest, InvalidateSlotMarksPreviouslyCleanPageDirty) {
+  std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
+  auto page = std::make_unique<Page>(
+      Page::initializeNew(page_data.data(), PageKind::LeafIndex, 0, 1));
+
+  auto slot_id_opt = page->insertCell(LeafCell(encodeIntKey(123), 4, 5));
+  ASSERT_TRUE(slot_id_opt.has_value());
+
+  page->clearDirty();
+  EXPECT_FALSE(page->isDirty());
+
+  page->invalidateSlot(slot_id_opt.value());
+
+  EXPECT_TRUE(page->isDirty());
+
+  LeafIndexPage leaf(*page);
+  EXPECT_FALSE(leaf.findRef(encodeIntKey(123), false).has_value());
+}
+
 TEST(PageTest, LeafSearchSkipsInvalidEntries) {
   std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
   auto page = std::make_unique<Page>(

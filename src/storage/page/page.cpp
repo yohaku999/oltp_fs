@@ -145,6 +145,7 @@ char* Page::getSplitKeyCellStart() {
 void Page::invalidateSlot(uint16_t slot_id) {
   char* cell_data = page_buffer_ + getCellOffsetOnXthPointer(slot_id);
   Cell::markInvalid(cell_data);
+  markDirty();
 }
 
 uint16_t Page::getSlotCount() {
