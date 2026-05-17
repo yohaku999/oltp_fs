@@ -336,10 +336,6 @@ else
   done
 fi
 
-if [[ "${ENABLE_PERF_PROFILE}" -eq 1 ]]; then
-  start_perf_profile
-fi
-
 echo "Running BenchBase compose service..."
 echo "  Compare:    ${RUN_LABEL}"
 echo "  Workload:   ${WORKLOAD}"
