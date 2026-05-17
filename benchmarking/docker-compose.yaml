@@ -7,6 +7,9 @@ services:
       - SYS_ADMIN
     environment:
       DBFS_PORT: 25432
+      DBFS_OPERATOR_LOG_ROWS: ${DBFS_OPERATOR_LOG_ROWS:-0}
+      DBFS_OPERATOR_LOG_ROWS_EVERY: ${DBFS_OPERATOR_LOG_ROWS_EVERY:-10000}
+      DBFS_OPERATOR_LOG_FILE: ${DBFS_OPERATOR_LOG_FILE:-}
     ports:
       - 25432:25432
     security_opt:

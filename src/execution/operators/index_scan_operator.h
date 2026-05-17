@@ -23,5 +23,6 @@ class IndexScanOperator : public RidOperator {
   BufferPool& pool_;
   File& indexFile_;
   std::vector<std::string> encoded_keys_;
+    OperatorExecutionLogger logger_{"IndexScanOperator"};
   std::size_t pos_ = 0;
 };

@@ -26,6 +26,7 @@ class OrderByOperator : public TypedRowOperator {
   std::unique_ptr<TypedRowOperator> child_;
   std::vector<OrderBySpec> order_by_specs_;
   std::vector<TypedRow> sorted_rows_;
+  OperatorExecutionLogger logger_{"OrderByOperator"};
   std::size_t next_index_ = 0;
   bool materialized_ = false;
 };

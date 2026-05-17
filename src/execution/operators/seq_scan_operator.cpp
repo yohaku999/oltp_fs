@@ -15,6 +15,7 @@ void SeqScanOperator::open() {
   current_page_id_ = 0;
   current_slot_id_ = 0;
   is_open_ = true;
+  logger_.open();
 }
 
 std::optional<TypedRow> SeqScanOperator::next() {
@@ -33,6 +34,7 @@ std::optional<TypedRow> SeqScanOperator::next() {
 
       TypedRow row = RecordCellView(cell_start).getTypedRow(schema_);
       pool_.unpinPage(page, heap_file_);
+      logger_.recordOutput();
       return row;
     }
 
@@ -44,4 +46,7 @@ std::optional<TypedRow> SeqScanOperator::next() {
   return std::nullopt;
 }
 
-void SeqScanOperator::close() { is_open_ = false; }
+void SeqScanOperator::close() {
+  is_open_ = false;
+  logger_.close();
+}

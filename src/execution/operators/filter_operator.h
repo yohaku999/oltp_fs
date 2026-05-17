@@ -17,11 +17,16 @@ class FilterOperator : public TypedRowOperator {
       : child_(std::move(child)),
         predicates_(std::move(predicates)) {}
 
-  void open() override { child_->open(); }
+  void open() override {
+    logger_.open();
+    child_->open();
+  }
 
   std::optional<TypedRow> next() override {
     while (std::optional<TypedRow> row = child_->next()) {
+      logger_.recordInput();
       if (matchesPredicates(row.value(), predicates_)) {
+        logger_.recordOutput();
         return row;
       }
     }
@@ -29,9 +34,13 @@ class FilterOperator : public TypedRowOperator {
     return std::nullopt;
   }
 
-  void close() override { child_->close(); }
+  void close() override {
+    child_->close();
+    logger_.close();
+  }
 
  private:
   std::unique_ptr<TypedRowOperator> child_;
   std::vector<BoundComparisonPredicate> predicates_;
+  OperatorExecutionLogger logger_{"FilterOperator"};
 };

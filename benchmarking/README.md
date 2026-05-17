@@ -58,6 +58,12 @@ Java benchmark / JDBC process
   - Recommended structure:
     - `results/<compare-label>/tpcc/postgres/...`
     - `results/<compare-label>/tpcc/dbfs/...`
+  - The compose wrapper also saves BenchBase stdout/stderr in the run result
+    directory as `benchbase.log`, or `benchbase_setup.log` and
+    `benchbase_execute.log` when `--profile-perf` splits the phases.
+  - The wrapper also snapshots compose service logs into the same directory as
+    `dbfs.compose.log` or `postgres.compose.log` so SQLExceptions can be traced
+    back to server-side messages.
   - dbfs runs also emit `dbfs_query_trace.csv` in the dbfs result directory,
     containing per-query-shape timing aggregates for bottleneck analysis.
   - PostgreSQL runs emit `postgres_query_trace.csv` in the postgres result
@@ -77,6 +83,9 @@ Java benchmark / JDBC process
    max latency. Both files use client-side JDBC shapes; if you need
    PostgreSQL server-side rewritten SQL, inspect `pg_stat_statements`
    separately inside the container.
+6. When a statement shape shows `SQLException`, inspect the matching
+  `benchbase*.log` and `*.compose.log` files in the same result directory to
+  recover the concrete error message.
 
 If you want to keep the same compose environment and change only the BenchBase
 config file, place another XML file under `benchbase-config/` and run:
@@ -127,6 +136,9 @@ Profiling outputs are written alongside the normal BenchBase results:
 - `results/<compare-label>/tpcc/dbfs/dbfs.perf.script`
 - `results/<compare-label>/tpcc/dbfs/dbfs.perf.folded`
 - `results/<compare-label>/tpcc/dbfs/dbfs_flamegraph.svg`
+- `results/<compare-label>/tpcc/dbfs/benchbase_setup.log`
+- `results/<compare-label>/tpcc/dbfs/benchbase_execute.log`
+- `results/<compare-label>/tpcc/dbfs/dbfs.compose.log`
 
 The setup-only BenchBase outputs, if any, are written under:
 

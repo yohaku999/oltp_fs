@@ -16,13 +16,18 @@ class ProjectionOperator : public TypedRowOperator {
       : child_(std::move(child)),
         projection_indices_(std::move(projection_indices)) {}
 
-  void open() override { child_->open(); }
+  void open() override {
+    logger_.open();
+    child_->open();
+  }
 
   std::optional<TypedRow> next() override {
     std::optional<TypedRow> row = child_->next();
     if (!row.has_value()) {
       return std::nullopt;
     }
+
+    logger_.recordInput();
 
     TypedRow projected_row;
     projected_row.values.reserve(projection_indices_.size());
@@ -31,12 +36,17 @@ class ProjectionOperator : public TypedRowOperator {
       projected_row.values.push_back(row->values[row_index]);
     }
 
+    logger_.recordOutput();
     return projected_row;
   }
 
-  void close() override { child_->close(); }
+  void close() override {
+    child_->close();
+    logger_.close();
+  }
 
  private:
   std::unique_ptr<TypedRowOperator> child_;
   std::vector<std::size_t> projection_indices_;
+  OperatorExecutionLogger logger_{"ProjectionOperator"};
 };

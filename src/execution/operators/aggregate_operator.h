@@ -18,9 +18,11 @@ class AggregateOperator : public TypedRowOperator {
         aggregate_calls_(std::move(aggregate_calls)) {}
 
   void open() override {
+    logger_.open();
     child_->open();
     emitted_ = false;
     accumulators_ = buildAccumulators();
+    logger_.setMetric("aggregate_calls", aggregate_calls_.size());
     result_row_ = computeAggregate();
   }
 
@@ -30,10 +32,14 @@ class AggregateOperator : public TypedRowOperator {
     }
 
     emitted_ = true;
+    logger_.recordOutput();
     return result_row_;
   }
 
-  void close() override { child_->close(); }
+  void close() override {
+    child_->close();
+    logger_.close();
+  }
 
  private:
   class AggregateAccumulator {
@@ -149,6 +155,7 @@ class AggregateOperator : public TypedRowOperator {
 
   TypedRow computeAggregate() {
     while (std::optional<TypedRow> row = child_->next()) {
+      logger_.recordInput();
       for (std::size_t index = 0; index < accumulators_.size(); ++index) {
         accumulators_[index]->accumulate(*row);
       }
@@ -166,6 +173,7 @@ class AggregateOperator : public TypedRowOperator {
   std::unique_ptr<TypedRowOperator> child_;
   std::vector<BoundAggregateCall> aggregate_calls_;
   std::vector<std::unique_ptr<AggregateAccumulator>> accumulators_;
+  OperatorExecutionLogger logger_{"AggregateOperator"};
   TypedRow result_row_;
   bool emitted_ = false;
 };

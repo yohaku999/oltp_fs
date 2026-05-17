@@ -141,12 +141,54 @@ HOST_FLAMEGRAPH_FILE="${HOST_RESULTS_DIR}/dbfs_flamegraph.svg"
 HOST_READ_FLAMEGRAPH_FILE="${HOST_RESULTS_DIR}/dbfs_flamegraph_read.svg"
 HOST_WRITE_FLAMEGRAPH_FILE="${HOST_RESULTS_DIR}/dbfs_flamegraph_write.svg"
 HOST_DBFS_BINARY_FILE="${HOST_RESULTS_DIR}/dbfs_server"
+HOST_BENCHBASE_LOG_FILE="${HOST_RESULTS_DIR}/benchbase.log"
+HOST_BENCHBASE_SETUP_LOG_FILE="${HOST_RESULTS_DIR}/benchbase_setup.log"
+HOST_BENCHBASE_EXECUTE_LOG_FILE="${HOST_RESULTS_DIR}/benchbase_execute.log"
+HOST_DBFS_COMPOSE_LOG_FILE="${HOST_RESULTS_DIR}/dbfs.compose.log"
+HOST_DBFS_OPERATOR_LOG_FILE="${HOST_RESULTS_DIR}/dbfs.operator_rows.log"
+HOST_POSTGRES_COMPOSE_LOG_FILE="${HOST_RESULTS_DIR}/postgres.compose.log"
+RUN_LOG_SINCE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 mkdir -p "${HOST_RESULTS_DIR}"
+
+DBFS_OPERATOR_LOG_FILE_CONTAINER="${ARTIFACTS_DIR_CONTAINER}/dbfs.operator_rows.log"
 
 compose_cmd=(docker compose -f "${COMPOSE_FILE}")
 benchbase_env_args=()
 perf_started=0
+runtime_logs_collected=0
+
+if [[ "${ENGINE}" == "dbfs" ]]; then
+  export DBFS_OPERATOR_LOG_FILE="${DBFS_OPERATOR_LOG_FILE:-${DBFS_OPERATOR_LOG_FILE_CONTAINER}}"
+  rm -f "${HOST_DBFS_OPERATOR_LOG_FILE}"
+fi
+
+collect_compose_logs() {
+  local service_name="$1"
+  local host_log_file="$2"
+  local container_id
+
+  container_id="$("${compose_cmd[@]}" ps -q "${service_name}" 2>/dev/null)"
+  if [[ -z "${container_id}" ]]; then
+    return
+  fi
+
+  "${compose_cmd[@]}" logs --no-color --timestamps --since "${RUN_LOG_SINCE}" "${service_name}" >"${host_log_file}" 2>&1 || true
+}
+
+collect_runtime_logs() {
+  if [[ "${runtime_logs_collected}" -eq 1 ]]; then
+    return
+  fi
+
+  if [[ "${ENGINE}" == "dbfs" ]]; then
+    collect_compose_logs dbfs "${HOST_DBFS_COMPOSE_LOG_FILE}"
+  else
+    collect_compose_logs postgres "${HOST_POSTGRES_COMPOSE_LOG_FILE}"
+  fi
+
+  runtime_logs_collected=1
+}
 
 cleanup() {
   local exit_code=$?
@@ -154,6 +196,8 @@ cleanup() {
   if [[ "${perf_started}" -eq 1 ]]; then
     "${compose_cmd[@]}" exec -T dbfs sh -lc "if test -s /tmp/dbfs-perf.pid; then kill -INT \$(cat /tmp/dbfs-perf.pid) 2>/dev/null || true; else pkill -INT -f '^perf record .*dbfs\.perf\.data' 2>/dev/null || true; fi" >/dev/null 2>&1 || true
   fi
+
+  collect_runtime_logs
 
   trap - EXIT
   exit "${exit_code}"
@@ -212,6 +256,7 @@ run_benchbase() {
   local execute_flag="$3"
   local results_dir="$4"
   local include_trace_env="$5"
+  local log_file="$6"
   local -a cmd=("${compose_cmd[@]}" run --rm)
 
   if [[ "${include_trace_env}" -eq 1 && ${#benchbase_env_args[@]} -gt 0 ]]; then
@@ -226,7 +271,11 @@ run_benchbase() {
     --execute="${execute_flag}" \
     -d "${results_dir}")
 
-  "${cmd[@]}"
+  set +e
+  "${cmd[@]}" 2>&1 | tee "${log_file}"
+  local cmd_status=${PIPESTATUS[0]}
+  set -e
+  return "${cmd_status}"
 }
 
 trap cleanup EXIT
@@ -271,7 +320,7 @@ if [[ "${ENGINE}" == "postgres" ]]; then
   done
 else
   echo "Starting dbfs compose service..."
-  "${compose_cmd[@]}" up -d --force-recreate dbfs
+  "${compose_cmd[@]}" up -d --build --force-recreate dbfs
 
   echo "Waiting for dbfs compose service to become ready..."
   for i in {1..60}; do
@@ -306,19 +355,23 @@ fi
 benchbase_exit_code=0
 if [[ "${ENABLE_PERF_PROFILE}" -eq 1 ]]; then
   echo "Preparing BenchBase dataset without perf..."
-  if ! run_benchbase true true false "${SETUP_RESULTS_DIR_CONTAINER}" 0; then
-    benchbase_exit_code=$?
-  else
+  if run_benchbase true true false "${SETUP_RESULTS_DIR_CONTAINER}" 0 "${HOST_BENCHBASE_SETUP_LOG_FILE}"; then
     start_perf_profile
     echo "Running BenchBase execute phase with perf..."
-    if ! run_benchbase false false true "${RESULTS_DIR_CONTAINER}" 1; then
+    if run_benchbase false false true "${RESULTS_DIR_CONTAINER}" 1 "${HOST_BENCHBASE_EXECUTE_LOG_FILE}"; then
+      benchbase_exit_code=0
+    else
       benchbase_exit_code=$?
     fi
+  else
+    benchbase_exit_code=$?
   fi
-elif run_benchbase true true true "${RESULTS_DIR_CONTAINER}" 1; then
-  benchbase_exit_code=0
 else
-  benchbase_exit_code=$?
+  if run_benchbase true true true "${RESULTS_DIR_CONTAINER}" 1 "${HOST_BENCHBASE_LOG_FILE}"; then
+    benchbase_exit_code=0
+  else
+    benchbase_exit_code=$?
+  fi
 fi
 
 if [[ "${ENABLE_PERF_PROFILE}" -eq 1 ]]; then
@@ -326,8 +379,24 @@ if [[ "${ENABLE_PERF_PROFILE}" -eq 1 ]]; then
   generate_flamegraph
 fi
 
+collect_runtime_logs
+
 echo "BenchBase run completed. Results should be under:"
 echo "  ${HOST_RESULTS_DIR}"
+
+if [[ "${ENABLE_PERF_PROFILE}" -eq 1 ]]; then
+  echo "  ${HOST_BENCHBASE_SETUP_LOG_FILE}"
+  echo "  ${HOST_BENCHBASE_EXECUTE_LOG_FILE}"
+else
+  echo "  ${HOST_BENCHBASE_LOG_FILE}"
+fi
+
+if [[ "${ENGINE}" == "dbfs" ]]; then
+  echo "  ${HOST_DBFS_COMPOSE_LOG_FILE}"
+  echo "  ${HOST_DBFS_OPERATOR_LOG_FILE}"
+else
+  echo "  ${HOST_POSTGRES_COMPOSE_LOG_FILE}"
+fi
 
 if [[ "${ENABLE_PERF_PROFILE}" -eq 1 ]]; then
   echo "  ${HOST_PERF_DATA_FILE}"

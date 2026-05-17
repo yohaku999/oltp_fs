@@ -4,6 +4,7 @@
 #include <stdexcept>
 
 void OrderByOperator::open() {
+  logger_.open();
   child_->open();
   sorted_rows_.clear();
   next_index_ = 0;
@@ -19,11 +20,13 @@ std::optional<TypedRow> OrderByOperator::next() {
     return std::nullopt;
   }
 
+  logger_.recordOutput();
   return sorted_rows_[next_index_++];
 }
 
 void OrderByOperator::close() {
   child_->close();
+  logger_.close();
   sorted_rows_.clear();
   next_index_ = 0;
   materialized_ = false;
@@ -31,8 +34,11 @@ void OrderByOperator::close() {
 
 void OrderByOperator::materializeAndSort() {
   while (std::optional<TypedRow> row = child_->next()) {
+    logger_.recordInput();
     sorted_rows_.push_back(*row);
   }
+
+  logger_.setMetric("materialized_rows", sorted_rows_.size());
 
   std::sort(sorted_rows_.begin(), sorted_rows_.end(),
             [this](const TypedRow& left, const TypedRow& right) {

@@ -13,6 +13,8 @@ class LimitOperator : public TypedRowOperator {
 
   void open() override {
     emitted_count_ = 0;
+    logger_.open();
+    logger_.setMetric("limit", limit_);
     child_->open();
   }
 
@@ -26,17 +28,21 @@ class LimitOperator : public TypedRowOperator {
       return std::nullopt;
     }
 
+    logger_.recordInput();
     ++emitted_count_;
+    logger_.recordOutput();
     return row;
   }
 
   void close() override {
     emitted_count_ = 0;
     child_->close();
+    logger_.close();
   }
 
  private:
   std::unique_ptr<TypedRowOperator> child_;
   std::size_t limit_;
   std::size_t emitted_count_;
+  OperatorExecutionLogger logger_{"LimitOperator"};
 };

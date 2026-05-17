@@ -23,4 +23,5 @@ class HeapFetchOperator : public TypedRowOperator {
   BufferPool& pool_;
   File& heap_file_;
   const Schema& schema_;
+    OperatorExecutionLogger logger_{"HeapFetchOperator"};
 };

@@ -17,20 +17,24 @@ IndexScanOperator::IndexScanOperator(BufferPool& pool, File& index_file,
 
 void IndexScanOperator::open() {
   pos_ = 0;
+  logger_.open();
+  logger_.setMetric("lookup_keys", encoded_keys_.size());
 }
 
 std::optional<RID> IndexScanOperator::next() {
   while (pos_ < encoded_keys_.size()) {
+    logger_.recordInput();
     std::optional<RID> rid =
         BTreeCursor::findRID(pool_, indexFile_, encoded_keys_[pos_++]);
     if (!rid.has_value()) {
       continue;
     }
 
+    logger_.recordOutput();
     return rid;
   }
 
   return std::nullopt;
 }
 
-void IndexScanOperator::close() {}
+void IndexScanOperator::close() { logger_.close(); }

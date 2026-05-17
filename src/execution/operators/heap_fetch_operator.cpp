@@ -15,7 +15,10 @@ HeapFetchOperator::HeapFetchOperator(std::unique_ptr<RidOperator> child,
       heap_file_(heap_file),
       schema_(schema) {}
 
-void HeapFetchOperator::open() { child_->open(); }
+void HeapFetchOperator::open() {
+  logger_.open();
+  child_->open();
+}
 
 std::optional<TypedRow> HeapFetchOperator::next() {
   std::optional<RID> rid = child_->next();
@@ -23,11 +26,16 @@ std::optional<TypedRow> HeapFetchOperator::next() {
     return std::nullopt;
   }
 
+  logger_.recordInput();
   Page* page = pool_.pinPage(rid->heap_page_id, heap_file_);
   TypedRow row =
       RecordCellView(page->getSlotCellStart(rid->slot_id)).getTypedRow(schema_);
   pool_.unpinPage(page, heap_file_);
+  logger_.recordOutput();
   return row;
 }
 
-void HeapFetchOperator::close() { child_->close(); }
+void HeapFetchOperator::close() {
+  child_->close();
+  logger_.close();
+}

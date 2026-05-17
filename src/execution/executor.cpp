@@ -146,6 +146,7 @@ std::size_t removeMatchingRows(BufferPool& pool, Table& table,
       continue;
     }
 
+    // delete corresponging key from index file.
     const auto index_file = table.indexFile();
     if (index_file.has_value()) {
       const std::string key = table.extractIndexKey(row);

@@ -21,6 +21,7 @@ class LoopJoinOperator : public TypedRowOperator {
     void advanceSourceRowCursors();
 
   std::vector<std::unique_ptr<TypedRowOperator>> children_;
+    mutable OperatorExecutionLogger logger_{"LoopJoinOperator"};
     std::vector<std::vector<TypedRow>> materialized_source_rows_;
     std::vector<std::size_t> source_row_cursors_;
   bool exhausted_ = true;
