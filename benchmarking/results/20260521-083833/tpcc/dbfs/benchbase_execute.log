@@ -1,0 +1,168 @@
+Container benchmarking-postgres-1  Running
+Container benchmarking-dbfs-1  Running
+[INFO ] 2026-05-20 23:43:43,949 [main]  com.oltpbenchmark.DBWorkload main - ======================================================================
+
+Benchmark:                       TPCC {com.oltpbenchmark.benchmarks.tpcc.TPCCBenchmark}
+Configuration:                   /benchbase/benchbase-config/dbfs_tpcc_docker.xml
+Type:                            POSTGRES
+Driver:                          dev.yohaku.dbfs.jdbc.DbfsDriver
+URL:                             jdbc:dbfs://dbfs:25432/benchbase
+Isolation:                       TRANSACTION_SERIALIZABLE
+Batch Size:                      128
+DDL Path:                        null
+Loader Threads:                  2
+Session Setup File:              null
+Scale Factor:                    1.0
+Terminals:                       1
+New Connection Per Txn:          false
+Reconnect on Connection Failure: true
+
+[INFO ] 2026-05-20 23:43:43,954 [main]  com.oltpbenchmark.DBWorkload main - ======================================================================
+[INFO ] 2026-05-20 23:43:45,347 [main]  com.oltpbenchmark.DBWorkload runWorkload - Creating 1 virtual terminals...
+[INFO ] 2026-05-20 23:43:45,394 [main]  com.oltpbenchmark.DBWorkload runWorkload - Launching the TPCC Benchmark with 1 Phase...
+[INFO ] 2026-05-20 23:43:45,409 [main]  com.oltpbenchmark.ThreadBench runRateLimitedMultiPhase - [0;1mPHASE START[0;0m :: [Workload=TPCC] [Serial=false] [Time=60] [WarmupTime=0] [Rate=10000.0] [Arrival=REGULAR] [Ratios=[45.0, 43.0, 4.0, 4.0, 4.0]] [ActiveWorkers=1]
+[INFO ] 2026-05-20 23:43:45,419 [main]  com.oltpbenchmark.ThreadBench runRateLimitedMultiPhase - [0;1mMEASURE[0;0m :: Warmup complete, starting measurements.
+[WARN ] 2026-05-20 23:43:47,968 [TPCCWorker<000>]  com.oltpbenchmark.api.Worker doWork - SQLException occurred during [com.oltpbenchmark.benchmarks.tpcc.procedures.Delivery/04] and will not be retried... sql state [58000], error code [0].
+java.sql.SQLException: std::get: wrong index for variant
+	at dev.yohaku.dbfs.jdbc.ImplDbfsClient.ensureSuccess(ImpDbfsClient.java:134)
+	at dev.yohaku.dbfs.jdbc.ImplDbfsClient.executeQuery(ImpDbfsClient.java:49)
+	at dev.yohaku.dbfs.jdbc.DbfsPreparedStatementHandler.lambda$invokeJdbc$1(DbfsStatementHandler.java:285)
+	at dev.yohaku.dbfs.jdbc.DbfsStatementHandler.executeWithTrace(DbfsStatementHandler.java:231)
+	at dev.yohaku.dbfs.jdbc.DbfsPreparedStatementHandler.invokeJdbc(DbfsStatementHandler.java:281)
+	at dev.yohaku.dbfs.jdbc.DbfsProxyHandler.invoke(DbfsProxyHandler.java:19)
+	at jdk.proxy3/jdk.proxy3.$Proxy7.executeQuery(Unknown Source)
+	at com.oltpbenchmark.benchmarks.tpcc.procedures.Delivery.getOrderLineTotal(Delivery.java:294)
+	at com.oltpbenchmark.benchmarks.tpcc.procedures.Delivery.run(Delivery.java:144)
+	at com.oltpbenchmark.benchmarks.tpcc.TPCCWorker.executeWork(TPCCWorker.java:67)
+	at com.oltpbenchmark.api.Worker.doWork(Worker.java:444)
+	at com.oltpbenchmark.api.Worker.run(Worker.java:292)
+	at java.base/java.lang.Thread.run(Unknown Source)
+[WARN ] 2026-05-20 23:43:50,488 [TPCCWorker<000>]  com.oltpbenchmark.api.Worker doWork - SQLException occurred during [com.oltpbenchmark.benchmarks.tpcc.procedures.Delivery/04] and will not be retried... sql state [58000], error code [0].
+java.sql.SQLException: std::get: wrong index for variant
+	at dev.yohaku.dbfs.jdbc.ImplDbfsClient.ensureSuccess(ImpDbfsClient.java:134)
+	at dev.yohaku.dbfs.jdbc.ImplDbfsClient.executeQuery(ImpDbfsClient.java:49)
+	at dev.yohaku.dbfs.jdbc.DbfsPreparedStatementHandler.lambda$invokeJdbc$1(DbfsStatementHandler.java:285)
+	at dev.yohaku.dbfs.jdbc.DbfsStatementHandler.executeWithTrace(DbfsStatementHandler.java:231)
+	at dev.yohaku.dbfs.jdbc.DbfsPreparedStatementHandler.invokeJdbc(DbfsStatementHandler.java:281)
+	at dev.yohaku.dbfs.jdbc.DbfsProxyHandler.invoke(DbfsProxyHandler.java:19)
+	at jdk.proxy3/jdk.proxy3.$Proxy7.executeQuery(Unknown Source)
+	at com.oltpbenchmark.benchmarks.tpcc.procedures.Delivery.getOrderLineTotal(Delivery.java:294)
+	at com.oltpbenchmark.benchmarks.tpcc.procedures.Delivery.run(Delivery.java:144)
+	at com.oltpbenchmark.benchmarks.tpcc.TPCCWorker.executeWork(TPCCWorker.java:67)
+	at com.oltpbenchmark.api.Worker.doWork(Worker.java:444)
+	at com.oltpbenchmark.api.Worker.run(Worker.java:292)
+	at java.base/java.lang.Thread.run(Unknown Source)
+[WARN ] 2026-05-20 23:43:50,884 [TPCCWorker<000>]  com.oltpbenchmark.api.Worker doWork - SQLException occurred during [com.oltpbenchmark.benchmarks.tpcc.procedures.Delivery/04] and will not be retried... sql state [58000], error code [0].
+java.sql.SQLException: std::get: wrong index for variant
+	at dev.yohaku.dbfs.jdbc.ImplDbfsClient.ensureSuccess(ImpDbfsClient.java:134)
+	at dev.yohaku.dbfs.jdbc.ImplDbfsClient.executeQuery(ImpDbfsClient.java:49)
+	at dev.yohaku.dbfs.jdbc.DbfsPreparedStatementHandler.lambda$invokeJdbc$1(DbfsStatementHandler.java:285)
+	at dev.yohaku.dbfs.jdbc.DbfsStatementHandler.executeWithTrace(DbfsStatementHandler.java:231)
+	at dev.yohaku.dbfs.jdbc.DbfsPreparedStatementHandler.invokeJdbc(DbfsStatementHandler.java:281)
+	at dev.yohaku.dbfs.jdbc.DbfsProxyHandler.invoke(DbfsProxyHandler.java:19)
+	at jdk.proxy3/jdk.proxy3.$Proxy7.executeQuery(Unknown Source)
+	at com.oltpbenchmark.benchmarks.tpcc.procedures.Delivery.getOrderLineTotal(Delivery.java:294)
+	at com.oltpbenchmark.benchmarks.tpcc.procedures.Delivery.run(Delivery.java:144)
+	at com.oltpbenchmark.benchmarks.tpcc.TPCCWorker.executeWork(TPCCWorker.java:67)
+	at com.oltpbenchmark.api.Worker.doWork(Worker.java:444)
+	at com.oltpbenchmark.api.Worker.run(Worker.java:292)
+	at java.base/java.lang.Thread.run(Unknown Source)
+[WARN ] 2026-05-20 23:44:21,494 [TPCCWorker<000>]  com.oltpbenchmark.api.Worker doWork - SQLException occurred during [com.oltpbenchmark.benchmarks.tpcc.procedures.StockLevel/05] and will not be retried... sql state [null], error code [0].
+java.sql.SQLException: Failed to communicate with dbfs server at dbfs:25432
+	at dev.yohaku.dbfs.jdbc.ImplDbfsClient.send(ImpDbfsClient.java:93)
+	at dev.yohaku.dbfs.jdbc.ImplDbfsClient.executeQuery(ImpDbfsClient.java:48)
+	at dev.yohaku.dbfs.jdbc.DbfsPreparedStatementHandler.lambda$invokeJdbc$1(DbfsStatementHandler.java:285)
+	at dev.yohaku.dbfs.jdbc.DbfsStatementHandler.executeWithTrace(DbfsStatementHandler.java:231)
+	at dev.yohaku.dbfs.jdbc.DbfsPreparedStatementHandler.invokeJdbc(DbfsStatementHandler.java:281)
+	at dev.yohaku.dbfs.jdbc.DbfsProxyHandler.invoke(DbfsProxyHandler.java:19)
+	at jdk.proxy3/jdk.proxy3.$Proxy7.executeQuery(Unknown Source)
+	at com.oltpbenchmark.benchmarks.tpcc.procedures.StockLevel.getStockCount(StockLevel.java:121)
+	at com.oltpbenchmark.benchmarks.tpcc.procedures.StockLevel.run(StockLevel.java:76)
+	at com.oltpbenchmark.benchmarks.tpcc.TPCCWorker.executeWork(TPCCWorker.java:67)
+	at com.oltpbenchmark.api.Worker.doWork(Worker.java:444)
+	at com.oltpbenchmark.api.Worker.run(Worker.java:292)
+	at java.base/java.lang.Thread.run(Unknown Source)
+Caused by: java.net.SocketTimeoutException: Read timed out
+	at java.base/sun.nio.ch.NioSocketImpl.timedRead(Unknown Source)
+	at java.base/sun.nio.ch.NioSocketImpl.implRead(Unknown Source)
+	at java.base/sun.nio.ch.NioSocketImpl.read(Unknown Source)
+	at java.base/sun.nio.ch.NioSocketImpl$1.read(Unknown Source)
+	at java.base/java.net.Socket$SocketInputStream.implRead(Unknown Source)
+	at java.base/java.net.Socket$SocketInputStream.read(Unknown Source)
+	at java.base/java.io.BufferedInputStream.fill(Unknown Source)
+	at java.base/java.io.BufferedInputStream.read1(Unknown Source)
+	at java.base/java.io.BufferedInputStream.implRead(Unknown Source)
+	at java.base/java.io.BufferedInputStream.read(Unknown Source)
+	at java.base/java.io.DataInputStream.readFully(Unknown Source)
+	at java.base/java.io.DataInputStream.readInt(Unknown Source)
+	at dev.yohaku.dbfs.jdbc.ImplDbfsClient.send(ImpDbfsClient.java:81)
+	... 12 more
+[INFO ] 2026-05-20 23:44:45,428 [main]  com.oltpbenchmark.ThreadBench runRateLimitedMultiPhase - [0;1mTERMINATE[0;0m :: Waiting for all terminals to finish ..
+[WARN ] 2026-05-20 23:44:51,572 [TPCCWorker<000>]  com.oltpbenchmark.api.Worker doWork - SQLException occurred during [com.oltpbenchmark.benchmarks.tpcc.procedures.Delivery/04] and will not be retried... sql state [null], error code [0].
+java.sql.SQLException: Failed to communicate with dbfs server at dbfs:25432
+	at dev.yohaku.dbfs.jdbc.ImplDbfsClient.send(ImpDbfsClient.java:93)
+	at dev.yohaku.dbfs.jdbc.ImplDbfsClient.executeQuery(ImpDbfsClient.java:48)
+	at dev.yohaku.dbfs.jdbc.DbfsPreparedStatementHandler.lambda$invokeJdbc$1(DbfsStatementHandler.java:285)
+	at dev.yohaku.dbfs.jdbc.DbfsStatementHandler.executeWithTrace(DbfsStatementHandler.java:231)
+	at dev.yohaku.dbfs.jdbc.DbfsPreparedStatementHandler.invokeJdbc(DbfsStatementHandler.java:281)
+	at dev.yohaku.dbfs.jdbc.DbfsProxyHandler.invoke(DbfsProxyHandler.java:19)
+	at jdk.proxy3/jdk.proxy3.$Proxy7.executeQuery(Unknown Source)
+	at com.oltpbenchmark.benchmarks.tpcc.procedures.Delivery.getOrderId(Delivery.java:182)
+	at com.oltpbenchmark.benchmarks.tpcc.procedures.Delivery.run(Delivery.java:128)
+	at com.oltpbenchmark.benchmarks.tpcc.TPCCWorker.executeWork(TPCCWorker.java:67)
+	at com.oltpbenchmark.api.Worker.doWork(Worker.java:444)
+	at com.oltpbenchmark.api.Worker.run(Worker.java:292)
+	at java.base/java.lang.Thread.run(Unknown Source)
+Caused by: java.net.SocketTimeoutException: Read timed out
+	at java.base/sun.nio.ch.NioSocketImpl.timedRead(Unknown Source)
+	at java.base/sun.nio.ch.NioSocketImpl.implRead(Unknown Source)
+	at java.base/sun.nio.ch.NioSocketImpl.read(Unknown Source)
+	at java.base/sun.nio.ch.NioSocketImpl$1.read(Unknown Source)
+	at java.base/java.net.Socket$SocketInputStream.implRead(Unknown Source)
+	at java.base/java.net.Socket$SocketInputStream.read(Unknown Source)
+	at java.base/java.io.BufferedInputStream.fill(Unknown Source)
+	at java.base/java.io.BufferedInputStream.read1(Unknown Source)
+	at java.base/java.io.BufferedInputStream.implRead(Unknown Source)
+	at java.base/java.io.BufferedInputStream.read(Unknown Source)
+	at java.base/java.io.DataInputStream.readFully(Unknown Source)
+	at java.base/java.io.DataInputStream.readInt(Unknown Source)
+	at dev.yohaku.dbfs.jdbc.ImplDbfsClient.send(ImpDbfsClient.java:81)
+	... 12 more
+[INFO ] 2026-05-20 23:44:51,670 [Thread-1]  com.oltpbenchmark.ThreadBench run - Starting WatchDogThread
+[INFO ] 2026-05-20 23:44:51,704 [main]  com.oltpbenchmark.DBWorkload runWorkload - ======================================================================
+[INFO ] 2026-05-20 23:44:51,705 [main]  com.oltpbenchmark.DBWorkload runWorkload - Rate limited reqs/s: Results(state=EXIT, nanoSeconds=60000088944, measuredRequests=32) = 0.533332542721172 requests/sec (throughput), 0.4666659748810255 requests/sec (goodput)
+[ERROR] 2026-05-20 23:44:56,961 [main]  com.oltpbenchmark.api.collectors.DBCollector <init> - Error while collecting DB parameters: Failed to communicate with dbfs server at dbfs:25432
+[INFO ] 2026-05-20 23:44:56,993 [main]  com.oltpbenchmark.DBWorkload writeOutputs - Output Raw data into file: tpcc_2026-05-20_23-44-56.raw.csv
+[INFO ] 2026-05-20 23:44:57,037 [main]  com.oltpbenchmark.DBWorkload writeOutputs - Output samples into file: tpcc_2026-05-20_23-44-56.samples.csv
+[INFO ] 2026-05-20 23:44:57,129 [main]  com.oltpbenchmark.DBWorkload writeOutputs - Output summary data into file: tpcc_2026-05-20_23-44-56.summary.json
+[INFO ] 2026-05-20 23:44:57,241 [main]  com.oltpbenchmark.DBWorkload writeOutputs - Output DBMS parameters into file: tpcc_2026-05-20_23-44-56.params.json
+[INFO ] 2026-05-20 23:44:57,246 [main]  com.oltpbenchmark.DBWorkload writeOutputs - Output benchmark config into file: tpcc_2026-05-20_23-44-56.config.xml
+[INFO ] 2026-05-20 23:44:57,684 [main]  com.oltpbenchmark.DBWorkload writeOutputs - Output results into file: tpcc_2026-05-20_23-44-56.results.csv with window size 5
+[INFO ] 2026-05-20 23:44:57,804 [main]  com.oltpbenchmark.DBWorkload writeHistograms - ======================================================================
+[INFO ] 2026-05-20 23:44:57,804 [main]  com.oltpbenchmark.DBWorkload writeHistograms - Workload Histograms:
+
+[0;1mCompleted Transactions:[0;0m
+com.oltpbenchmark.benchmarks.tpcc.procedures.NewOrder/01                         [  11] **********************************************************
+com.oltpbenchmark.benchmarks.tpcc.procedures.Payment/02                          [  15] ********************************************************************************
+com.oltpbenchmark.benchmarks.tpcc.procedures.OrderStatus/03                      [   2] **********
+com.oltpbenchmark.benchmarks.tpcc.procedures.Delivery/04                         [   0] 
+com.oltpbenchmark.benchmarks.tpcc.procedures.StockLevel/05                       [   0] 
+
+[0;1mAborted Transactions:[0;0m
+<EMPTY>
+
+[0;1mRejected Transactions (Server Retry):[0;0m
+<EMPTY>
+
+[0;1mRejected Transactions (Retry Different):[0;0m
+<EMPTY>
+
+[0;1mUnexpected SQL Errors:[0;0m
+com.oltpbenchmark.benchmarks.tpcc.procedures.Delivery/04                         [   4] ********************************************************************************
+com.oltpbenchmark.benchmarks.tpcc.procedures.StockLevel/05                       [   1] ********************
+
+[0;1mUnknown Status Transactions:[0;0m
+<EMPTY>
+
+
+[INFO ] 2026-05-20 23:44:57,805 [main]  com.oltpbenchmark.DBWorkload writeHistograms - ======================================================================

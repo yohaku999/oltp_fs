@@ -404,9 +404,6 @@ if [[ "${ENABLE_PERF_PROFILE}" -eq 1 ]]; then
   echo "  ${HOST_WRITE_FLAMEGRAPH_FILE}"
 fi
 
-echo "NOTE: RBMS remains running as a compose service."
-echo "      You can stop it manually with: docker compose -f ${COMPOSE_FILE} down"
-
 if [[ "${benchbase_exit_code}" -ne 0 ]]; then
   exit "${benchbase_exit_code}"
 fi
