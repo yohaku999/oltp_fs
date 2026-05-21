@@ -1,0 +1,1428 @@
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=SeqScanOperator event=close input_rows=0 output_rows=30000
+operator=FilterOperator event=close input_rows=30000 output_rows=6
+operator=OrderByOperator event=close input_rows=6 output_rows=6 materialized_rows=6
+operator=ProjectionOperator event=close input_rows=6 output_rows=6
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=SeqScanOperator event=close input_rows=0 output_rows=30000
+operator=FilterOperator event=close input_rows=30000 output_rows=1
+operator=OrderByOperator event=close input_rows=1 output_rows=1 materialized_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=IndexScanOperator event=close input_rows=1 output_rows=1 lookup_keys=1
+operator=HeapFetchOperator event=close input_rows=1 output_rows=1
+operator=FilterOperator event=close input_rows=1 output_rows=1
+operator=ProjectionOperator event=close input_rows=1 output_rows=1
+operator=SeqScanOperator event=close input_rows=0 output_rows=300152
+operator=SeqScanOperator event=close input_rows=0 output_rows=100000
