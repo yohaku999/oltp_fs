@@ -34,8 +34,8 @@ uint16_t BufferPool::createPage(PageKind kind, File& file,
       kind_label = "internal index";
       break;
   }
-  LOG_INFO("Created new page ID {} as {} page in frame ID {}", page_id,
-           kind_label, frame_id);
+  LOG_DEBUG("Created new page ID {} as {} page in frame ID {}", page_id,
+            kind_label, frame_id);
   return page_id;
 }
 
@@ -117,8 +117,8 @@ void BufferPool::evictOnePage() {
     file.writePageFromBuffer(evict_page_id, victim_frame.page->data());
   }
   frame_directory_.unregisterResidentPage(victim_frame_id);
-  LOG_INFO("Evicted page ID {} from frame ID {}", evict_page_id,
-           victim_frame_id);
+  LOG_DEBUG("Evicted page ID {} from frame ID {}", evict_page_id,
+            victim_frame_id);
 };
 
 void BufferPool::zeroOutFrame(int frame_id) {

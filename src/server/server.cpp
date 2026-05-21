@@ -5,6 +5,11 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <execinfo.h>
+#include <cstdlib>
+#include <iostream>
+#include "logging.h"
+
 #include <cerrno>
 #include <cstdint>
 #include <cstring>
@@ -240,9 +245,46 @@ void Server::start() {
       continue;
     }
 
+    std::string request;
     try {
-      writeFrame(client_fd, handleRequest(readFrame(client_fd)));
+      request = readFrame(client_fd);
+      std::string response = handleRequest(request);
+      writeFrame(client_fd, response);
     } catch (const std::exception& e) {
+      // Log request and exception (backtrace) through the logging system
+      try {
+        if (!request.empty()) {
+          const std::size_t maxlen = 2000;
+          if (request.size() > maxlen) {
+            LOG_DEBUG("caught exception processing request (truncated): {}", request.substr(0, maxlen));
+          } else {
+            LOG_DEBUG("caught exception processing request: {}", request);
+          }
+        } else {
+          LOG_DEBUG("caught exception processing request: <empty request>");
+        }
+
+        std::string what = e.what();
+        if (what.find("client closed connection") != std::string::npos) {
+          LOG_DEBUG("client closed connection while processing request");
+        } else {
+          LOG_ERROR("exception: {}", what);
+        }
+
+        // backtrace symbols at debug level
+        void* bt[64];
+        int bt_size = backtrace(bt, 64);
+        char** bt_syms = backtrace_symbols(bt, bt_size);
+        if (bt_syms) {
+          for (int i = 0; i < bt_size; ++i) {
+            LOG_DEBUG("backtrace[{}] {}", i, bt_syms[i]);
+          }
+          free(bt_syms);
+        }
+      } catch (...) {
+        LOG_ERROR("failed while attempting to log exception/backtrace");
+      }
+
       nlohmann::json error;
       error["ok"] = false;
       error["sqlState"] = "58000";

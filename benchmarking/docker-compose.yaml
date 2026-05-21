@@ -54,6 +54,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      dbfs:
+        condition: service_healthy
     environment:
       BENCHBASE_PROFILE: ${BENCHBASE_PROFILE:-postgres}
     entrypoint:

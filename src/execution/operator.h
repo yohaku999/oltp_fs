@@ -99,17 +99,6 @@ class OperatorExecutionLogger {
       rendered_metrics += std::to_string(value);
     }
 
-    if (milestone.empty()) {
-      LOG_INFO("operator={} event={} input_rows={} output_rows={}{}",
-               operator_name_, event, input_rows_, output_rows_, rendered_metrics);
-      appendFileLine(renderFileLine(event, milestone, rendered_metrics));
-      return;
-    }
-
-    LOG_INFO(
-        "operator={} event={} milestone={} input_rows={} output_rows={}{}",
-        operator_name_, event, milestone, input_rows_, output_rows_,
-        rendered_metrics);
     appendFileLine(renderFileLine(event, milestone, rendered_metrics));
   }
 

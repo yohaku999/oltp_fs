@@ -168,9 +168,9 @@ void insertRow(BufferPool& pool, Table& table, const TypedRow& row, WAL& wal) {
   std::optional<std::string> key;
   if (index_file.has_value()) {
     key = table.extractIndexKey(row);
-    LOG_INFO("Inserting record with key {} into table {}.",
-             index_key::formatForDebug(key.value()),
-             table.name());
+    LOG_DEBUG("Inserting record with key {} into table {}.",
+         index_key::formatForDebug(key.value()),
+         table.name());
     std::optional<RID> existing_rid =
         BTreeCursor::findRID(pool, index_file->get(), key.value());
     if (existing_rid.has_value()) {
@@ -178,7 +178,7 @@ void insertRow(BufferPool& pool, Table& table, const TypedRow& row, WAL& wal) {
           "Duplicate key is not allowed for indexed table: " + table.name());
     }
   } else {
-    LOG_INFO("Inserting record into table {}.", table.name());
+    LOG_DEBUG("Inserting record into table {}.", table.name());
   }
 
   RecordSerializer cell(table.schema(), row);

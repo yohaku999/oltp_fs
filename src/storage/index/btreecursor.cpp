@@ -82,10 +82,10 @@ int BTreeCursor::findLeafPageID(BufferPool& pool, File& indexFile,
   int page_id = indexFile.getRootPageID();
   int parent_page_id = Page::HAS_NO_PARENT;
   while (true) {
-    LOG_INFO(
-        "Traversing to find leaf page for key {}: currently at page ID {} in "
-        "index file {}.",
-        index_key::formatForDebug(key), page_id, indexFile.getFilePath());
+    LOG_DEBUG(
+      "Traversing to find leaf page for key {}: currently at page ID {} in "
+      "index file {}.",
+      index_key::formatForDebug(key), page_id, indexFile.getFilePath());
     Page* page = pool.pinPage(page_id, indexFile);
     page->setParentPageID(parent_page_id);
     if (page->isLeaf()) {
@@ -98,8 +98,8 @@ int BTreeCursor::findLeafPageID(BufferPool& pool, File& indexFile,
     InternalIndexPage internal(*page);
     int child_page_id = internal.findChildPage(key);
     pool.unpinPage(page, indexFile);
-    LOG_INFO("The child page ID of page ID {} for key {} is {}", page_id,
-             index_key::formatForDebug(key), child_page_id);
+    LOG_DEBUG("The child page ID of page ID {} for key {} is {}", page_id,
+          index_key::formatForDebug(key), child_page_id);
     parent_page_id = page_id;
     page_id = child_page_id;
   }
@@ -109,8 +109,8 @@ int BTreeCursor::findLeafPageID(BufferPool& pool, File& indexFile,
 std::optional<RID> BTreeCursor::findRID(BufferPool& pool, File& indexFile,
                                         const std::string& key,
                                         bool do_invalidate) {
-  LOG_INFO("Finding RID for key {} in index file {}.",
-           index_key::formatForDebug(key), indexFile.getFilePath());
+  LOG_DEBUG("Finding RID for key {} in index file {}.",
+            index_key::formatForDebug(key), indexFile.getFilePath());
   // NOTE: we decided not to invalidate intermediate nodes during traversal for
   // now. we will come back to this when we start to support concurrency.
   int page_id = findLeafPageID(pool, indexFile, key);
@@ -119,13 +119,13 @@ std::optional<RID> BTreeCursor::findRID(BufferPool& pool, File& indexFile,
   std::optional<RID> rid = leaf.findRef(key, do_invalidate);
   pool.unpinPage(leaf_page, indexFile);
   if (!rid.has_value()) {
-    LOG_INFO("Key {} not found in leaf page ID {} of index file {}.",
-             index_key::formatForDebug(key), page_id,
-             indexFile.getFilePath());
+    LOG_DEBUG("Key {} not found in leaf page ID {} of index file {}.",
+          index_key::formatForDebug(key), page_id,
+          indexFile.getFilePath());
     return std::nullopt;
   }
 
-  LOG_INFO(
+    LOG_DEBUG(
       "Found RID for key {} in leaf page ID {} of index file {}: "
       "heap page ID {}, slot ID {}.",
       index_key::formatForDebug(key), page_id, indexFile.getFilePath(),
@@ -136,7 +136,7 @@ std::optional<RID> BTreeCursor::findRID(BufferPool& pool, File& indexFile,
 void BTreeCursor::insertIntoIndex(BufferPool& pool, File& indexFile,
                                   const std::string& key,
                                   uint16_t heap_page_id, uint16_t slot_id) {
-  LOG_INFO(
+    LOG_INFO(
       "Inserting index entry for key {} pointing to heap page ID {}, slot ID "
       "{} into index file {}.",
       index_key::formatForDebug(key), heap_page_id, slot_id,
@@ -182,7 +182,7 @@ void BTreeCursor::insertIntoIndex(BufferPool& pool, File& indexFile,
     target_page = parent_page;
   }
 
-  LOG_INFO(
+    LOG_INFO(
       "Inserted index entry for key {} pointing to heap page ID {}, slot ID "
       "{}.",
       index_key::formatForDebug(key), heap_page_id, slot_id);
@@ -197,10 +197,10 @@ Page* BTreeCursor::ensureParentPage(BufferPool& pool, File& index_file,
                                     Page& old_page) {
   int parent_page_id;
   if (old_page.getParentPageID() == Page::HAS_NO_PARENT) {
-    LOG_INFO(
-        "Initialized Parent Page for page ID {} because it has no parent but "
-        "root page.",
-        old_page.getPageID());
+    LOG_DEBUG(
+      "Initialized Parent Page for page ID {} because it has no parent but "
+      "root page.",
+      old_page.getPageID());
     int new_root_page_id = pool.createPage(PageKind::InternalIndex, index_file,
                          old_page.getPageID());
     index_file.setRootPageID(new_root_page_id);
@@ -254,7 +254,7 @@ IntermediateCell BTreeCursor::splitInternalPage(BufferPool& pool,
 
 IntermediateCell BTreeCursor::splitPage(BufferPool& pool, File& index_file,
                             Page* old_page, Page*parent_page) {
-  LOG_INFO("Split old page and rewire pointer.");
+  LOG_DEBUG("Split old page and rewire pointer.");
   if (old_page->isLeaf()) {
     const std::string separate_key =
         LeafCell::getKey(old_page->getSplitKeyCellStart());

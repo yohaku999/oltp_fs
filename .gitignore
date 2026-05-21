@@ -1,2 +1,4 @@
 build/
 dbfs-jdbc/target
+.DS_Store
+.vscode/

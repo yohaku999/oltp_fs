@@ -65,8 +65,8 @@ void File::writeHeader() {
     state_->stream->clear();
     throw std::runtime_error("failed to write header: " + file_path_);
   }
-  LOG_INFO("Wrote header for file {}: max_page_id {}, root_page_id {}",
-           file_path_, state_->max_page_id, state_->root_page_id);
+  LOG_DEBUG("Wrote header for file {}: max_page_id {}, root_page_id {}",
+            file_path_, state_->max_page_id, state_->root_page_id);
 
   state_->stream->clear();
   state_->header_dirty = false;
@@ -170,8 +170,8 @@ File::File(const std::string& file_path) : file_path_(file_path) {
   state_ = std::make_shared<SharedState>();
   const bool is_new_file = !std::filesystem::exists(file_path_) ||
                            std::filesystem::file_size(file_path_) == 0;
-  LOG_INFO("initializing File object for path: {}, is_new_file: {}", file_path_,
-           is_new_file);
+  LOG_DEBUG("initializing File object for path: {}, is_new_file: {}", file_path_,
+            is_new_file);
 
   if (!is_new_file) {
     initializeStreamIfClosed();
@@ -185,16 +185,16 @@ File::File(const std::string& file_path) : file_path_(file_path) {
     state_->max_page_id = readValue<uint16_t>(header_buffer.get());
     state_->root_page_id =
         readValue<uint16_t>(header_buffer.get() + File::MAX_PAGE_ID_SIZE_BYTE);
-    LOG_INFO(
-        "opened existing file: {}, max_page_id loaded from header: {}, "
-        "root_page_id loaded from header: {}",
+    LOG_DEBUG(
+      "opened existing file: {}, max_page_id loaded from header: {}, "
+      "root_page_id loaded from header: {}",
       file_path_, state_->max_page_id, state_->root_page_id);
   } else {
     std::ofstream creator(file_path_, std::ios::binary | std::ios::trunc);
     if (!creator) {
       throw std::runtime_error("failed to create file: " + file_path_);
     }
-    LOG_INFO("created new file: {}", file_path_);
+    LOG_DEBUG("created new file: {}", file_path_);
     creator.close();
 
     initializeStreamIfClosed();
