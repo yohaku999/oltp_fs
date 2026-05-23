@@ -335,30 +335,31 @@ std::vector<TypedRow> executor::read(BufferPool& pool,
       pipeline = std::make_unique<LimitOperator>(std::move(pipeline),
                                                 limit_count.value());
     }
+    std::vector<Item> items = collectItems<TypedRow>(*pipeline);
+  }else{
+    // order by
+    std::vector<OrderBySpec> order_by_specs =
+        parser.extractOrderBySpecs(joined_schema);
+    if (!order_by_specs.empty()) {
+      pipeline = std::make_unique<OrderByOperator>(std::move(pipeline),
+                                                  std::move(order_by_specs));
+    }
 
-    return collectItems<TypedRow>(*pipeline);
+    // limit
+    std::optional<std::size_t> limit_count = parser.extractLimitCount();
+    if (limit_count.has_value()) {
+      pipeline = std::make_unique<LimitOperator>(std::move(pipeline),
+                                                limit_count.value());
+    }
+    
+    // projection
+    std::vector<std::size_t> projection_indices =
+        select_item::extractProjectionIndices(bound_select_items);
+    ProjectionOperator projection(std::move(pipeline), projection_indices);
+    std::vector<Item> items = collectItems<TypedRow>(projection);
   }
-
-  // order by
-  std::vector<OrderBySpec> order_by_specs =
-      parser.extractOrderBySpecs(joined_schema);
-  if (!order_by_specs.empty()) {
-    pipeline = std::make_unique<OrderByOperator>(std::move(pipeline),
-                                                std::move(order_by_specs));
-  }
-
-  // limit
-  std::optional<std::size_t> limit_count = parser.extractLimitCount();
-  if (limit_count.has_value()) {
-    pipeline = std::make_unique<LimitOperator>(std::move(pipeline),
-                                              limit_count.value());
-  }
-  
-  // projection
-  std::vector<std::size_t> projection_indices =
-      select_item::extractProjectionIndices(bound_select_items);
-  ProjectionOperator projection(std::move(pipeline), projection_indices);
-  return collectItems<TypedRow>(projection);
+  LOG_INFO("Query returned {} rows.", items.size());  
+  return items;
 }
 
 void executor::create_table(const CreateTableParser& parser) {

@@ -322,6 +322,7 @@ void Server::writeFrame(int client_fd, const std::string& payload) {
 }
 
 std::string Server::handleRequest(const std::string& request) {
+  LOG_INFO("received request: {}", request);
   nlohmann::json req = nlohmann::json::parse(request);
 
   const std::string operation = req.value("operation", "");
@@ -330,6 +331,7 @@ std::string Server::handleRequest(const std::string& request) {
       req.value("parameters", nlohmann::json::array()));
   const nlohmann::json parameters = req.value("parameters", nlohmann::json::array());
 
+  LOG_DEBUG("parsed SQL: {}", sql);
   nlohmann::json res;
   res["ok"] = true;
 
@@ -376,5 +378,13 @@ std::string Server::handleRequest(const std::string& request) {
     res["errorMessage"] = "unsupported SQL: " + sql;
   }
 
-  return res.dump();
+  std::string response = res.dump();
+  const std::size_t max_log_len = 2000;
+  if (response.size() > max_log_len) {
+    LOG_INFO("response (truncated to {} bytes): {}...", max_log_len,
+             response.substr(0, max_log_len));
+  } else {
+    LOG_INFO("response: {}", response);
+  }
+  return response;
 }
