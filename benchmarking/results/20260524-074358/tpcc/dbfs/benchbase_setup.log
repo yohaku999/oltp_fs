@@ -1,0 +1,30 @@
+Container benchmarking-postgres-1  Creating
+Container benchmarking-dbfs-1  Running
+Container benchmarking-postgres-1  Created
+Container benchmarking-postgres-1  Starting
+Container benchmarking-postgres-1  Started
+[INFO ] 2026-05-23 22:46:26,459 [main]  com.oltpbenchmark.DBWorkload main - ======================================================================
+
+Benchmark:                       TPCC {com.oltpbenchmark.benchmarks.tpcc.TPCCBenchmark}
+Configuration:                   /benchbase/benchbase-config/dbfs_tpcc_docker.xml
+Type:                            POSTGRES
+Driver:                          dev.yohaku.dbfs.jdbc.DbfsDriver
+URL:                             jdbc:dbfs://dbfs:25432/benchbase
+Isolation:                       TRANSACTION_SERIALIZABLE
+Batch Size:                      128
+DDL Path:                        null
+Loader Threads:                  2
+Session Setup File:              null
+Scale Factor:                    1.0
+Terminals:                       1
+New Connection Per Txn:          false
+Reconnect on Connection Failure: true
+
+[INFO ] 2026-05-23 22:46:26,464 [main]  com.oltpbenchmark.DBWorkload main - ======================================================================
+[INFO ] 2026-05-23 22:46:26,648 [main]  com.oltpbenchmark.DBWorkload main - Creating new TPCC database...
+[INFO ] 2026-05-23 22:46:28,030 [main]  com.oltpbenchmark.DBWorkload main - Finished creating new TPCC database...
+[INFO ] 2026-05-23 22:46:28,653 [main]  com.oltpbenchmark.DBWorkload main - Loading data into TPCC database...
+[INFO ] 2026-05-23 22:46:28,669 [main]  com.oltpbenchmark.util.ThreadUtil runLoaderThreads - Creating a Thread Pool with a size of 2 to run 2 Loader Threads.  0 threads will be queued.
+[INFO ] 2026-05-23 22:49:40,935 [main]  com.oltpbenchmark.util.ThreadUtil runLoaderThreads - Finished executing 2 Loader Threads [time=192.24s]
+[INFO ] 2026-05-23 22:49:40,948 [main]  com.oltpbenchmark.DBWorkload main - Finished loading data into TPCC database...
+[INFO ] 2026-05-23 22:49:40,954 [main]  com.oltpbenchmark.DBWorkload main - Skipping benchmark workload execution

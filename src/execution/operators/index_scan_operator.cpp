@@ -21,6 +21,7 @@ void IndexScanOperator::open() {
   logger_.setMetric("lookup_keys", encoded_keys_.size());
 }
 
+// OPTIMIZE: we can do better then just traversing the btree again and again with random keys.
 std::optional<RID> IndexScanOperator::next() {
   while (pos_ < encoded_keys_.size()) {
     logger_.recordInput();

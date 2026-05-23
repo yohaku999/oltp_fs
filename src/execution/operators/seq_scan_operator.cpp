@@ -6,10 +6,9 @@
 #include "storage/record/record_cell.h"
 #include "storage/runtime/bufferpool.h"
 #include "storage/runtime/file.h"
-
 SeqScanOperator::SeqScanOperator(BufferPool& pool, File& heap_file,
-                                 const Schema& schema)
-    : pool_(pool), heap_file_(heap_file), schema_(schema) {}
+                                 const Schema& schema, std::vector<BoundComparisonPredicate> predicates)
+    : pool_(pool), heap_file_(heap_file), schema_(schema), predicates_(std::move(predicates)) {}
 
 void SeqScanOperator::open() {
   current_page_id_ = 0;
@@ -32,8 +31,13 @@ std::optional<TypedRow> SeqScanOperator::next() {
         continue;
       }
 
+      logger_.recordInput();
       TypedRow row = RecordCellView(cell_start).getTypedRow(schema_);
       pool_.unpinPage(page, heap_file_);
+      // Apply filtering: skip row if predicates don't match
+      if (!matchesPredicates(row, predicates_)) {
+        continue;
+      }
       logger_.recordOutput();
       return row;
     }

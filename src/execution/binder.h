@@ -23,6 +23,10 @@ std::vector<BoundComparisonPredicate> bindPredicates(
     const std::vector<UnboundComparisonPredicate>& predicates,
     const std::vector<Table>& tables);
 
+std::vector<BoundComparisonPredicate> bindPredicatesResolvableByTable(
+    const std::vector<UnboundComparisonPredicate>& predicates,
+    const Table& table);
+
 std::vector<BoundUpdateAssignment> bindUpdateAssignments(
     const std::vector<UnboundUpdateAssignment>& assignments,
     const Table& table);

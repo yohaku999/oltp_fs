@@ -323,44 +323,5 @@ class ServerTest : public ::testing::Test {
 
 std::filesystem::path ServerTest::temp_dir_;
 
-TEST_F(ServerTest, StockLevelQueryHitsReadTimeoutOnBenchmarkLikeData) {
-  EXPECT_THROW(
-      (void)sendRequest(
-          port_, "query",
-          "SELECT COUNT(DISTINCT (S_I_ID)) AS STOCK_COUNT FROM order_line, stock "
-          "WHERE OL_W_ID = ? AND OL_D_ID = ? AND OL_O_ID < ? AND OL_O_ID >= ? "
-          "AND S_W_ID = ? AND S_I_ID = OL_I_ID AND S_QUANTITY < ?",
-          nlohmann::json::array({kWarehouseId, kDistrictId, 3001,
-                                 3001 - kOrderCount, kWarehouseId, 11}),
-          kStockLevelTimeoutMs),
-      SocketReadTimeout);
-}
-
-TEST_F(ServerTest, PaymentUpdateHitsReadTimeoutWhileStockLevelBlocksServer) {
-  std::thread stock_level_request([&]() {
-    EXPECT_THROW(
-        (void)sendRequest(
-            port_, "query",
-            "SELECT COUNT(DISTINCT (S_I_ID)) AS STOCK_COUNT FROM order_line, stock "
-            "WHERE OL_W_ID = ? AND OL_D_ID = ? AND OL_O_ID < ? AND OL_O_ID >= ? "
-            "AND S_W_ID = ? AND S_I_ID = OL_I_ID AND S_QUANTITY < ?",
-            nlohmann::json::array({kWarehouseId, kDistrictId, 3001,
-                                   3001 - kOrderCount, kWarehouseId, 11}),
-            kConcurrentStockLevelTimeoutMs),
-        SocketReadTimeout);
-  });
-
-  std::this_thread::sleep_for(20ms);
-
-  EXPECT_THROW(
-      (void)sendRequest(
-          port_, "update",
-          "UPDATE warehouse SET W_YTD = W_YTD + ? WHERE W_ID = ?",
-          nlohmann::json::array({4619.22998046875, kWarehouseId}),
-          kPaymentTimeoutMs),
-      SocketReadTimeout);
-
-  stock_level_request.join();
-}
 
 }  // namespace

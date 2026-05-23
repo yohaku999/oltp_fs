@@ -1,0 +1,71 @@
+Container benchmarking-postgres-1  Running
+Container benchmarking-dbfs-1  Recreate
+Container benchmarking-dbfs-1  Recreated
+Container benchmarking-dbfs-1  Starting
+Container benchmarking-dbfs-1  Started
+[INFO ] 2026-05-23 22:52:21,405 [main]  com.oltpbenchmark.DBWorkload main - ======================================================================
+
+Benchmark:                       TPCC {com.oltpbenchmark.benchmarks.tpcc.TPCCBenchmark}
+Configuration:                   /benchbase/benchbase-config/postgres_tpcc_docker.xml
+Type:                            POSTGRES
+Driver:                          dev.yohaku.dbfs.jdbc.TracingPostgresDriver
+URL:                             jdbc:trace:postgresql://postgres:5432/benchbase?sslmode=disable&ApplicationName=tpcc&reWriteBatchedInserts=true
+Isolation:                       TRANSACTION_SERIALIZABLE
+Batch Size:                      128
+DDL Path:                        null
+Loader Threads:                  2
+Session Setup File:              null
+Scale Factor:                    1.0
+Terminals:                       1
+New Connection Per Txn:          false
+Reconnect on Connection Failure: true
+
+[INFO ] 2026-05-23 22:52:21,411 [main]  com.oltpbenchmark.DBWorkload main - ======================================================================
+[INFO ] 2026-05-23 22:52:21,570 [main]  com.oltpbenchmark.DBWorkload main - Creating new TPCC database...
+[INFO ] 2026-05-23 22:52:23,006 [main]  com.oltpbenchmark.DBWorkload main - Finished creating new TPCC database...
+[INFO ] 2026-05-23 22:52:23,414 [main]  com.oltpbenchmark.DBWorkload main - Loading data into TPCC database...
+[INFO ] 2026-05-23 22:52:23,425 [main]  com.oltpbenchmark.util.ThreadUtil runLoaderThreads - Creating a Thread Pool with a size of 2 to run 2 Loader Threads.  0 threads will be queued.
+[INFO ] 2026-05-23 22:52:52,157 [main]  com.oltpbenchmark.util.ThreadUtil runLoaderThreads - Finished executing 2 Loader Threads [time=28.71s]
+[INFO ] 2026-05-23 22:52:52,162 [main]  com.oltpbenchmark.DBWorkload main - Finished loading data into TPCC database...
+[INFO ] 2026-05-23 22:52:52,166 [main]  com.oltpbenchmark.DBWorkload runWorkload - Creating 1 virtual terminals...
+[INFO ] 2026-05-23 22:52:52,286 [main]  com.oltpbenchmark.DBWorkload runWorkload - Launching the TPCC Benchmark with 1 Phase...
+[INFO ] 2026-05-23 22:52:52,327 [main]  com.oltpbenchmark.ThreadBench runRateLimitedMultiPhase - [0;1mPHASE START[0;0m :: [Workload=TPCC] [Serial=false] [Time=60] [WarmupTime=0] [Rate=10000.0] [Arrival=REGULAR] [Ratios=[45.0, 43.0, 4.0, 4.0, 4.0]] [ActiveWorkers=1]
+[INFO ] 2026-05-23 22:52:52,330 [main]  com.oltpbenchmark.ThreadBench runRateLimitedMultiPhase - [0;1mMEASURE[0;0m :: Warmup complete, starting measurements.
+[INFO ] 2026-05-23 22:53:52,341 [main]  com.oltpbenchmark.ThreadBench runRateLimitedMultiPhase - [0;1mTERMINATE[0;0m :: Waiting for all terminals to finish ..
+[INFO ] 2026-05-23 22:53:52,415 [Thread-3]  com.oltpbenchmark.ThreadBench run - Starting WatchDogThread
+[INFO ] 2026-05-23 22:53:52,607 [main]  com.oltpbenchmark.DBWorkload runWorkload - ======================================================================
+[INFO ] 2026-05-23 22:53:52,610 [main]  com.oltpbenchmark.DBWorkload runWorkload - Rate limited reqs/s: Results(state=EXIT, nanoSeconds=60000069819, measuredRequests=27262) = 454.36613794351024 requests/sec (throughput), 452.13280720899223 requests/sec (goodput)
+[INFO ] 2026-05-23 22:53:52,888 [main]  com.oltpbenchmark.DBWorkload writeOutputs - Output Raw data into file: tpcc_2026-05-23_22-53-52.raw.csv
+[INFO ] 2026-05-23 22:53:59,878 [main]  com.oltpbenchmark.DBWorkload writeOutputs - Output samples into file: tpcc_2026-05-23_22-53-52.samples.csv
+[INFO ] 2026-05-23 22:54:00,345 [main]  com.oltpbenchmark.DBWorkload writeOutputs - Output summary data into file: tpcc_2026-05-23_22-53-52.summary.json
+[INFO ] 2026-05-23 22:54:00,415 [main]  com.oltpbenchmark.DBWorkload writeOutputs - Output DBMS parameters into file: tpcc_2026-05-23_22-53-52.params.json
+[INFO ] 2026-05-23 22:54:00,482 [main]  com.oltpbenchmark.DBWorkload writeOutputs - Output DBMS metrics into file: tpcc_2026-05-23_22-53-52.metrics.json
+[INFO ] 2026-05-23 22:54:00,550 [main]  com.oltpbenchmark.DBWorkload writeOutputs - Output benchmark config into file: tpcc_2026-05-23_22-53-52.config.xml
+[INFO ] 2026-05-23 22:54:00,817 [main]  com.oltpbenchmark.DBWorkload writeOutputs - Output results into file: tpcc_2026-05-23_22-53-52.results.csv with window size 5
+[INFO ] 2026-05-23 22:54:01,243 [main]  com.oltpbenchmark.DBWorkload writeHistograms - ======================================================================
+[INFO ] 2026-05-23 22:54:01,244 [main]  com.oltpbenchmark.DBWorkload writeHistograms - Workload Histograms:
+
+[0;1mCompleted Transactions:[0;0m
+com.oltpbenchmark.benchmarks.tpcc.procedures.NewOrder/01                         [11944] *******************************************************************************
+com.oltpbenchmark.benchmarks.tpcc.procedures.Payment/02                          [11967] ********************************************************************************
+com.oltpbenchmark.benchmarks.tpcc.procedures.OrderStatus/03                      [ 1082] *******
+com.oltpbenchmark.benchmarks.tpcc.procedures.Delivery/04                         [ 1080] *******
+com.oltpbenchmark.benchmarks.tpcc.procedures.StockLevel/05                       [ 1055] *******
+
+[0;1mAborted Transactions:[0;0m
+com.oltpbenchmark.benchmarks.tpcc.procedures.NewOrder/01                         [ 135] ********************************************************************************
+
+[0;1mRejected Transactions (Server Retry):[0;0m
+<EMPTY>
+
+[0;1mRejected Transactions (Retry Different):[0;0m
+<EMPTY>
+
+[0;1mUnexpected SQL Errors:[0;0m
+<EMPTY>
+
+[0;1mUnknown Status Transactions:[0;0m
+<EMPTY>
+
+
+[INFO ] 2026-05-23 22:54:01,245 [main]  com.oltpbenchmark.DBWorkload writeHistograms - ======================================================================

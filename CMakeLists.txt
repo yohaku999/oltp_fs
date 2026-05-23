@@ -126,6 +126,9 @@ target_link_libraries(filter_operator_test dbfs_src GTest::gtest_main)
 add_executable(loop_join_operator_test test/execution/loop_join_operator.cpp)
 target_link_libraries(loop_join_operator_test dbfs_src GTest::gtest_main)
 
+add_executable(heap_fetch_operator_test test/execution/heap_fetch_operator.cpp)
+target_link_libraries(heap_fetch_operator_test dbfs_src GTest::gtest_main)
+
 add_executable(limit_operator_test test/execution/limit_operator.cpp)
 target_link_libraries(limit_operator_test dbfs_src GTest::gtest_main)
 

@@ -240,15 +240,17 @@ std::unique_ptr<TypedRowOperator> buildReadSource(
     BufferPool& pool, Table& table,
     const std::vector<UnboundComparisonPredicate>& predicates) {
   IndexLookupPlan plan = IndexLookupPlanner::plan(table, predicates);
+  const std::vector<BoundComparisonPredicate> bound_predicates =
+      binder::bindPredicatesResolvableByTable(predicates, table);
   if (!plan.canUseIndex()) {
     return std::make_unique<SeqScanOperator>(pool, table.heapFile(),
-                                             table.schema());
+                                             table.schema(), bound_predicates);
   }
 
   auto scan = std::make_unique<IndexScanOperator>(
       pool, table.requireIndexFile(), std::move(plan.encoded_keys));
   return std::make_unique<HeapFetchOperator>(std::move(scan), pool,
-                                             table.heapFile(), table.schema());
+                                             table.heapFile(), table.schema(), bound_predicates);
 }
 
 }  // namespace
@@ -318,7 +320,7 @@ std::vector<TypedRow> executor::read(BufferPool& pool,
   // filter
   pipeline = std::make_unique<FilterOperator>(std::move(pipeline),
                                               bound_predicates);
-
+  std::vector<TypedRow> items;
   if (has_aggregate) {
     std::vector<OrderBySpec> order_by_specs =
         parser.extractOrderBySpecs(joined_schema);
@@ -335,7 +337,7 @@ std::vector<TypedRow> executor::read(BufferPool& pool,
       pipeline = std::make_unique<LimitOperator>(std::move(pipeline),
                                                 limit_count.value());
     }
-    std::vector<Item> items = collectItems<TypedRow>(*pipeline);
+    items = collectItems<TypedRow>(*pipeline);
   }else{
     // order by
     std::vector<OrderBySpec> order_by_specs =
@@ -356,7 +358,7 @@ std::vector<TypedRow> executor::read(BufferPool& pool,
     std::vector<std::size_t> projection_indices =
         select_item::extractProjectionIndices(bound_select_items);
     ProjectionOperator projection(std::move(pipeline), projection_indices);
-    std::vector<Item> items = collectItems<TypedRow>(projection);
+    items = collectItems<TypedRow>(projection);
   }
   LOG_INFO("Query returned {} rows.", items.size());  
   return items;

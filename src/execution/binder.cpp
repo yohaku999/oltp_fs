@@ -1,5 +1,6 @@
 #include "execution/binder.h"
 
+#include <optional>
 #include <stdexcept>
 
 namespace binder {
@@ -10,34 +11,82 @@ bool isNumericType(Column::Type type) {
   return type == Column::Type::Integer || type == Column::Type::Double;
 }
 
-}  // namespace
-
-BoundColumnRef bindColumnRef(const ColumnRef& column_ref,
-                             const std::vector<Table>& tables) {
+/**
+ * Tries to bind the given column reference to a column in the specified tables.
+ * If the column reference does not specify a table name,
+ * then it will be bound to the first matching column found in the tables.
+ * If multiple matching columns are found for an unqualified reference, an exception is thrown due to ambiguity.
+ * If no matching column is found, std::nullopt is returned.
+ */
+std::optional<BoundColumnRef> tryBindColumnRef(
+    const ColumnRef& column_ref, const std::vector<Table>& tables) {
+  const bool has_table_name = !column_ref.table_name.empty();
   std::size_t joined_column_offset = 0;
-  const Table* matched_table = nullptr;
+  std::optional<BoundColumnRef> matched_column;
 
   for (const auto& table : tables) {
-    if (!column_ref.table_name.empty() &&
-        column_ref.table_name != table.name()) {
-      joined_column_offset += table.schema().columns().size();
+    const std::size_t table_column_count = table.schema().columns().size();
+    const bool table_matches =
+        !has_table_name || column_ref.table_name == table.name();
+    if (!table_matches) {
+      // if the table name doesn't match, skip all columns of this table and move on to the next table
+      joined_column_offset += table_column_count;
       continue;
     }
 
     const int column_index =
         table.schema().getColumnIndex(column_ref.column_name);
-    if (column_index < 0) {
-      joined_column_offset += table.schema().columns().size();
-      continue;
+    if (column_index >= 0) {
+      const BoundColumnRef bound_column{
+          0, joined_column_offset + static_cast<std::size_t>(column_index)};
+
+      if (has_table_name) {
+        return bound_column;
+      }
+
+      if (matched_column.has_value()) {
+        // if the column reference is unqualified and we've already found a matching column before, then this reference is ambiguous.
+        throw std::runtime_error("Ambiguous column: " + column_ref.column_name);
+      }
+
+      matched_column = bound_column;
     }
 
-    if (matched_table != nullptr && column_ref.table_name.empty()) {
-      throw std::runtime_error("Ambiguous column: " + column_ref.column_name);
-    }
+    joined_column_offset += table_column_count;
+  }
 
-    matched_table = &table;
-    return BoundColumnRef{0, joined_column_offset +
-                                 static_cast<std::size_t>(column_index)};
+  return matched_column;
+}
+
+std::optional<BoundOperand> tryBindOperand(
+    const UnboundOperand& operand, const std::vector<Table>& tables) {
+  // when the operand is a column reference
+  if (const auto* column_ref = std::get_if<ColumnRef>(&operand)) {
+    const std::optional<BoundColumnRef> bound_column =
+        tryBindColumnRef(*column_ref, tables);
+    if (!bound_column.has_value()) {
+      return std::nullopt;
+    }
+    return BoundOperand{*bound_column};
+  }
+
+  // when the operand is a literal value
+  if (const auto* value = std::get_if<FieldValue>(&operand)) {
+    return BoundOperand{*value};
+  }
+
+  throw std::logic_error("Unsupported unbound operand.");
+}
+
+}  // namespace
+
+
+BoundColumnRef bindColumnRef(const ColumnRef& column_ref,
+                             const std::vector<Table>& tables) {
+  const std::optional<BoundColumnRef> bound_column =
+      tryBindColumnRef(column_ref, tables);
+  if (bound_column.has_value()) {
+    return *bound_column;
   }
 
   if (!column_ref.table_name.empty()) {
@@ -58,7 +107,7 @@ BoundOperand bindOperand(const UnboundOperand& operand,
     return *value;
   }
 
-  return std::monostate{};
+  throw std::logic_error("Unsupported unbound operand.");
 }
 
 std::vector<BoundSelectItem> bindSelectItems(
@@ -114,6 +163,34 @@ std::vector<BoundComparisonPredicate> bindPredicates(
     bound_predicates.push_back(BoundComparisonPredicate{
         predicate.op, bindOperand(predicate.left, tables),
         bindOperand(predicate.right, tables)});
+  }
+
+  return bound_predicates;
+}
+
+/**
+ * Binds as many predicates as possible using only the specified table, and returns the bound predicates.
+ * Predicates that cannot be fully bound using the specified table are silently dropped.
+ */
+std::vector<BoundComparisonPredicate> bindPredicatesResolvableByTable(
+  const std::vector<UnboundComparisonPredicate>& predicates,
+  const Table& table) {
+  std::vector<BoundComparisonPredicate> bound_predicates;
+  bound_predicates.reserve(predicates.size());
+
+  for (const auto& predicate : predicates) {
+    std::optional<BoundOperand> left = tryBindOperand(predicate.left, std::vector<Table>{table});
+    if (!left.has_value()) {
+      continue;
+    }
+
+    std::optional<BoundOperand> right = tryBindOperand(predicate.right, std::vector<Table>{table});
+    if (!right.has_value()) {
+      continue;
+    }
+
+    bound_predicates.push_back(
+        BoundComparisonPredicate{predicate.op, *left, *right});
   }
 
   return bound_predicates;

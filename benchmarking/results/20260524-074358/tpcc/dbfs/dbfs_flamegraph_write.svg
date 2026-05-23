@@ -1,0 +1,2491 @@
+<?xml version="1.0" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg version="1.1" width="1800" height="1036" onload="init(evt)" viewBox="0 0 1800 1036" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<!-- Flame graph stack visualization. See https://github.com/brendangregg/FlameGraph for latest version, and http://www.brendangregg.com/flamegraphs.html for examples. -->
+<!-- NOTES:  -->
+<defs>
+	<linearGradient id="background" y1="0" y2="1" x1="0" x2="0" >
+		<stop stop-color="#eeeeee" offset="5%" />
+		<stop stop-color="#eeeeb0" offset="95%" />
+	</linearGradient>
+</defs>
+<style type="text/css">
+	text { font-family:Verdana; font-size:14px; fill:rgb(0,0,0); }
+	#search, #ignorecase { opacity:0.1; cursor:pointer; }
+	#search:hover, #search.show, #ignorecase:hover, #ignorecase.show { opacity:1; }
+	#subtitle { text-anchor:middle; font-color:rgb(160,160,160); }
+	#title { text-anchor:middle; font-size:19px}
+	#unzoom { cursor:pointer; }
+	#frames > *:hover { stroke:black; stroke-width:0.5; cursor:pointer; }
+	.hide { display:none; }
+	.parent { opacity:0.5; }
+</style>
+<script type="text/ecmascript">
+<![CDATA[
+	"use strict";
+	var details, searchbtn, unzoombtn, matchedtxt, svg, searching, currentSearchTerm, ignorecase, ignorecaseBtn;
+	function init(evt) {
+		details = document.getElementById("details").firstChild;
+		searchbtn = document.getElementById("search");
+		ignorecaseBtn = document.getElementById("ignorecase");
+		unzoombtn = document.getElementById("unzoom");
+		matchedtxt = document.getElementById("matched");
+		svg = document.getElementsByTagName("svg")[0];
+		searching = 0;
+		currentSearchTerm = null;
+
+		// use GET parameters to restore a flamegraphs state.
+		var params = get_params();
+		if (params.x && params.y)
+			zoom(find_group(document.querySelector('[x="' + params.x + '"][y="' + params.y + '"]')));
+                if (params.s) search(params.s);
+	}
+
+	// event listeners
+	window.addEventListener("click", function(e) {
+		var target = find_group(e.target);
+		if (target) {
+			if (target.nodeName == "a") {
+				if (e.ctrlKey === false) return;
+				e.preventDefault();
+			}
+			if (target.classList.contains("parent")) unzoom(true);
+			zoom(target);
+			if (!document.querySelector('.parent')) {
+				// we have basically done a clearzoom so clear the url
+				var params = get_params();
+				if (params.x) delete params.x;
+				if (params.y) delete params.y;
+				history.replaceState(null, null, parse_params(params));
+				unzoombtn.classList.add("hide");
+				return;
+			}
+
+			// set parameters for zoom state
+			var el = target.querySelector("rect");
+			if (el && el.attributes && el.attributes.y && el.attributes._orig_x) {
+				var params = get_params()
+				params.x = el.attributes._orig_x.value;
+				params.y = el.attributes.y.value;
+				history.replaceState(null, null, parse_params(params));
+			}
+		}
+		else if (e.target.id == "unzoom") clearzoom();
+		else if (e.target.id == "search") search_prompt();
+		else if (e.target.id == "ignorecase") toggle_ignorecase();
+	}, false)
+
+	// mouse-over for info
+	// show
+	window.addEventListener("mouseover", function(e) {
+		var target = find_group(e.target);
+		if (target) details.nodeValue = "Function: " + g_to_text(target);
+	}, false)
+
+	// clear
+	window.addEventListener("mouseout", function(e) {
+		var target = find_group(e.target);
+		if (target) details.nodeValue = ' ';
+	}, false)
+
+	// ctrl-F for search
+	// ctrl-I to toggle case-sensitive search
+	window.addEventListener("keydown",function (e) {
+		if (e.keyCode === 114 || (e.ctrlKey && e.keyCode === 70)) {
+			e.preventDefault();
+			search_prompt();
+		}
+		else if (e.ctrlKey && e.keyCode === 73) {
+			e.preventDefault();
+			toggle_ignorecase();
+		}
+	}, false)
+
+	// functions
+	function get_params() {
+		var params = {};
+		var paramsarr = window.location.search.substr(1).split('&');
+		for (var i = 0; i < paramsarr.length; ++i) {
+			var tmp = paramsarr[i].split("=");
+			if (!tmp[0] || !tmp[1]) continue;
+			params[tmp[0]]  = decodeURIComponent(tmp[1]);
+		}
+		return params;
+	}
+	function parse_params(params) {
+		var uri = "?";
+		for (var key in params) {
+			uri += key + '=' + encodeURIComponent(params[key]) + '&';
+		}
+		if (uri.slice(-1) == "&")
+			uri = uri.substring(0, uri.length - 1);
+		if (uri == '?')
+			uri = window.location.href.split('?')[0];
+		return uri;
+	}
+	function find_child(node, selector) {
+		var children = node.querySelectorAll(selector);
+		if (children.length) return children[0];
+	}
+	function find_group(node) {
+		var parent = node.parentElement;
+		if (!parent) return;
+		if (parent.id == "frames") return node;
+		return find_group(parent);
+	}
+	function orig_save(e, attr, val) {
+		if (e.attributes["_orig_" + attr] != undefined) return;
+		if (e.attributes[attr] == undefined) return;
+		if (val == undefined) val = e.attributes[attr].value;
+		e.setAttribute("_orig_" + attr, val);
+	}
+	function orig_load(e, attr) {
+		if (e.attributes["_orig_"+attr] == undefined) return;
+		e.attributes[attr].value = e.attributes["_orig_" + attr].value;
+		e.removeAttribute("_orig_"+attr);
+	}
+	function g_to_text(e) {
+		var text = find_child(e, "title").firstChild.nodeValue;
+		return (text)
+	}
+	function g_to_func(e) {
+		var func = g_to_text(e);
+		// if there's any manipulation we want to do to the function
+		// name before it's searched, do it here before returning.
+		return (func);
+	}
+	function update_text(e) {
+		var r = find_child(e, "rect");
+		var t = find_child(e, "text");
+		var w = parseFloat(r.attributes.width.value) -3;
+		var txt = find_child(e, "title").textContent.replace(/\([^(]*\)$/,"");
+		t.attributes.x.value = parseFloat(r.attributes.x.value) + 3;
+
+		// Smaller than this size won't fit anything
+		if (w < 2 * 14 * 0.59) {
+			t.textContent = "";
+			return;
+		}
+
+		t.textContent = txt;
+		var sl = t.getSubStringLength(0, txt.length);
+		// check if only whitespace or if we can fit the entire string into width w
+		if (/^ *$/.test(txt) || sl < w)
+			return;
+
+		// this isn't perfect, but gives a good starting point
+		// and avoids calling getSubStringLength too often
+		var start = Math.floor((w/sl) * txt.length);
+		for (var x = start; x > 0; x = x-2) {
+			if (t.getSubStringLength(0, x + 2) <= w) {
+				t.textContent = txt.substring(0, x) + "..";
+				return;
+			}
+		}
+		t.textContent = "";
+	}
+
+	// zoom
+	function zoom_reset(e) {
+		if (e.attributes != undefined) {
+			orig_load(e, "x");
+			orig_load(e, "width");
+		}
+		if (e.childNodes == undefined) return;
+		for (var i = 0, c = e.childNodes; i < c.length; i++) {
+			zoom_reset(c[i]);
+		}
+	}
+	function zoom_child(e, x, ratio) {
+		if (e.attributes != undefined) {
+			if (e.attributes.x != undefined) {
+				orig_save(e, "x");
+				e.attributes.x.value = (parseFloat(e.attributes.x.value) - x - 10) * ratio + 10;
+				if (e.tagName == "text")
+					e.attributes.x.value = find_child(e.parentNode, "rect[x]").attributes.x.value + 3;
+			}
+			if (e.attributes.width != undefined) {
+				orig_save(e, "width");
+				e.attributes.width.value = parseFloat(e.attributes.width.value) * ratio;
+			}
+		}
+
+		if (e.childNodes == undefined) return;
+		for (var i = 0, c = e.childNodes; i < c.length; i++) {
+			zoom_child(c[i], x - 10, ratio);
+		}
+	}
+	function zoom_parent(e) {
+		if (e.attributes) {
+			if (e.attributes.x != undefined) {
+				orig_save(e, "x");
+				e.attributes.x.value = 10;
+			}
+			if (e.attributes.width != undefined) {
+				orig_save(e, "width");
+				e.attributes.width.value = parseInt(svg.width.baseVal.value) - (10 * 2);
+			}
+		}
+		if (e.childNodes == undefined) return;
+		for (var i = 0, c = e.childNodes; i < c.length; i++) {
+			zoom_parent(c[i]);
+		}
+	}
+	function zoom(node) {
+		var attr = find_child(node, "rect").attributes;
+		var width = parseFloat(attr.width.value);
+		var xmin = parseFloat(attr.x.value);
+		var xmax = parseFloat(xmin + width);
+		var ymin = parseFloat(attr.y.value);
+		var ratio = (svg.width.baseVal.value - 2 * 10) / width;
+
+		// XXX: Workaround for JavaScript float issues (fix me)
+		var fudge = 0.0001;
+
+		unzoombtn.classList.remove("hide");
+
+		var el = document.getElementById("frames").children;
+		for (var i = 0; i < el.length; i++) {
+			var e = el[i];
+			var a = find_child(e, "rect").attributes;
+			var ex = parseFloat(a.x.value);
+			var ew = parseFloat(a.width.value);
+			var upstack;
+			// Is it an ancestor
+			if (0 == 0) {
+				upstack = parseFloat(a.y.value) > ymin;
+			} else {
+				upstack = parseFloat(a.y.value) < ymin;
+			}
+			if (upstack) {
+				// Direct ancestor
+				if (ex <= xmin && (ex+ew+fudge) >= xmax) {
+					e.classList.add("parent");
+					zoom_parent(e);
+					update_text(e);
+				}
+				// not in current path
+				else
+					e.classList.add("hide");
+			}
+			// Children maybe
+			else {
+				// no common path
+				if (ex < xmin || ex + fudge >= xmax) {
+					e.classList.add("hide");
+				}
+				else {
+					zoom_child(e, xmin, ratio);
+					update_text(e);
+				}
+			}
+		}
+		search();
+	}
+	function unzoom(dont_update_text) {
+		unzoombtn.classList.add("hide");
+		var el = document.getElementById("frames").children;
+		for(var i = 0; i < el.length; i++) {
+			el[i].classList.remove("parent");
+			el[i].classList.remove("hide");
+			zoom_reset(el[i]);
+			if(!dont_update_text) update_text(el[i]);
+		}
+		search();
+	}
+	function clearzoom() {
+		unzoom();
+
+		// remove zoom state
+		var params = get_params();
+		if (params.x) delete params.x;
+		if (params.y) delete params.y;
+		history.replaceState(null, null, parse_params(params));
+	}
+
+	// search
+	function toggle_ignorecase() {
+		ignorecase = !ignorecase;
+		if (ignorecase) {
+			ignorecaseBtn.classList.add("show");
+		} else {
+			ignorecaseBtn.classList.remove("show");
+		}
+		reset_search();
+		search();
+	}
+	function reset_search() {
+		var el = document.querySelectorAll("#frames rect");
+		for (var i = 0; i < el.length; i++) {
+			orig_load(el[i], "fill")
+		}
+		var params = get_params();
+		delete params.s;
+		history.replaceState(null, null, parse_params(params));
+	}
+	function search_prompt() {
+		if (!searching) {
+			var term = prompt("Enter a search term (regexp " +
+			    "allowed, eg: ^ext4_)"
+			    + (ignorecase ? ", ignoring case" : "")
+			    + "\nPress Ctrl-i to toggle case sensitivity", "");
+			if (term != null) search(term);
+		} else {
+			reset_search();
+			searching = 0;
+			currentSearchTerm = null;
+			searchbtn.classList.remove("show");
+			searchbtn.firstChild.nodeValue = "Search"
+			matchedtxt.classList.add("hide");
+			matchedtxt.firstChild.nodeValue = ""
+		}
+	}
+	function search(term) {
+		if (term) currentSearchTerm = term;
+		if (currentSearchTerm === null) return;
+
+		var re = new RegExp(currentSearchTerm, ignorecase ? 'i' : '');
+		var el = document.getElementById("frames").children;
+		var matches = new Object();
+		var maxwidth = 0;
+		for (var i = 0; i < el.length; i++) {
+			var e = el[i];
+			var func = g_to_func(e);
+			var rect = find_child(e, "rect");
+			if (func == null || rect == null)
+				continue;
+
+			// Save max width. Only works as we have a root frame
+			var w = parseFloat(rect.attributes.width.value);
+			if (w > maxwidth)
+				maxwidth = w;
+
+			if (func.match(re)) {
+				// highlight
+				var x = parseFloat(rect.attributes.x.value);
+				orig_save(rect, "fill");
+				rect.attributes.fill.value = "rgb(230,0,230)";
+
+				// remember matches
+				if (matches[x] == undefined) {
+					matches[x] = w;
+				} else {
+					if (w > matches[x]) {
+						// overwrite with parent
+						matches[x] = w;
+					}
+				}
+				searching = 1;
+			}
+		}
+		if (!searching)
+			return;
+		var params = get_params();
+		params.s = currentSearchTerm;
+		history.replaceState(null, null, parse_params(params));
+
+		searchbtn.classList.add("show");
+		searchbtn.firstChild.nodeValue = "Reset Search";
+
+		// calculate percent matched, excluding vertical overlap
+		var count = 0;
+		var lastx = -1;
+		var lastw = 0;
+		var keys = Array();
+		for (k in matches) {
+			if (matches.hasOwnProperty(k))
+				keys.push(k);
+		}
+		// sort the matched frames by their x location
+		// ascending, then width descending
+		keys.sort(function(a, b){
+			return a - b;
+		});
+		// Step through frames saving only the biggest bottom-up frames
+		// thanks to the sort order. This relies on the tree property
+		// where children are always smaller than their parents.
+		var fudge = 0.0001;	// JavaScript floating point
+		for (var k in keys) {
+			var x = parseFloat(keys[k]);
+			var w = matches[keys[k]];
+			if (x >= lastx + lastw - fudge) {
+				count += w;
+				lastx = x;
+				lastw = w;
+			}
+		}
+		// display matched percent
+		matchedtxt.classList.remove("hide");
+		var pct = 100 * count / maxwidth;
+		if (pct != 100) pct = pct.toFixed(1)
+		matchedtxt.firstChild.nodeValue = "Matched: " + pct + "%";
+	}
+]]>
+</script>
+<rect x="0.0" y="0" width="1800.0" height="1036.0" fill="url(#background)"  />
+<text id="title" x="900.00" y="28" >dbfs 20260524-074358 write path</text>
+<text id="subtitle" x="900.00" y="56" >write/index-focused stacks</text>
+<text id="details" x="10.00" y="1017" > </text>
+<text id="unzoom" x="10.00" y="28" class="hide">Reset Zoom</text>
+<text id="search" x="1690.00" y="28" >Search</text>
+<text id="ignorecase" x="1774.00" y="28" >ic</text>
+<text id="matched" x="1690.00" y="1017" > </text>
+<g id="frames">
+<g >
+<title>BufferPool::pinPage (5,025,125 samples, 0.70%)</title><rect x="10.0" y="807" width="12.5" height="15.0" fill="rgb(248,127,47)" rx="2" ry="2" />
+<text  x="13.00" y="817.5" ></text>
+</g>
+<g >
+<title>[libgcc_s.so.1] (110,552,750 samples, 15.49%)</title><rect x="1363.8" y="711" width="275.8" height="15.0" fill="rgb(237,147,35)" rx="2" ry="2" />
+<text  x="1366.80" y="721.5" >[libgcc_s.so.1]</text>
+</g>
+<g >
+<title>[unknown] (15,075,375 samples, 2.11%)</title><rect x="812.3" y="311" width="37.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="815.25" y="321.5" >[u..</text>
+</g>
+<g >
+<title>[unknown] (25,125,625 samples, 3.52%)</title><rect x="787.2" y="455" width="62.7" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="790.18" y="465.5" >[unkn..</text>
+</g>
+<g >
+<title>[unknown] (10,050,250 samples, 1.41%)</title><rect x="1163.2" y="407" width="25.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1166.24" y="417.5" >[..</text>
+</g>
+<g >
+<title>__gxx_personality_v0 (25,125,625 samples, 3.52%)</title><rect x="1639.6" y="711" width="62.7" height="15.0" fill="rgb(224,132,21)" rx="2" ry="2" />
+<text  x="1642.58" y="721.5" >__gxx..</text>
+</g>
+<g >
+<title>[unknown] (10,050,250 samples, 1.41%)</title><rect x="1714.8" y="471" width="25.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1717.79" y="481.5" >[..</text>
+</g>
+<g >
+<title>InternalIndexPage::findChildPage (10,050,250 samples, 1.41%)</title><rect x="1088.0" y="807" width="25.1" height="15.0" fill="rgb(248,180,47)" rx="2" ry="2" />
+<text  x="1091.03" y="817.5" >I..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="1150.7" y="375" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1153.70" y="385.5" ></text>
+</g>
+<g >
+<title>_IO_file_write (5,025,125 samples, 0.70%)</title><rect x="1113.1" y="679" width="12.5" height="15.0" fill="rgb(240,132,38)" rx="2" ry="2" />
+<text  x="1116.10" y="689.5" ></text>
+</g>
+<g >
+<title>std::__basic_file&lt;char&gt;::xsgetn (5,025,125 samples, 0.70%)</title><rect x="10.0" y="711" width="12.5" height="15.0" fill="rgb(244,146,43)" rx="2" ry="2" />
+<text  x="13.00" y="721.5" ></text>
+</g>
+<g >
+<title>fmt::v9::detail::write&lt;char, fmt::v9::appender, int, 0&gt; (5,025,125 samples, 0.70%)</title><rect x="1225.9" y="679" width="12.6" height="15.0" fill="rgb(241,137,40)" rx="2" ry="2" />
+<text  x="1228.92" y="689.5" ></text>
+</g>
+<g >
+<title>[unknown] (20,100,500 samples, 2.82%)</title><rect x="1288.6" y="375" width="50.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1291.59" y="385.5" >[unk..</text>
+</g>
+<g >
+<title>operator new (5,025,125 samples, 0.70%)</title><rect x="962.7" y="775" width="12.5" height="15.0" fill="rgb(235,195,33)" rx="2" ry="2" />
+<text  x="965.68" y="785.5" ></text>
+</g>
+<g >
+<title>[unknown] (15,075,375 samples, 2.11%)</title><rect x="900.0" y="391" width="37.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="903.00" y="401.5" >[u..</text>
+</g>
+<g >
+<title>std::chrono::_V2::system_clock::now (5,025,125 samples, 0.70%)</title><rect x="1338.7" y="695" width="12.6" height="15.0" fill="rgb(236,146,35)" rx="2" ry="2" />
+<text  x="1341.73" y="705.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="1150.7" y="423" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1153.70" y="433.5" ></text>
+</g>
+<g >
+<title>[unknown] (10,050,250 samples, 1.41%)</title><rect x="1714.8" y="519" width="25.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1717.79" y="529.5" >[..</text>
+</g>
+<g >
+<title>std::__unguarded_linear_insert&lt;__gnu_cxx::__normal_iterator&lt;IntermediateCell*, std::vector&lt;IntermediateCell, std::allocator&lt;IntermediateCell&gt; &gt; &gt;, __gnu_cxx::__ops::_Val_comp_iter&lt;InternalIndexPage::findChildPage (10,050,250 samples, 1.41%)</title><rect x="60.1" y="791" width="25.1" height="15.0" fill="rgb(248,146,47)" rx="2" ry="2" />
+<text  x="63.14" y="801.5" >s..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="10.0" y="407" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="13.00" y="417.5" ></text>
+</g>
+<g >
+<title>memcmp (5,025,125 samples, 0.70%)</title><rect x="1088.0" y="775" width="12.6" height="15.0" fill="rgb(238,144,36)" rx="2" ry="2" />
+<text  x="1091.03" y="785.5" ></text>
+</g>
+<g >
+<title>[libspdlog.so.1.10.0] (25,125,625 samples, 3.52%)</title><rect x="1276.1" y="679" width="62.6" height="15.0" fill="rgb(238,147,36)" rx="2" ry="2" />
+<text  x="1279.06" y="689.5" >[libs..</text>
+</g>
+<g >
+<title>executor::read (336,683,375 samples, 47.18%)</title><rect x="97.7" y="855" width="839.9" height="15.0" fill="rgb(241,155,40)" rx="2" ry="2" />
+<text  x="100.75" y="865.5" >executor::read</text>
+</g>
+<g >
+<title>[unknown] (20,100,500 samples, 2.82%)</title><rect x="1288.6" y="423" width="50.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1291.59" y="433.5" >[unk..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="85.2" y="631" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="88.21" y="641.5" ></text>
+</g>
+<g >
+<title>[libspdlog.so.1.10.0] (15,075,375 samples, 2.11%)</title><rect x="900.0" y="695" width="37.6" height="15.0" fill="rgb(238,147,36)" rx="2" ry="2" />
+<text  x="903.00" y="705.5" >[l..</text>
+</g>
+<g >
+<title>std::__basic_file&lt;char&gt;::open (5,025,125 samples, 0.70%)</title><rect x="97.7" y="647" width="12.6" height="15.0" fill="rgb(250,146,49)" rx="2" ry="2" />
+<text  x="100.75" y="657.5" ></text>
+</g>
+<g >
+<title>std::basic_filebuf&lt;char, std::char_traits&lt;char&gt; &gt;::xsgetn (25,125,625 samples, 3.52%)</title><rect x="787.2" y="695" width="62.7" height="15.0" fill="rgb(244,146,43)" rx="2" ry="2" />
+<text  x="790.18" y="705.5" >std::..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="10.0" y="599" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="13.00" y="609.5" ></text>
+</g>
+<g >
+<title>std::__unguarded_linear_insert&lt;__gnu_cxx::__normal_iterator&lt;IntermediateCell*, std::vector&lt;IntermediateCell, std::allocator&lt;IntermediateCell&gt; &gt; &gt;, __gnu_cxx::__ops::_Val_comp_iter&lt;InternalIndexPage::findChildPage (5,025,125 samples, 0.70%)</title><rect x="1702.3" y="775" width="12.5" height="15.0" fill="rgb(248,146,47)" rx="2" ry="2" />
+<text  x="1705.25" y="785.5" ></text>
+</g>
+<g >
+<title>[unknown] (10,050,250 samples, 1.41%)</title><rect x="1714.8" y="503" width="25.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1717.79" y="513.5" >[..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="774.6" y="599" width="12.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="777.65" y="609.5" ></text>
+</g>
+<g >
+<title>[libspdlog.so.1.10.0] (5,025,125 samples, 0.70%)</title><rect x="1113.1" y="759" width="12.5" height="15.0" fill="rgb(238,147,36)" rx="2" ry="2" />
+<text  x="1116.10" y="769.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="1113.1" y="583" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1116.10" y="593.5" ></text>
+</g>
+<g >
+<title>[libspdlog.so.1.10.0] (5,025,125 samples, 0.70%)</title><rect x="1138.2" y="727" width="12.5" height="15.0" fill="rgb(238,147,36)" rx="2" ry="2" />
+<text  x="1141.17" y="737.5" ></text>
+</g>
+<g >
+<title>std::string::reserve (5,025,125 samples, 0.70%)</title><rect x="1025.4" y="807" width="12.5" height="15.0" fill="rgb(240,146,38)" rx="2" ry="2" />
+<text  x="1028.35" y="817.5" ></text>
+</g>
+<g >
+<title>[unknown] (10,050,250 samples, 1.41%)</title><rect x="824.8" y="119" width="25.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="827.79" y="129.5" >[..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="10.0" y="647" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="13.00" y="657.5" ></text>
+</g>
+<g >
+<title>operator new (5,025,125 samples, 0.70%)</title><rect x="1025.4" y="791" width="12.5" height="15.0" fill="rgb(235,195,33)" rx="2" ry="2" />
+<text  x="1028.35" y="801.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="85.2" y="711" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="88.21" y="721.5" ></text>
+</g>
+<g >
+<title>BTreeCursor::findLeafPageID (15,075,375 samples, 2.11%)</title><rect x="10.0" y="823" width="37.6" height="15.0" fill="rgb(229,127,27)" rx="2" ry="2" />
+<text  x="13.00" y="833.5" >BT..</text>
+</g>
+<g >
+<title>[unknown] (25,125,625 samples, 3.52%)</title><rect x="787.2" y="343" width="62.7" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="790.18" y="353.5" >[unkn..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="774.6" y="647" width="12.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="777.65" y="657.5" ></text>
+</g>
+<g >
+<title>[unknown] (25,125,625 samples, 3.52%)</title><rect x="787.2" y="391" width="62.7" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="790.18" y="401.5" >[unkn..</text>
+</g>
+<g >
+<title>[unknown] (10,050,250 samples, 1.41%)</title><rect x="824.8" y="167" width="25.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="827.79" y="177.5" >[..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="1113.1" y="535" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1116.10" y="545.5" ></text>
+</g>
+<g >
+<title>[libstdc++.so.6.0.30] (10,050,250 samples, 1.41%)</title><rect x="636.8" y="631" width="25.0" height="15.0" fill="rgb(243,147,42)" rx="2" ry="2" />
+<text  x="639.76" y="641.5" >[..</text>
+</g>
+<g >
+<title>[libspdlog.so.1.10.0] (5,025,125 samples, 0.70%)</title><rect x="1752.4" y="791" width="12.5" height="15.0" fill="rgb(238,147,36)" rx="2" ry="2" />
+<text  x="1755.39" y="801.5" ></text>
+</g>
+<g >
+<title>[unknown] (10,050,250 samples, 1.41%)</title><rect x="1163.2" y="647" width="25.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1166.24" y="657.5" >[..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="85.2" y="663" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="88.21" y="673.5" ></text>
+</g>
+<g >
+<title>_IO_file_open (5,025,125 samples, 0.70%)</title><rect x="97.7" y="599" width="12.6" height="15.0" fill="rgb(250,132,49)" rx="2" ry="2" />
+<text  x="100.75" y="609.5" ></text>
+</g>
+<g >
+<title>[libgcc_s.so.1] (30,150,750 samples, 4.23%)</title><rect x="498.9" y="631" width="75.2" height="15.0" fill="rgb(237,147,35)" rx="2" ry="2" />
+<text  x="501.87" y="641.5" >[libgcc..</text>
+</g>
+<g >
+<title>[libfmt.so.9.1.0] (20,100,500 samples, 2.82%)</title><rect x="160.4" y="679" width="50.2" height="15.0" fill="rgb(238,147,36)" rx="2" ry="2" />
+<text  x="163.42" y="689.5" >[lib..</text>
+</g>
+<g >
+<title>_IO_file_sync (5,025,125 samples, 0.70%)</title><rect x="1113.1" y="727" width="12.5" height="15.0" fill="rgb(238,132,36)" rx="2" ry="2" />
+<text  x="1116.10" y="737.5" ></text>
+</g>
+<g >
+<title>[libc.so.6] (5,025,125 samples, 0.70%)</title><rect x="1063.0" y="807" width="12.5" height="15.0" fill="rgb(231,147,29)" rx="2" ry="2" />
+<text  x="1065.96" y="817.5" ></text>
+</g>
+<g >
+<title>_Unwind_Find_FDE (15,075,375 samples, 2.11%)</title><rect x="574.1" y="631" width="37.6" height="15.0" fill="rgb(230,143,27)" rx="2" ry="2" />
+<text  x="577.08" y="641.5" >_U..</text>
+</g>
+<g >
+<title>[unknown] (10,050,250 samples, 1.41%)</title><rect x="1163.2" y="599" width="25.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1166.24" y="609.5" >[..</text>
+</g>
+<g >
+<title>main (713,567,750 samples, 100.00%)</title><rect x="10.0" y="903" width="1780.0" height="15.0" fill="rgb(247,83,46)" rx="2" ry="2" />
+<text  x="13.00" y="913.5" >main</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="210.6" y="519" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="213.56" y="529.5" ></text>
+</g>
+<g >
+<title>FrameDirectory::findVictimFrame (70,351,750 samples, 9.86%)</title><rect x="1188.3" y="743" width="175.5" height="15.0" fill="rgb(241,206,40)" rx="2" ry="2" />
+<text  x="1191.31" y="753.5" >FrameDirectory::fin..</text>
+</g>
+<g >
+<title>spdlog::logger::log_&lt;std::basic_string_view&lt;char, std::char_traits&lt;char&gt; &gt;, int&amp;, std::string, std::string &gt; (15,075,375 samples, 2.11%)</title><rect x="900.0" y="743" width="37.6" height="15.0" fill="rgb(235,167,33)" rx="2" ry="2" />
+<text  x="903.00" y="753.5" >sp..</text>
+</g>
+<g >
+<title>_IO_do_write (5,025,125 samples, 0.70%)</title><rect x="1113.1" y="711" width="12.5" height="15.0" fill="rgb(240,132,38)" rx="2" ry="2" />
+<text  x="1116.10" y="721.5" ></text>
+</g>
+<g >
+<title>[libspdlog.so.1.10.0] (60,301,500 samples, 8.45%)</title><rect x="223.1" y="663" width="150.4" height="15.0" fill="rgb(238,147,36)" rx="2" ry="2" />
+<text  x="226.10" y="673.5" >[libspdlog.so.1...</text>
+</g>
+<g >
+<title>[unknown] (15,075,375 samples, 2.11%)</title><rect x="900.0" y="455" width="37.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="903.00" y="465.5" >[u..</text>
+</g>
+<g >
+<title>_IO_fflush (5,025,125 samples, 0.70%)</title><rect x="1276.1" y="647" width="12.5" height="15.0" fill="rgb(236,132,34)" rx="2" ry="2" />
+<text  x="1279.06" y="657.5" ></text>
+</g>
+<g >
+<title>[libc.so.6] (5,025,125 samples, 0.70%)</title><rect x="975.2" y="759" width="12.5" height="15.0" fill="rgb(231,147,29)" rx="2" ry="2" />
+<text  x="978.21" y="769.5" ></text>
+</g>
+<g >
+<title>_IO_file_sync (20,100,500 samples, 2.82%)</title><rect x="1288.6" y="647" width="50.1" height="15.0" fill="rgb(238,132,36)" rx="2" ry="2" />
+<text  x="1291.59" y="657.5" >_IO_..</text>
+</g>
+<g >
+<title>[unknown] (50,251,250 samples, 7.04%)</title><rect x="248.2" y="407" width="125.3" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="251.17" y="417.5" >[unknown]</text>
+</g>
+<g >
+<title>_IO_fflush (15,075,375 samples, 2.11%)</title><rect x="900.0" y="679" width="37.6" height="15.0" fill="rgb(236,132,34)" rx="2" ry="2" />
+<text  x="903.00" y="689.5" >_I..</text>
+</g>
+<g >
+<title>[unknown] (25,125,625 samples, 3.52%)</title><rect x="787.2" y="551" width="62.7" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="790.18" y="561.5" >[unkn..</text>
+</g>
+<g >
+<title>BTreeCursor::insertIntoIndex (30,150,750 samples, 4.23%)</title><rect x="1075.5" y="839" width="75.2" height="15.0" fill="rgb(250,127,49)" rx="2" ry="2" />
+<text  x="1078.49" y="849.5" >BTreeCu..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="210.6" y="631" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="213.56" y="641.5" ></text>
+</g>
+<g >
+<title>__gxx_personality_v0 (15,075,375 samples, 2.11%)</title><rect x="636.8" y="647" width="37.6" height="15.0" fill="rgb(224,132,21)" rx="2" ry="2" />
+<text  x="639.76" y="657.5" >__..</text>
+</g>
+<g >
+<title>write (20,100,500 samples, 2.82%)</title><rect x="1288.6" y="583" width="50.1" height="15.0" fill="rgb(240,108,38)" rx="2" ry="2" />
+<text  x="1291.59" y="593.5" >write</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="10.0" y="487" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="13.00" y="497.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="47.6" y="583" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="50.61" y="593.5" ></text>
+</g>
+<g >
+<title>[libgcc_s.so.1] (10,050,250 samples, 1.41%)</title><rect x="1576.9" y="663" width="25.1" height="15.0" fill="rgb(237,147,35)" rx="2" ry="2" />
+<text  x="1579.90" y="673.5" >[..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="97.7" y="471" width="12.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="100.75" y="481.5" ></text>
+</g>
+<g >
+<title>BufferPool::evictOnePage (266,331,625 samples, 37.32%)</title><rect x="97.7" y="711" width="664.4" height="15.0" fill="rgb(248,127,47)" rx="2" ry="2" />
+<text  x="100.75" y="721.5" >BufferPool::evictOnePage</text>
+</g>
+<g >
+<title>[libgcc_s.so.1] (40,201,000 samples, 5.63%)</title><rect x="1501.7" y="679" width="100.3" height="15.0" fill="rgb(237,147,35)" rx="2" ry="2" />
+<text  x="1504.69" y="689.5" >[libgcc_s...</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="10.0" y="439" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="13.00" y="449.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="47.6" y="535" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="50.61" y="545.5" ></text>
+</g>
+<g >
+<title>[libgcc_s.so.1] (5,025,125 samples, 0.70%)</title><rect x="599.2" y="615" width="12.5" height="15.0" fill="rgb(237,147,35)" rx="2" ry="2" />
+<text  x="602.15" y="625.5" ></text>
+</g>
+<g >
+<title>read (5,025,125 samples, 0.70%)</title><rect x="1150.7" y="647" width="12.5" height="15.0" fill="rgb(241,184,40)" rx="2" ry="2" />
+<text  x="1153.70" y="657.5" ></text>
+</g>
+<g >
+<title>[unknown] (10,050,250 samples, 1.41%)</title><rect x="1163.2" y="439" width="25.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1166.24" y="449.5" >[..</text>
+</g>
+<g >
+<title>heap_file_access::appendCell (5,025,125 samples, 0.70%)</title><rect x="1777.5" y="839" width="12.5" height="15.0" fill="rgb(227,184,24)" rx="2" ry="2" />
+<text  x="1780.46" y="849.5" ></text>
+</g>
+<g >
+<title>BufferPool::evictOnePage (221,105,500 samples, 30.99%)</title><rect x="1150.7" y="759" width="551.6" height="15.0" fill="rgb(248,127,47)" rx="2" ry="2" />
+<text  x="1153.70" y="769.5" >BufferPool::evictOnePage</text>
+</g>
+<g >
+<title>std::filesystem::status (5,025,125 samples, 0.70%)</title><rect x="85.2" y="743" width="12.5" height="15.0" fill="rgb(233,146,30)" rx="2" ry="2" />
+<text  x="88.21" y="753.5" ></text>
+</g>
+<g >
+<title>BTreeCursor::findLeafPageID (5,025,125 samples, 0.70%)</title><rect x="1739.9" y="791" width="12.5" height="15.0" fill="rgb(229,127,27)" rx="2" ry="2" />
+<text  x="1742.86" y="801.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="97.7" y="519" width="12.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="100.75" y="529.5" ></text>
+</g>
+<g >
+<title>BufferPool::acquireFrame (266,331,625 samples, 37.32%)</title><rect x="97.7" y="727" width="664.4" height="15.0" fill="rgb(241,127,40)" rx="2" ry="2" />
+<text  x="100.75" y="737.5" >BufferPool::acquireFrame</text>
+</g>
+<g >
+<title>[unknown] (10,050,250 samples, 1.41%)</title><rect x="1163.2" y="487" width="25.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1166.24" y="497.5" >[..</text>
+</g>
+<g >
+<title>FrameDirectory::pin (5,025,125 samples, 0.70%)</title><rect x="1037.9" y="807" width="12.5" height="15.0" fill="rgb(245,206,44)" rx="2" ry="2" />
+<text  x="1040.89" y="817.5" ></text>
+</g>
+<g >
+<title>[unknown] (10,050,250 samples, 1.41%)</title><rect x="1714.8" y="631" width="25.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1717.79" y="641.5" >[..</text>
+</g>
+<g >
+<title>_IO_file_write (15,075,375 samples, 2.11%)</title><rect x="900.0" y="615" width="37.6" height="15.0" fill="rgb(240,132,38)" rx="2" ry="2" />
+<text  x="903.00" y="625.5" >_I..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="85.2" y="519" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="88.21" y="529.5" ></text>
+</g>
+<g >
+<title>[unknown] (55,276,375 samples, 7.75%)</title><rect x="235.6" y="487" width="137.9" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="238.63" y="497.5" >[unknown]</text>
+</g>
+<g >
+<title>BufferPool::evictOnePage (5,025,125 samples, 0.70%)</title><rect x="1777.5" y="791" width="12.5" height="15.0" fill="rgb(248,127,47)" rx="2" ry="2" />
+<text  x="1780.46" y="801.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="97.7" y="503" width="12.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="100.75" y="513.5" ></text>
+</g>
+<g >
+<title>[ld-linux-aarch64.so.1] (5,025,125 samples, 0.70%)</title><rect x="937.6" y="743" width="12.5" height="15.0" fill="rgb(237,163,35)" rx="2" ry="2" />
+<text  x="940.61" y="753.5" ></text>
+</g>
+<g >
+<title>read (25,125,625 samples, 3.52%)</title><rect x="787.2" y="631" width="62.7" height="15.0" fill="rgb(241,184,40)" rx="2" ry="2" />
+<text  x="790.18" y="641.5" >read</text>
+</g>
+<g >
+<title>[libgcc_s.so.1] (75,376,875 samples, 10.56%)</title><rect x="423.7" y="647" width="188.0" height="15.0" fill="rgb(237,147,35)" rx="2" ry="2" />
+<text  x="426.66" y="657.5" >[libgcc_s.so.1]</text>
+</g>
+<g >
+<title>BTreeCursor::findLeafPageID (336,683,375 samples, 47.18%)</title><rect x="97.7" y="759" width="839.9" height="15.0" fill="rgb(229,127,27)" rx="2" ry="2" />
+<text  x="100.75" y="769.5" >BTreeCursor::findLeafPageID</text>
+</g>
+<g >
+<title>BufferPool::unpinPage (5,025,125 samples, 0.70%)</title><rect x="950.1" y="807" width="12.6" height="15.0" fill="rgb(248,127,47)" rx="2" ry="2" />
+<text  x="953.14" y="817.5" ></text>
+</g>
+<g >
+<title>[libspdlog.so.1.10.0] (10,050,250 samples, 1.41%)</title><rect x="1714.8" y="743" width="25.1" height="15.0" fill="rgb(238,147,36)" rx="2" ry="2" />
+<text  x="1717.79" y="753.5" >[..</text>
+</g>
+<g >
+<title>[unknown] (10,050,250 samples, 1.41%)</title><rect x="1163.2" y="567" width="25.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1166.24" y="577.5" >[..</text>
+</g>
+<g >
+<title>[unknown] (25,125,625 samples, 3.52%)</title><rect x="787.2" y="615" width="62.7" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="790.18" y="625.5" >[unkn..</text>
+</g>
+<g >
+<title>ProjectionOperator::next (336,683,375 samples, 47.18%)</title><rect x="97.7" y="839" width="839.9" height="15.0" fill="rgb(230,200,27)" rx="2" ry="2" />
+<text  x="100.75" y="849.5" >ProjectionOperator::next</text>
+</g>
+<g >
+<title>std::__unguarded_linear_insert&lt;__gnu_cxx::__normal_iterator&lt;IntermediateCell*, std::vector&lt;IntermediateCell, std::allocator&lt;IntermediateCell&gt; &gt; &gt;, __gnu_cxx::__ops::_Val_comp_iter&lt;InternalIndexPage::findChildPage (5,025,125 samples, 0.70%)</title><rect x="887.5" y="711" width="12.5" height="15.0" fill="rgb(248,146,47)" rx="2" ry="2" />
+<text  x="890.46" y="721.5" ></text>
+</g>
+<g >
+<title>[unknown] (50,251,250 samples, 7.04%)</title><rect x="248.2" y="439" width="125.3" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="251.17" y="449.5" >[unknown]</text>
+</g>
+<g >
+<title>memcmp (10,050,250 samples, 1.41%)</title><rect x="60.1" y="775" width="25.1" height="15.0" fill="rgb(238,144,36)" rx="2" ry="2" />
+<text  x="63.14" y="785.5" >m..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="10.0" y="567" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="13.00" y="577.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="122.8" y="631" width="12.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="125.82" y="641.5" ></text>
+</g>
+<g >
+<title>File::File (5,025,125 samples, 0.70%)</title><rect x="47.6" y="759" width="12.5" height="15.0" fill="rgb(237,199,35)" rx="2" ry="2" />
+<text  x="50.61" y="769.5" ></text>
+</g>
+<g >
+<title>fmt::v9::detail::parse_replacement_field&lt;char, fmt::v9::detail::vformat_to&lt;char&gt; (5,025,125 samples, 0.70%)</title><rect x="173.0" y="647" width="12.5" height="15.0" fill="rgb(246,137,45)" rx="2" ry="2" />
+<text  x="175.96" y="657.5" ></text>
+</g>
+<g >
+<title>std::__unguarded_linear_insert&lt;__gnu_cxx::__normal_iterator&lt;IntermediateCell*, std::vector&lt;IntermediateCell, std::allocator&lt;IntermediateCell&gt; &gt; &gt;, __gnu_cxx::__ops::_Val_comp_iter&lt;InternalIndexPage::findChildPage (5,025,125 samples, 0.70%)</title><rect x="975.2" y="775" width="12.5" height="15.0" fill="rgb(248,146,47)" rx="2" ry="2" />
+<text  x="978.21" y="785.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="1150.7" y="583" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1153.70" y="593.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="774.6" y="567" width="12.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="777.65" y="577.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="774.6" y="695" width="12.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="777.65" y="705.5" ></text>
+</g>
+<g >
+<title>std::__introsort_loop&lt;__gnu_cxx::__normal_iterator&lt;IntermediateCell*, std::vector&lt;IntermediateCell, std::allocator&lt;IntermediateCell&gt; &gt; &gt;, long, __gnu_cxx::__ops::_Iter_comp_iter&lt;InternalIndexPage::findChildPage (10,050,250 samples, 1.41%)</title><rect x="987.7" y="791" width="25.1" height="15.0" fill="rgb(248,146,47)" rx="2" ry="2" />
+<text  x="990.75" y="801.5" >s..</text>
+</g>
+<g >
+<title>std::vector&lt;IntermediateCell, std::allocator&lt;IntermediateCell&gt; &gt;::emplace_back&lt;IntermediateCell&gt; (5,025,125 samples, 0.70%)</title><rect x="1100.6" y="791" width="12.5" height="15.0" fill="rgb(241,146,40)" rx="2" ry="2" />
+<text  x="1103.56" y="801.5" ></text>
+</g>
+<g >
+<title>std::__basic_file&lt;char&gt;::xsgetn (5,025,125 samples, 0.70%)</title><rect x="1150.7" y="663" width="12.5" height="15.0" fill="rgb(244,146,43)" rx="2" ry="2" />
+<text  x="1153.70" y="673.5" ></text>
+</g>
+<g >
+<title>[unknown] (10,050,250 samples, 1.41%)</title><rect x="824.8" y="87" width="25.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="827.79" y="97.5" >[..</text>
+</g>
+<g >
+<title>[unknown] (20,100,500 samples, 2.82%)</title><rect x="1288.6" y="535" width="50.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1291.59" y="545.5" >[unk..</text>
+</g>
+<g >
+<title>File::readPageIntoBuffer (10,050,250 samples, 1.41%)</title><rect x="762.1" y="711" width="25.1" height="15.0" fill="rgb(241,199,40)" rx="2" ry="2" />
+<text  x="765.11" y="721.5" >F..</text>
+</g>
+<g >
+<title>[unknown] (15,075,375 samples, 2.11%)</title><rect x="900.0" y="551" width="37.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="903.00" y="561.5" >[u..</text>
+</g>
+<g >
+<title>std::basic_filebuf&lt;char, std::char_traits&lt;char&gt; &gt;::xsputn (10,050,250 samples, 1.41%)</title><rect x="1163.2" y="711" width="25.1" height="15.0" fill="rgb(242,146,40)" rx="2" ry="2" />
+<text  x="1166.24" y="721.5" >s..</text>
+</g>
+<g >
+<title>fmt::v9::detail::copy_str_noinline&lt;char, char const*, fmt::v9::appender&gt; (5,025,125 samples, 0.70%)</title><rect x="160.4" y="647" width="12.6" height="15.0" fill="rgb(243,137,42)" rx="2" ry="2" />
+<text  x="163.42" y="657.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="1150.7" y="535" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1153.70" y="545.5" ></text>
+</g>
+<g >
+<title>[unknown] (15,075,375 samples, 2.11%)</title><rect x="812.3" y="199" width="37.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="815.25" y="209.5" >[u..</text>
+</g>
+<g >
+<title>malloc (5,025,125 samples, 0.70%)</title><rect x="962.7" y="759" width="12.5" height="15.0" fill="rgb(238,112,36)" rx="2" ry="2" />
+<text  x="965.68" y="769.5" ></text>
+</g>
+<g >
+<title>[libgcc_s.so.1] (75,376,875 samples, 10.56%)</title><rect x="1413.9" y="695" width="188.1" height="15.0" fill="rgb(237,147,35)" rx="2" ry="2" />
+<text  x="1416.94" y="705.5" >[libgcc_s.so.1]</text>
+</g>
+<g >
+<title>FrameDirectory::findVictimFrame (10,050,250 samples, 1.41%)</title><rect x="135.4" y="679" width="25.0" height="15.0" fill="rgb(241,206,40)" rx="2" ry="2" />
+<text  x="138.35" y="689.5" >F..</text>
+</g>
+<g >
+<title>_IO_file_write (20,100,500 samples, 2.82%)</title><rect x="1288.6" y="599" width="50.1" height="15.0" fill="rgb(240,132,38)" rx="2" ry="2" />
+<text  x="1291.59" y="609.5" >_IO_..</text>
+</g>
+<g >
+<title>[ld-linux-aarch64.so.1] (5,025,125 samples, 0.70%)</title><rect x="937.6" y="727" width="12.5" height="15.0" fill="rgb(237,163,35)" rx="2" ry="2" />
+<text  x="940.61" y="737.5" ></text>
+</g>
+<g >
+<title>[unknown] (15,075,375 samples, 2.11%)</title><rect x="812.3" y="215" width="37.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="815.25" y="225.5" >[u..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="1150.7" y="519" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1153.70" y="529.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="1727.3" y="423" width="12.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1730.32" y="433.5" ></text>
+</g>
+<g >
+<title>[libspdlog.so.1.10.0] (15,075,375 samples, 2.11%)</title><rect x="900.0" y="711" width="37.6" height="15.0" fill="rgb(238,147,36)" rx="2" ry="2" />
+<text  x="903.00" y="721.5" >[l..</text>
+</g>
+<g >
+<title>InternalIndexPage::findChildPage (20,100,500 samples, 2.82%)</title><rect x="849.9" y="743" width="50.1" height="15.0" fill="rgb(248,180,47)" rx="2" ry="2" />
+<text  x="852.86" y="753.5" >Inte..</text>
+</g>
+<g >
+<title>operator new (5,025,125 samples, 0.70%)</title><rect x="1125.6" y="791" width="12.6" height="15.0" fill="rgb(235,195,33)" rx="2" ry="2" />
+<text  x="1128.63" y="801.5" ></text>
+</g>
+<g >
+<title>[libfmt.so.9.1.0] (20,100,500 samples, 2.82%)</title><rect x="1200.8" y="727" width="50.2" height="15.0" fill="rgb(238,147,36)" rx="2" ry="2" />
+<text  x="1203.85" y="737.5" >[lib..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="10.0" y="455" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="13.00" y="465.5" ></text>
+</g>
+<g >
+<title>fstatat64 (5,025,125 samples, 0.70%)</title><rect x="47.6" y="711" width="12.5" height="15.0" fill="rgb(234,163,32)" rx="2" ry="2" />
+<text  x="50.61" y="721.5" ></text>
+</g>
+<g >
+<title>_IO_fflush (10,050,250 samples, 1.41%)</title><rect x="1714.8" y="727" width="25.1" height="15.0" fill="rgb(236,132,34)" rx="2" ry="2" />
+<text  x="1717.79" y="737.5" >_..</text>
+</g>
+<g >
+<title>[unknown] (20,100,500 samples, 2.82%)</title><rect x="1288.6" y="519" width="50.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1291.59" y="529.5" >[unk..</text>
+</g>
+<g >
+<title>[libc.so.6] (5,025,125 samples, 0.70%)</title><rect x="22.5" y="743" width="12.6" height="15.0" fill="rgb(231,147,29)" rx="2" ry="2" />
+<text  x="25.54" y="753.5" ></text>
+</g>
+<g >
+<title>[unknown] (45,226,125 samples, 6.34%)</title><rect x="260.7" y="343" width="112.8" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="263.70" y="353.5" >[unknown]</text>
+</g>
+<g >
+<title>[libc.so.6] (5,025,125 samples, 0.70%)</title><rect x="210.6" y="663" width="12.5" height="15.0" fill="rgb(231,147,29)" rx="2" ry="2" />
+<text  x="213.56" y="673.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="47.6" y="503" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="50.61" y="513.5" ></text>
+</g>
+<g >
+<title>malloc (5,025,125 samples, 0.70%)</title><rect x="1125.6" y="775" width="12.6" height="15.0" fill="rgb(238,112,36)" rx="2" ry="2" />
+<text  x="1128.63" y="785.5" ></text>
+</g>
+<g >
+<title>[unknown] (15,075,375 samples, 2.11%)</title><rect x="812.3" y="263" width="37.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="815.25" y="273.5" >[u..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="774.6" y="679" width="12.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="777.65" y="689.5" ></text>
+</g>
+<g >
+<title>_Unwind_RaiseException (135,678,375 samples, 19.01%)</title><rect x="1363.8" y="727" width="338.5" height="15.0" fill="rgb(247,143,46)" rx="2" ry="2" />
+<text  x="1366.80" y="737.5" >_Unwind_RaiseException</text>
+</g>
+<g >
+<title>[unknown] (45,226,125 samples, 6.34%)</title><rect x="260.7" y="391" width="112.8" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="263.70" y="401.5" >[unknown]</text>
+</g>
+<g >
+<title>std::basic_streambuf&lt;char, std::char_traits&lt;char&gt; &gt;::xsgetn (5,025,125 samples, 0.70%)</title><rect x="10.0" y="743" width="12.5" height="15.0" fill="rgb(244,146,43)" rx="2" ry="2" />
+<text  x="13.00" y="753.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="10.0" y="679" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="13.00" y="689.5" ></text>
+</g>
+<g >
+<title>[libspdlog.so.1.10.0] (5,025,125 samples, 0.70%)</title><rect x="1138.2" y="743" width="12.5" height="15.0" fill="rgb(238,147,36)" rx="2" ry="2" />
+<text  x="1141.17" y="753.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="85.2" y="583" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="88.21" y="593.5" ></text>
+</g>
+<g >
+<title>[unknown] (20,100,500 samples, 2.82%)</title><rect x="1288.6" y="471" width="50.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1291.59" y="481.5" >[unk..</text>
+</g>
+<g >
+<title>std::filesystem::status (5,025,125 samples, 0.70%)</title><rect x="85.2" y="759" width="12.5" height="15.0" fill="rgb(233,146,30)" rx="2" ry="2" />
+<text  x="88.21" y="769.5" ></text>
+</g>
+<g >
+<title>BufferPool::acquireFrame (5,025,125 samples, 0.70%)</title><rect x="47.6" y="791" width="12.5" height="15.0" fill="rgb(241,127,40)" rx="2" ry="2" />
+<text  x="50.61" y="801.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="1150.7" y="471" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1153.70" y="481.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="85.2" y="535" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="88.21" y="545.5" ></text>
+</g>
+<g >
+<title>[libspdlog.so.1.10.0] (60,301,500 samples, 8.45%)</title><rect x="223.1" y="631" width="150.4" height="15.0" fill="rgb(238,147,36)" rx="2" ry="2" />
+<text  x="226.10" y="641.5" >[libspdlog.so.1...</text>
+</g>
+<g >
+<title>[unknown] (10,050,250 samples, 1.41%)</title><rect x="1163.2" y="455" width="25.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1166.24" y="465.5" >[..</text>
+</g>
+<g >
+<title>[unknown] (25,125,625 samples, 3.52%)</title><rect x="787.2" y="407" width="62.7" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="790.18" y="417.5" >[unkn..</text>
+</g>
+<g >
+<title>File::File (15,075,375 samples, 2.11%)</title><rect x="97.7" y="695" width="37.7" height="15.0" fill="rgb(237,199,35)" rx="2" ry="2" />
+<text  x="100.75" y="705.5" >Fi..</text>
+</g>
+<g >
+<title>std::basic_filebuf&lt;char, std::char_traits&lt;char&gt; &gt;::open (5,025,125 samples, 0.70%)</title><rect x="97.7" y="663" width="12.6" height="15.0" fill="rgb(250,146,49)" rx="2" ry="2" />
+<text  x="100.75" y="673.5" ></text>
+</g>
+<g >
+<title>[libc.so.6] (5,025,125 samples, 0.70%)</title><rect x="962.7" y="743" width="12.5" height="15.0" fill="rgb(231,147,29)" rx="2" ry="2" />
+<text  x="965.68" y="753.5" ></text>
+</g>
+<g >
+<title>[unknown] (25,125,625 samples, 3.52%)</title><rect x="787.2" y="599" width="62.7" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="790.18" y="609.5" >[unkn..</text>
+</g>
+<g >
+<title>FilterOperator::next (336,683,375 samples, 47.18%)</title><rect x="97.7" y="823" width="839.9" height="15.0" fill="rgb(230,199,27)" rx="2" ry="2" />
+<text  x="100.75" y="833.5" >FilterOperator::next</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="97.7" y="535" width="12.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="100.75" y="545.5" ></text>
+</g>
+<g >
+<title>std::__unguarded_linear_insert&lt;__gnu_cxx::__normal_iterator&lt;IntermediateCell*, std::vector&lt;IntermediateCell, std::allocator&lt;IntermediateCell&gt; &gt; &gt;, __gnu_cxx::__ops::_Val_comp_iter&lt;InternalIndexPage::findChildPage (5,025,125 samples, 0.70%)</title><rect x="862.4" y="711" width="12.5" height="15.0" fill="rgb(248,146,47)" rx="2" ry="2" />
+<text  x="865.39" y="721.5" ></text>
+</g>
+<g >
+<title>[unknown] (50,251,250 samples, 7.04%)</title><rect x="248.2" y="455" width="125.3" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="251.17" y="465.5" >[unknown]</text>
+</g>
+<g >
+<title>[unknown] (40,201,000 samples, 5.63%)</title><rect x="273.2" y="311" width="100.3" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="276.24" y="321.5" >[unknown]</text>
+</g>
+<g >
+<title>File::File (5,025,125 samples, 0.70%)</title><rect x="1150.7" y="743" width="12.5" height="15.0" fill="rgb(237,199,35)" rx="2" ry="2" />
+<text  x="1153.70" y="753.5" ></text>
+</g>
+<g >
+<title>[unknown] (15,075,375 samples, 2.11%)</title><rect x="900.0" y="407" width="37.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="903.00" y="417.5" >[u..</text>
+</g>
+<g >
+<title>IntermediateCell::decodeCell (5,025,125 samples, 0.70%)</title><rect x="22.5" y="791" width="12.6" height="15.0" fill="rgb(227,180,24)" rx="2" ry="2" />
+<text  x="25.54" y="801.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="1113.1" y="631" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1116.10" y="641.5" ></text>
+</g>
+<g >
+<title>read (5,025,125 samples, 0.70%)</title><rect x="10.0" y="695" width="12.5" height="15.0" fill="rgb(241,184,40)" rx="2" ry="2" />
+<text  x="13.00" y="705.5" ></text>
+</g>
+<g >
+<title>File::initializeStreamIfClosed (5,025,125 samples, 0.70%)</title><rect x="97.7" y="679" width="12.6" height="15.0" fill="rgb(247,199,47)" rx="2" ry="2" />
+<text  x="100.75" y="689.5" ></text>
+</g>
+<g >
+<title>_IO_fflush (5,025,125 samples, 0.70%)</title><rect x="1113.1" y="743" width="12.5" height="15.0" fill="rgb(236,132,34)" rx="2" ry="2" />
+<text  x="1116.10" y="753.5" ></text>
+</g>
+<g >
+<title>BufferPool::pinPage (5,025,125 samples, 0.70%)</title><rect x="1777.5" y="823" width="12.5" height="15.0" fill="rgb(248,127,47)" rx="2" ry="2" />
+<text  x="1780.46" y="833.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="1338.7" y="679" width="12.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1341.73" y="689.5" ></text>
+</g>
+<g >
+<title>LeafIndexPage::findRef (5,025,125 samples, 0.70%)</title><rect x="1050.4" y="823" width="12.6" height="15.0" fill="rgb(242,168,41)" rx="2" ry="2" />
+<text  x="1053.42" y="833.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="47.6" y="519" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="50.61" y="529.5" ></text>
+</g>
+<g >
+<title>InternalIndexPage::findChildPage (5,025,125 samples, 0.70%)</title><rect x="1000.3" y="759" width="12.5" height="15.0" fill="rgb(248,180,47)" rx="2" ry="2" />
+<text  x="1003.28" y="769.5" ></text>
+</g>
+<g >
+<title>_IO_file_write (10,050,250 samples, 1.41%)</title><rect x="1714.8" y="663" width="25.1" height="15.0" fill="rgb(240,132,38)" rx="2" ry="2" />
+<text  x="1717.79" y="673.5" >_..</text>
+</g>
+<g >
+<title>[libc.so.6] (5,025,125 samples, 0.70%)</title><rect x="1213.4" y="647" width="12.5" height="15.0" fill="rgb(231,147,29)" rx="2" ry="2" />
+<text  x="1216.38" y="657.5" ></text>
+</g>
+<g >
+<title>_IO_file_sync (60,301,500 samples, 8.45%)</title><rect x="223.1" y="599" width="150.4" height="15.0" fill="rgb(238,132,36)" rx="2" ry="2" />
+<text  x="226.10" y="609.5" >_IO_file_sync</text>
+</g>
+<g >
+<title>[unknown] (10,050,250 samples, 1.41%)</title><rect x="1163.2" y="391" width="25.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1166.24" y="401.5" >[..</text>
+</g>
+<g >
+<title>[libc.so.6] (5,025,125 samples, 0.70%)</title><rect x="1489.2" y="679" width="12.5" height="15.0" fill="rgb(231,147,29)" rx="2" ry="2" />
+<text  x="1492.15" y="689.5" ></text>
+</g>
+<g >
+<title>[libspdlog.so.1.10.0] (5,025,125 samples, 0.70%)</title><rect x="1752.4" y="807" width="12.5" height="15.0" fill="rgb(238,147,36)" rx="2" ry="2" />
+<text  x="1755.39" y="817.5" ></text>
+</g>
+<g >
+<title>FrameDirectory::unregisterResidentPage (5,025,125 samples, 0.70%)</title><rect x="373.5" y="695" width="12.6" height="15.0" fill="rgb(248,206,47)" rx="2" ry="2" />
+<text  x="376.52" y="705.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="1150.7" y="503" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1153.70" y="513.5" ></text>
+</g>
+<g >
+<title>all (713,567,750 samples, 100%)</title><rect x="10.0" y="983" width="1780.0" height="15.0" fill="rgb(255,230,55)" rx="2" ry="2" />
+<text  x="13.00" y="993.5" ></text>
+</g>
+<g >
+<title>BufferPool::pinPage (5,025,125 samples, 0.70%)</title><rect x="937.6" y="807" width="12.5" height="15.0" fill="rgb(248,127,47)" rx="2" ry="2" />
+<text  x="940.61" y="817.5" ></text>
+</g>
+<g >
+<title>_IO_do_write (60,301,500 samples, 8.45%)</title><rect x="223.1" y="583" width="150.4" height="15.0" fill="rgb(240,132,38)" rx="2" ry="2" />
+<text  x="226.10" y="593.5" >_IO_do_write</text>
+</g>
+<g >
+<title>[unknown] (20,100,500 samples, 2.82%)</title><rect x="1288.6" y="503" width="50.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1291.59" y="513.5" >[unk..</text>
+</g>
+<g >
+<title>BTreeCursor::findRID (15,075,375 samples, 2.11%)</title><rect x="10.0" y="839" width="37.6" height="15.0" fill="rgb(226,127,23)" rx="2" ry="2" />
+<text  x="13.00" y="849.5" >BT..</text>
+</g>
+<g >
+<title>dbfs_extract_func_name (5,025,125 samples, 0.70%)</title><rect x="1050.4" y="807" width="12.6" height="15.0" fill="rgb(241,160,40)" rx="2" ry="2" />
+<text  x="1053.42" y="817.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="10.0" y="551" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="13.00" y="561.5" ></text>
+</g>
+<g >
+<title>[libc.so.6] (5,025,125 samples, 0.70%)</title><rect x="1251.0" y="711" width="12.5" height="15.0" fill="rgb(231,147,29)" rx="2" ry="2" />
+<text  x="1253.99" y="721.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="210.6" y="535" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="213.56" y="545.5" ></text>
+</g>
+<g >
+<title>executor::insert (35,175,875 samples, 4.93%)</title><rect x="10.0" y="855" width="87.7" height="15.0" fill="rgb(236,155,34)" rx="2" ry="2" />
+<text  x="13.00" y="865.5" >executor..</text>
+</g>
+<g >
+<title>[libspdlog.so.1.10.0] (30,150,750 samples, 4.23%)</title><rect x="1276.1" y="711" width="75.2" height="15.0" fill="rgb(238,147,36)" rx="2" ry="2" />
+<text  x="1279.06" y="721.5" >[libspd..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="774.6" y="551" width="12.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="777.65" y="561.5" ></text>
+</g>
+<g >
+<title>[unknown] (25,125,625 samples, 3.52%)</title><rect x="787.2" y="487" width="62.7" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="790.18" y="497.5" >[unkn..</text>
+</g>
+<g >
+<title>[unknown] (10,050,250 samples, 1.41%)</title><rect x="824.8" y="71" width="25.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="827.79" y="81.5" >[..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="97.7" y="423" width="12.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="100.75" y="433.5" ></text>
+</g>
+<g >
+<title>std::__basic_file&lt;char&gt;::xsgetn (25,125,625 samples, 3.52%)</title><rect x="787.2" y="647" width="62.7" height="15.0" fill="rgb(244,146,43)" rx="2" ry="2" />
+<text  x="790.18" y="657.5" >std::..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="47.6" y="631" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="50.61" y="641.5" ></text>
+</g>
+<g >
+<title>std::filesystem::status (10,050,250 samples, 1.41%)</title><rect x="110.3" y="679" width="25.1" height="15.0" fill="rgb(233,146,30)" rx="2" ry="2" />
+<text  x="113.28" y="689.5" >s..</text>
+</g>
+<g >
+<title>[unknown] (15,075,375 samples, 2.11%)</title><rect x="900.0" y="567" width="37.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="903.00" y="577.5" >[u..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="210.6" y="583" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="213.56" y="593.5" ></text>
+</g>
+<g >
+<title>[unknown] (25,125,625 samples, 3.52%)</title><rect x="787.2" y="439" width="62.7" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="790.18" y="449.5" >[unkn..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="97.7" y="375" width="12.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="100.75" y="385.5" ></text>
+</g>
+<g >
+<title>fmt::v9::detail::vformat_to&lt;char&gt; (5,025,125 samples, 0.70%)</title><rect x="1351.3" y="695" width="12.5" height="15.0" fill="rgb(246,137,45)" rx="2" ry="2" />
+<text  x="1354.27" y="705.5" ></text>
+</g>
+<g >
+<title>__cxa_throw (135,678,375 samples, 19.01%)</title><rect x="1363.8" y="743" width="338.5" height="15.0" fill="rgb(234,144,31)" rx="2" ry="2" />
+<text  x="1366.80" y="753.5" >__cxa_throw</text>
+</g>
+<g >
+<title>std::__unguarded_linear_insert&lt;__gnu_cxx::__normal_iterator&lt;IntermediateCell*, std::vector&lt;IntermediateCell, std::allocator&lt;IntermediateCell&gt; &gt; &gt;, __gnu_cxx::__ops::_Val_comp_iter&lt;InternalIndexPage::findChildPage (5,025,125 samples, 0.70%)</title><rect x="1702.3" y="759" width="12.5" height="15.0" fill="rgb(248,146,47)" rx="2" ry="2" />
+<text  x="1705.25" y="769.5" ></text>
+</g>
+<g >
+<title>[ld-linux-aarch64.so.1] (5,025,125 samples, 0.70%)</title><rect x="937.6" y="695" width="12.5" height="15.0" fill="rgb(237,163,35)" rx="2" ry="2" />
+<text  x="940.61" y="705.5" ></text>
+</g>
+<g >
+<title>_IO_fflush (20,100,500 samples, 2.82%)</title><rect x="1288.6" y="663" width="50.1" height="15.0" fill="rgb(236,132,34)" rx="2" ry="2" />
+<text  x="1291.59" y="673.5" >_IO_..</text>
+</g>
+<g >
+<title>spdlog::logger::log_&lt;std::basic_string_view&lt;char, std::char_traits&lt;char&gt; &gt;, int&amp;, std::string, std::string &gt; (5,025,125 samples, 0.70%)</title><rect x="1012.8" y="807" width="12.6" height="15.0" fill="rgb(235,167,33)" rx="2" ry="2" />
+<text  x="1015.82" y="817.5" ></text>
+</g>
+<g >
+<title>FrameDirectory::unregisterResidentPage (5,025,125 samples, 0.70%)</title><rect x="373.5" y="679" width="12.6" height="15.0" fill="rgb(248,206,47)" rx="2" ry="2" />
+<text  x="376.52" y="689.5" ></text>
+</g>
+<g >
+<title>fmt::v9::detail::vformat_to&lt;char&gt; (5,025,125 samples, 0.70%)</title><rect x="1012.8" y="791" width="12.6" height="15.0" fill="rgb(246,137,45)" rx="2" ry="2" />
+<text  x="1015.82" y="801.5" ></text>
+</g>
+<g >
+<title>[unknown] (10,050,250 samples, 1.41%)</title><rect x="1163.2" y="551" width="25.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1166.24" y="561.5" >[..</text>
+</g>
+<g >
+<title>_IO_file_write (60,301,500 samples, 8.45%)</title><rect x="223.1" y="551" width="150.4" height="15.0" fill="rgb(240,132,38)" rx="2" ry="2" />
+<text  x="226.10" y="561.5" >_IO_file_write</text>
+</g>
+<g >
+<title>[libspdlog.so.1.10.0] (5,025,125 samples, 0.70%)</title><rect x="1138.2" y="807" width="12.5" height="15.0" fill="rgb(238,147,36)" rx="2" ry="2" />
+<text  x="1141.17" y="817.5" ></text>
+</g>
+<g >
+<title>InternalIndexPage::findChildPage (10,050,250 samples, 1.41%)</title><rect x="60.1" y="807" width="25.1" height="15.0" fill="rgb(248,180,47)" rx="2" ry="2" />
+<text  x="63.14" y="817.5" >I..</text>
+</g>
+<g >
+<title>fstatat64 (5,025,125 samples, 0.70%)</title><rect x="85.2" y="727" width="12.5" height="15.0" fill="rgb(234,163,32)" rx="2" ry="2" />
+<text  x="88.21" y="737.5" ></text>
+</g>
+<g >
+<title>fmt::v9::detail::buffer&lt;char&gt;::append&lt;char&gt; (5,025,125 samples, 0.70%)</title><rect x="160.4" y="631" width="12.6" height="15.0" fill="rgb(246,137,45)" rx="2" ry="2" />
+<text  x="163.42" y="641.5" ></text>
+</g>
+<g >
+<title>std::string::_M_construct&lt;char*&gt; (5,025,125 samples, 0.70%)</title><rect x="1075.5" y="791" width="12.5" height="15.0" fill="rgb(237,146,35)" rx="2" ry="2" />
+<text  x="1078.49" y="801.5" ></text>
+</g>
+<g >
+<title>_IO_file_sync (15,075,375 samples, 2.11%)</title><rect x="900.0" y="663" width="37.6" height="15.0" fill="rgb(238,132,36)" rx="2" ry="2" />
+<text  x="903.00" y="673.5" >_I..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="47.6" y="663" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="50.61" y="673.5" ></text>
+</g>
+<g >
+<title>spdlog::logger::log_&lt;std::basic_string_view&lt;char, std::char_traits&lt;char&gt; &gt;, int&amp;, std::string, std::string &gt; (5,025,125 samples, 0.70%)</title><rect x="1113.1" y="807" width="12.5" height="15.0" fill="rgb(235,167,33)" rx="2" ry="2" />
+<text  x="1116.10" y="817.5" ></text>
+</g>
+<g >
+<title>write (60,301,500 samples, 8.45%)</title><rect x="223.1" y="535" width="150.4" height="15.0" fill="rgb(240,108,38)" rx="2" ry="2" />
+<text  x="226.10" y="545.5" >write</text>
+</g>
+<g >
+<title>[unknown] (10,050,250 samples, 1.41%)</title><rect x="1714.8" y="535" width="25.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1717.79" y="545.5" >[..</text>
+</g>
+<g >
+<title>[libc.so.6] (15,075,375 samples, 2.11%)</title><rect x="900.0" y="631" width="37.6" height="15.0" fill="rgb(231,147,29)" rx="2" ry="2" />
+<text  x="903.00" y="641.5" >[l..</text>
+</g>
+<g >
+<title>std::filesystem::file_size (5,025,125 samples, 0.70%)</title><rect x="47.6" y="743" width="12.5" height="15.0" fill="rgb(245,146,44)" rx="2" ry="2" />
+<text  x="50.61" y="753.5" ></text>
+</g>
+<g >
+<title>[libstdc++.so.6.0.30] (25,125,625 samples, 3.52%)</title><rect x="1639.6" y="695" width="62.7" height="15.0" fill="rgb(243,147,42)" rx="2" ry="2" />
+<text  x="1642.58" y="705.5" >[libs..</text>
+</g>
+<g >
+<title>_Unwind_SetGR@plt (5,025,125 samples, 0.70%)</title><rect x="661.8" y="631" width="12.6" height="15.0" fill="rgb(231,143,29)" rx="2" ry="2" />
+<text  x="664.83" y="641.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="10.0" y="615" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="13.00" y="625.5" ></text>
+</g>
+<g >
+<title>BufferPool::pinPage (5,025,125 samples, 0.70%)</title><rect x="47.6" y="807" width="12.5" height="15.0" fill="rgb(248,127,47)" rx="2" ry="2" />
+<text  x="50.61" y="817.5" ></text>
+</g>
+<g >
+<title>BufferPool::pinPage (5,025,125 samples, 0.70%)</title><rect x="1075.5" y="807" width="12.5" height="15.0" fill="rgb(248,127,47)" rx="2" ry="2" />
+<text  x="1078.49" y="817.5" ></text>
+</g>
+<g >
+<title>memcmp (5,025,125 samples, 0.70%)</title><rect x="874.9" y="711" width="12.6" height="15.0" fill="rgb(238,144,36)" rx="2" ry="2" />
+<text  x="877.93" y="721.5" ></text>
+</g>
+<g >
+<title>[unknown] (20,100,500 samples, 2.82%)</title><rect x="1288.6" y="359" width="50.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1291.59" y="369.5" >[unk..</text>
+</g>
+<g >
+<title>std::basic_filebuf&lt;char, std::char_traits&lt;char&gt; &gt;::xsgetn (5,025,125 samples, 0.70%)</title><rect x="10.0" y="759" width="12.5" height="15.0" fill="rgb(244,146,43)" rx="2" ry="2" />
+<text  x="13.00" y="769.5" ></text>
+</g>
+<g >
+<title>[unknown] (10,050,250 samples, 1.41%)</title><rect x="824.8" y="135" width="25.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="827.79" y="145.5" >[..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="1150.7" y="359" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1153.70" y="369.5" ></text>
+</g>
+<g >
+<title>[libc.so.6] (5,025,125 samples, 0.70%)</title><rect x="1200.8" y="663" width="12.6" height="15.0" fill="rgb(231,147,29)" rx="2" ry="2" />
+<text  x="1203.85" y="673.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="774.6" y="615" width="12.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="777.65" y="625.5" ></text>
+</g>
+<g >
+<title>open64 (5,025,125 samples, 0.70%)</title><rect x="97.7" y="583" width="12.6" height="15.0" fill="rgb(239,195,37)" rx="2" ry="2" />
+<text  x="100.75" y="593.5" ></text>
+</g>
+<g >
+<title>InternalIndexPage::findChildPage (20,100,500 samples, 2.82%)</title><rect x="962.7" y="807" width="50.1" height="15.0" fill="rgb(248,180,47)" rx="2" ry="2" />
+<text  x="965.68" y="817.5" >Inte..</text>
+</g>
+<g >
+<title>[unknown] (10,050,250 samples, 1.41%)</title><rect x="1714.8" y="583" width="25.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1717.79" y="593.5" >[..</text>
+</g>
+<g >
+<title>[unknown] (25,125,625 samples, 3.52%)</title><rect x="787.2" y="567" width="62.7" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="790.18" y="577.5" >[unkn..</text>
+</g>
+<g >
+<title>[unknown] (10,050,250 samples, 1.41%)</title><rect x="1163.2" y="615" width="25.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1166.24" y="625.5" >[..</text>
+</g>
+<g >
+<title>File::readPageIntoBuffer (35,175,875 samples, 4.93%)</title><rect x="762.1" y="727" width="87.8" height="15.0" fill="rgb(241,199,40)" rx="2" ry="2" />
+<text  x="765.11" y="737.5" >File::re..</text>
+</g>
+<g >
+<title>[libspdlog.so.1.10.0] (15,075,375 samples, 2.11%)</title><rect x="900.0" y="727" width="37.6" height="15.0" fill="rgb(238,147,36)" rx="2" ry="2" />
+<text  x="903.00" y="737.5" >[l..</text>
+</g>
+<g >
+<title>[libspdlog.so.1.10.0] (5,025,125 samples, 0.70%)</title><rect x="1113.1" y="791" width="12.5" height="15.0" fill="rgb(238,147,36)" rx="2" ry="2" />
+<text  x="1116.10" y="801.5" ></text>
+</g>
+<g >
+<title>_Unwind_RaiseException (150,753,750 samples, 21.13%)</title><rect x="386.1" y="679" width="376.0" height="15.0" fill="rgb(247,143,46)" rx="2" ry="2" />
+<text  x="389.06" y="689.5" >_Unwind_RaiseException</text>
+</g>
+<g >
+<title>[libspdlog.so.1.10.0] (5,025,125 samples, 0.70%)</title><rect x="1138.2" y="775" width="12.5" height="15.0" fill="rgb(238,147,36)" rx="2" ry="2" />
+<text  x="1141.17" y="785.5" ></text>
+</g>
+<g >
+<title>[unknown] (15,075,375 samples, 2.11%)</title><rect x="900.0" y="439" width="37.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="903.00" y="449.5" >[u..</text>
+</g>
+<g >
+<title>malloc (5,025,125 samples, 0.70%)</title><rect x="1238.5" y="695" width="12.5" height="15.0" fill="rgb(238,112,36)" rx="2" ry="2" />
+<text  x="1241.45" y="705.5" ></text>
+</g>
+<g >
+<title>std::basic_filebuf&lt;char, std::char_traits&lt;char&gt; &gt;::xsgetn (5,025,125 samples, 0.70%)</title><rect x="1150.7" y="711" width="12.5" height="15.0" fill="rgb(244,146,43)" rx="2" ry="2" />
+<text  x="1153.70" y="721.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="1150.7" y="631" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1153.70" y="641.5" ></text>
+</g>
+<g >
+<title>[libspdlog.so.1.10.0] (25,125,625 samples, 3.52%)</title><rect x="1276.1" y="695" width="62.6" height="15.0" fill="rgb(238,147,36)" rx="2" ry="2" />
+<text  x="1279.06" y="705.5" >[libs..</text>
+</g>
+<g >
+<title>BTreeCursor::findLeafPageID (40,201,000 samples, 5.63%)</title><rect x="937.6" y="823" width="100.3" height="15.0" fill="rgb(229,127,27)" rx="2" ry="2" />
+<text  x="940.61" y="833.5" >BTreeCurso..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="122.8" y="583" width="12.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="125.82" y="593.5" ></text>
+</g>
+<g >
+<title>[unknown] (15,075,375 samples, 2.11%)</title><rect x="900.0" y="487" width="37.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="903.00" y="497.5" >[u..</text>
+</g>
+<g >
+<title>[libc.so.6] (10,050,250 samples, 1.41%)</title><rect x="473.8" y="631" width="25.1" height="15.0" fill="rgb(231,147,29)" rx="2" ry="2" />
+<text  x="476.80" y="641.5" >[..</text>
+</g>
+<g >
+<title>BufferPool::acquireFrame (5,025,125 samples, 0.70%)</title><rect x="85.2" y="807" width="12.5" height="15.0" fill="rgb(241,127,40)" rx="2" ry="2" />
+<text  x="88.21" y="817.5" ></text>
+</g>
+<g >
+<title>dbfs_server (713,567,750 samples, 100.00%)</title><rect x="10.0" y="967" width="1780.0" height="15.0" fill="rgb(238,160,37)" rx="2" ry="2" />
+<text  x="13.00" y="977.5" >dbfs_server</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="122.8" y="599" width="12.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="125.82" y="609.5" ></text>
+</g>
+<g >
+<title>[unknown] (15,075,375 samples, 2.11%)</title><rect x="900.0" y="375" width="37.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="903.00" y="385.5" >[u..</text>
+</g>
+<g >
+<title>[libc.so.6] (5,025,125 samples, 0.70%)</title><rect x="160.4" y="615" width="12.6" height="15.0" fill="rgb(231,147,29)" rx="2" ry="2" />
+<text  x="163.42" y="625.5" ></text>
+</g>
+<g >
+<title>[unknown] (20,100,500 samples, 2.82%)</title><rect x="1288.6" y="391" width="50.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1291.59" y="401.5" >[unk..</text>
+</g>
+<g >
+<title>std::basic_streambuf&lt;char, std::char_traits&lt;char&gt; &gt;::xsgetn (25,125,625 samples, 3.52%)</title><rect x="787.2" y="679" width="62.7" height="15.0" fill="rgb(244,146,43)" rx="2" ry="2" />
+<text  x="790.18" y="689.5" >std::..</text>
+</g>
+<g >
+<title>dbfs_extract_func_name (5,025,125 samples, 0.70%)</title><rect x="1764.9" y="807" width="12.6" height="15.0" fill="rgb(241,160,40)" rx="2" ry="2" />
+<text  x="1767.93" y="817.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="97.7" y="567" width="12.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="100.75" y="577.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="1150.7" y="391" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1153.70" y="401.5" ></text>
+</g>
+<g >
+<title>fmt::v9::detail::buffer&lt;char&gt;::append&lt;char&gt; (5,025,125 samples, 0.70%)</title><rect x="1200.8" y="679" width="12.6" height="15.0" fill="rgb(246,137,45)" rx="2" ry="2" />
+<text  x="1203.85" y="689.5" ></text>
+</g>
+<g >
+<title>[unknown] (10,050,250 samples, 1.41%)</title><rect x="1163.2" y="503" width="25.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1166.24" y="513.5" >[..</text>
+</g>
+<g >
+<title>[unknown] (15,075,375 samples, 2.11%)</title><rect x="900.0" y="423" width="37.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="903.00" y="433.5" >[u..</text>
+</g>
+<g >
+<title>[unknown] (55,276,375 samples, 7.75%)</title><rect x="235.6" y="519" width="137.9" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="238.63" y="529.5" >[unknown]</text>
+</g>
+<g >
+<title>Server::handleRequest (713,567,750 samples, 100.00%)</title><rect x="10.0" y="871" width="1780.0" height="15.0" fill="rgb(235,176,33)" rx="2" ry="2" />
+<text  x="13.00" y="881.5" >Server::handleRequest</text>
+</g>
+<g >
+<title>[unknown] (10,050,250 samples, 1.41%)</title><rect x="1714.8" y="599" width="25.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1717.79" y="609.5" >[..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="1113.1" y="615" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1116.10" y="625.5" ></text>
+</g>
+<g >
+<title>fmt::v9::detail::default_arg_formatter&lt;char&gt;::operator (5,025,125 samples, 0.70%)</title><rect x="1213.4" y="679" width="12.5" height="15.0" fill="rgb(241,137,39)" rx="2" ry="2" />
+<text  x="1216.38" y="689.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="10.0" y="503" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="13.00" y="513.5" ></text>
+</g>
+<g >
+<title>FrameDirectory::findVictimFrame (95,477,375 samples, 13.38%)</title><rect x="135.4" y="695" width="238.1" height="15.0" fill="rgb(241,206,40)" rx="2" ry="2" />
+<text  x="138.35" y="705.5" >FrameDirectory::findVictim..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="47.6" y="679" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="50.61" y="689.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="774.6" y="503" width="12.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="777.65" y="513.5" ></text>
+</g>
+<g >
+<title>BTreeCursor::findRID (336,683,375 samples, 47.18%)</title><rect x="97.7" y="775" width="839.9" height="15.0" fill="rgb(226,127,23)" rx="2" ry="2" />
+<text  x="100.75" y="785.5" >BTreeCursor::findRID</text>
+</g>
+<g >
+<title>std::__unguarded_linear_insert&lt;__gnu_cxx::__normal_iterator&lt;IntermediateCell*, std::vector&lt;IntermediateCell, std::allocator&lt;IntermediateCell&gt; &gt; &gt;, __gnu_cxx::__ops::_Val_comp_iter&lt;InternalIndexPage::findChildPage (10,050,250 samples, 1.41%)</title><rect x="874.9" y="727" width="25.1" height="15.0" fill="rgb(248,146,47)" rx="2" ry="2" />
+<text  x="877.93" y="737.5" >s..</text>
+</g>
+<g >
+<title>[unknown] (55,276,375 samples, 7.75%)</title><rect x="235.6" y="471" width="137.9" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="238.63" y="481.5" >[unknown]</text>
+</g>
+<g >
+<title>__gxx_personality_v0 (5,025,125 samples, 0.70%)</title><rect x="749.6" y="647" width="12.5" height="15.0" fill="rgb(224,132,21)" rx="2" ry="2" />
+<text  x="752.58" y="657.5" ></text>
+</g>
+<g >
+<title>fmt::v9::detail::format_decimal&lt;char, unsigned int&gt; (5,025,125 samples, 0.70%)</title><rect x="1225.9" y="663" width="12.6" height="15.0" fill="rgb(243,137,42)" rx="2" ry="2" />
+<text  x="1228.92" y="673.5" ></text>
+</g>
+<g >
+<title>[unknown] (15,075,375 samples, 2.11%)</title><rect x="812.3" y="247" width="37.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="815.25" y="257.5" >[u..</text>
+</g>
+<g >
+<title>[libc.so.6] (5,025,125 samples, 0.70%)</title><rect x="97.7" y="631" width="12.6" height="15.0" fill="rgb(231,147,29)" rx="2" ry="2" />
+<text  x="100.75" y="641.5" ></text>
+</g>
+<g >
+<title>BTreeCursor::findLeafPageID (236,180,875 samples, 33.10%)</title><rect x="1150.7" y="807" width="589.2" height="15.0" fill="rgb(229,127,27)" rx="2" ry="2" />
+<text  x="1153.70" y="817.5" >BTreeCursor::findLeafPageID</text>
+</g>
+<g >
+<title>[unknown] (10,050,250 samples, 1.41%)</title><rect x="1163.2" y="471" width="25.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1166.24" y="481.5" >[..</text>
+</g>
+<g >
+<title>BufferPool::evictOnePage (5,025,125 samples, 0.70%)</title><rect x="937.6" y="775" width="12.5" height="15.0" fill="rgb(248,127,47)" rx="2" ry="2" />
+<text  x="940.61" y="785.5" ></text>
+</g>
+<g >
+<title>FrameDirectory::findVictimFrame (5,025,125 samples, 0.70%)</title><rect x="1777.5" y="759" width="12.5" height="15.0" fill="rgb(241,206,40)" rx="2" ry="2" />
+<text  x="1780.46" y="769.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="10.0" y="519" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="13.00" y="529.5" ></text>
+</g>
+<g >
+<title>std::basic_filebuf&lt;char, std::char_traits&lt;char&gt; &gt;::underflow (25,125,625 samples, 3.52%)</title><rect x="787.2" y="663" width="62.7" height="15.0" fill="rgb(238,146,36)" rx="2" ry="2" />
+<text  x="790.18" y="673.5" >std::..</text>
+</g>
+<g >
+<title>[unknown] (20,100,500 samples, 2.82%)</title><rect x="1288.6" y="455" width="50.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1291.59" y="465.5" >[unk..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="1150.7" y="455" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1153.70" y="465.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="774.6" y="519" width="12.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="777.65" y="529.5" ></text>
+</g>
+<g >
+<title>[libc.so.6] (10,050,250 samples, 1.41%)</title><rect x="1388.9" y="695" width="25.0" height="15.0" fill="rgb(231,147,29)" rx="2" ry="2" />
+<text  x="1391.87" y="705.5" >[..</text>
+</g>
+<g >
+<title>FrameDirectory::findVictimFrame (5,025,125 samples, 0.70%)</title><rect x="937.6" y="759" width="12.5" height="15.0" fill="rgb(241,206,40)" rx="2" ry="2" />
+<text  x="940.61" y="769.5" ></text>
+</g>
+<g >
+<title>std::istream::read (5,025,125 samples, 0.70%)</title><rect x="1150.7" y="727" width="12.5" height="15.0" fill="rgb(241,146,40)" rx="2" ry="2" />
+<text  x="1153.70" y="737.5" ></text>
+</g>
+<g >
+<title>[libc.so.6] (5,025,125 samples, 0.70%)</title><rect x="1113.1" y="695" width="12.5" height="15.0" fill="rgb(231,147,29)" rx="2" ry="2" />
+<text  x="1116.10" y="705.5" ></text>
+</g>
+<g >
+<title>[libspdlog.so.1.10.0] (5,025,125 samples, 0.70%)</title><rect x="1138.2" y="759" width="12.5" height="15.0" fill="rgb(238,147,36)" rx="2" ry="2" />
+<text  x="1141.17" y="769.5" ></text>
+</g>
+<g >
+<title>[unknown] (55,276,375 samples, 7.75%)</title><rect x="235.6" y="503" width="137.9" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="238.63" y="513.5" >[unknown]</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="97.7" y="487" width="12.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="100.75" y="497.5" ></text>
+</g>
+<g >
+<title>strlen@plt (5,025,125 samples, 0.70%)</title><rect x="674.4" y="647" width="12.5" height="15.0" fill="rgb(231,140,29)" rx="2" ry="2" />
+<text  x="677.37" y="657.5" ></text>
+</g>
+<g >
+<title>[unknown] (25,125,625 samples, 3.52%)</title><rect x="787.2" y="423" width="62.7" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="790.18" y="433.5" >[unkn..</text>
+</g>
+<g >
+<title>[unknown] (10,050,250 samples, 1.41%)</title><rect x="1163.2" y="519" width="25.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1166.24" y="529.5" >[..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="210.6" y="599" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="213.56" y="609.5" ></text>
+</g>
+<g >
+<title>writev (10,050,250 samples, 1.41%)</title><rect x="1163.2" y="679" width="25.1" height="15.0" fill="rgb(233,108,31)" rx="2" ry="2" />
+<text  x="1166.24" y="689.5" >w..</text>
+</g>
+<g >
+<title>[libspdlog.so.1.10.0] (60,301,500 samples, 8.45%)</title><rect x="223.1" y="647" width="150.4" height="15.0" fill="rgb(238,147,36)" rx="2" ry="2" />
+<text  x="226.10" y="657.5" >[libspdlog.so.1...</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="1113.1" y="551" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1116.10" y="561.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="97.7" y="439" width="12.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="100.75" y="449.5" ></text>
+</g>
+<g >
+<title>[unknown] (25,125,625 samples, 3.52%)</title><rect x="787.2" y="375" width="62.7" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="790.18" y="385.5" >[unkn..</text>
+</g>
+<g >
+<title>malloc@plt (5,025,125 samples, 0.70%)</title><rect x="1025.4" y="775" width="12.5" height="15.0" fill="rgb(231,112,29)" rx="2" ry="2" />
+<text  x="1028.35" y="785.5" ></text>
+</g>
+<g >
+<title>std::__basic_file&lt;char&gt;::xsputn_2 (10,050,250 samples, 1.41%)</title><rect x="1163.2" y="695" width="25.1" height="15.0" fill="rgb(245,146,45)" rx="2" ry="2" />
+<text  x="1166.24" y="705.5" >s..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="210.6" y="647" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="213.56" y="657.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="85.2" y="567" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="88.21" y="577.5" ></text>
+</g>
+<g >
+<title>__libc_start_main (713,567,750 samples, 100.00%)</title><rect x="10.0" y="935" width="1780.0" height="15.0" fill="rgb(247,154,46)" rx="2" ry="2" />
+<text  x="13.00" y="945.5" >__libc_start_main</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="85.2" y="695" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="88.21" y="705.5" ></text>
+</g>
+<g >
+<title>fmt::v9::detail::vformat_to&lt;char&gt; (20,100,500 samples, 2.82%)</title><rect x="160.4" y="663" width="50.2" height="15.0" fill="rgb(246,137,45)" rx="2" ry="2" />
+<text  x="163.42" y="673.5" >fmt:..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="10.0" y="471" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="13.00" y="481.5" ></text>
+</g>
+<g >
+<title>spdlog::logger::log_&lt;std::basic_string_view&lt;char, std::char_traits&lt;char&gt; &gt;, int&amp;, std::string, std::string &gt; (10,050,250 samples, 1.41%)</title><rect x="1714.8" y="791" width="25.1" height="15.0" fill="rgb(235,167,33)" rx="2" ry="2" />
+<text  x="1717.79" y="801.5" >s..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="1150.7" y="615" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1153.70" y="625.5" ></text>
+</g>
+<g >
+<title>[unknown] (10,050,250 samples, 1.41%)</title><rect x="1714.8" y="567" width="25.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1717.79" y="577.5" >[..</text>
+</g>
+<g >
+<title>BTreeCursor::findLeafPageID (15,075,375 samples, 2.11%)</title><rect x="47.6" y="823" width="37.6" height="15.0" fill="rgb(229,127,27)" rx="2" ry="2" />
+<text  x="50.61" y="833.5" >BT..</text>
+</g>
+<g >
+<title>memcmp (5,025,125 samples, 0.70%)</title><rect x="987.7" y="775" width="12.6" height="15.0" fill="rgb(238,144,36)" rx="2" ry="2" />
+<text  x="990.75" y="785.5" ></text>
+</g>
+<g >
+<title>[libspdlog.so.1.10.0] (5,025,125 samples, 0.70%)</title><rect x="1138.2" y="791" width="12.5" height="15.0" fill="rgb(238,147,36)" rx="2" ry="2" />
+<text  x="1141.17" y="801.5" ></text>
+</g>
+<g >
+<title>BufferPool::pinPage (5,025,125 samples, 0.70%)</title><rect x="85.2" y="823" width="12.5" height="15.0" fill="rgb(248,127,47)" rx="2" ry="2" />
+<text  x="88.21" y="833.5" ></text>
+</g>
+<g >
+<title>executor::update (341,708,500 samples, 47.89%)</title><rect x="937.6" y="855" width="852.4" height="15.0" fill="rgb(245,155,45)" rx="2" ry="2" />
+<text  x="940.61" y="865.5" >executor::update</text>
+</g>
+<g >
+<title>[libspdlog.so.1.10.0] (10,050,250 samples, 1.41%)</title><rect x="1714.8" y="759" width="25.1" height="15.0" fill="rgb(238,147,36)" rx="2" ry="2" />
+<text  x="1717.79" y="769.5" >[..</text>
+</g>
+<g >
+<title>[unknown] (10,050,250 samples, 1.41%)</title><rect x="1163.2" y="631" width="25.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1166.24" y="641.5" >[..</text>
+</g>
+<g >
+<title>BTreeCursor::insertIntoIndex (15,075,375 samples, 2.11%)</title><rect x="47.6" y="839" width="37.6" height="15.0" fill="rgb(250,127,49)" rx="2" ry="2" />
+<text  x="50.61" y="849.5" >BT..</text>
+</g>
+<g >
+<title>BTreeCursor::findRID (5,025,125 samples, 0.70%)</title><rect x="1739.9" y="807" width="12.5" height="15.0" fill="rgb(226,127,23)" rx="2" ry="2" />
+<text  x="1742.86" y="817.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="122.8" y="567" width="12.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="125.82" y="577.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="10.0" y="631" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="13.00" y="641.5" ></text>
+</g>
+<g >
+<title>File::writePageFromBuffer (10,050,250 samples, 1.41%)</title><rect x="1163.2" y="743" width="25.1" height="15.0" fill="rgb(241,199,40)" rx="2" ry="2" />
+<text  x="1166.24" y="753.5" >F..</text>
+</g>
+<g >
+<title>std::filesystem::status (5,025,125 samples, 0.70%)</title><rect x="122.8" y="663" width="12.6" height="15.0" fill="rgb(233,146,30)" rx="2" ry="2" />
+<text  x="125.82" y="673.5" ></text>
+</g>
+<g >
+<title>[libgcc_s.so.1] (10,050,250 samples, 1.41%)</title><rect x="1614.5" y="679" width="25.1" height="15.0" fill="rgb(237,147,35)" rx="2" ry="2" />
+<text  x="1617.51" y="689.5" >[..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="774.6" y="631" width="12.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="777.65" y="641.5" ></text>
+</g>
+<g >
+<title>[unknown] (10,050,250 samples, 1.41%)</title><rect x="824.8" y="151" width="25.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="827.79" y="161.5" >[..</text>
+</g>
+<g >
+<title>[libgcc_s.so.1] (5,025,125 samples, 0.70%)</title><rect x="561.5" y="615" width="12.6" height="15.0" fill="rgb(237,147,35)" rx="2" ry="2" />
+<text  x="564.55" y="625.5" ></text>
+</g>
+<g >
+<title>std::filesystem::file_size (5,025,125 samples, 0.70%)</title><rect x="47.6" y="727" width="12.5" height="15.0" fill="rgb(245,146,44)" rx="2" ry="2" />
+<text  x="50.61" y="737.5" ></text>
+</g>
+<g >
+<title>fmt::v9::detail::vformat_to&lt;char&gt; (15,075,375 samples, 2.11%)</title><rect x="1200.8" y="711" width="37.7" height="15.0" fill="rgb(246,137,45)" rx="2" ry="2" />
+<text  x="1203.85" y="721.5" >fm..</text>
+</g>
+<g >
+<title>Server::start (713,567,750 samples, 100.00%)</title><rect x="10.0" y="887" width="1780.0" height="15.0" fill="rgb(239,176,37)" rx="2" ry="2" />
+<text  x="13.00" y="897.5" >Server::start</text>
+</g>
+<g >
+<title>[unknown] (25,125,625 samples, 3.52%)</title><rect x="787.2" y="535" width="62.7" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="790.18" y="545.5" >[unkn..</text>
+</g>
+<g >
+<title>write (10,050,250 samples, 1.41%)</title><rect x="1714.8" y="647" width="25.1" height="15.0" fill="rgb(240,108,38)" rx="2" ry="2" />
+<text  x="1717.79" y="657.5" >w..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="47.6" y="551" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="50.61" y="561.5" ></text>
+</g>
+<g >
+<title>FrameDirectory::findVictimFrame (5,025,125 samples, 0.70%)</title><rect x="1188.3" y="727" width="12.5" height="15.0" fill="rgb(241,206,40)" rx="2" ry="2" />
+<text  x="1191.31" y="737.5" ></text>
+</g>
+<g >
+<title>[unknown] (25,125,625 samples, 3.52%)</title><rect x="787.2" y="583" width="62.7" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="790.18" y="593.5" >[unkn..</text>
+</g>
+<g >
+<title>[libc.so.6] (10,050,250 samples, 1.41%)</title><rect x="1714.8" y="679" width="25.1" height="15.0" fill="rgb(231,147,29)" rx="2" ry="2" />
+<text  x="1717.79" y="689.5" >[..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="210.6" y="567" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="213.56" y="577.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="85.2" y="647" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="88.21" y="657.5" ></text>
+</g>
+<g >
+<title>[unknown] (10,050,250 samples, 1.41%)</title><rect x="1163.2" y="663" width="25.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1166.24" y="673.5" >[..</text>
+</g>
+<g >
+<title>[unknown] (15,075,375 samples, 2.11%)</title><rect x="900.0" y="583" width="37.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="903.00" y="593.5" >[u..</text>
+</g>
+<g >
+<title>std::basic_streambuf&lt;char, std::char_traits&lt;char&gt; &gt;::xsgetn (5,025,125 samples, 0.70%)</title><rect x="1150.7" y="695" width="12.5" height="15.0" fill="rgb(244,146,43)" rx="2" ry="2" />
+<text  x="1153.70" y="705.5" ></text>
+</g>
+<g >
+<title>[unknown] (45,226,125 samples, 6.34%)</title><rect x="260.7" y="359" width="112.8" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="263.70" y="369.5" >[unknown]</text>
+</g>
+<g >
+<title>_IO_do_write (20,100,500 samples, 2.82%)</title><rect x="1288.6" y="631" width="50.1" height="15.0" fill="rgb(240,132,38)" rx="2" ry="2" />
+<text  x="1291.59" y="641.5" >_IO_..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="97.7" y="407" width="12.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="100.75" y="417.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="1150.7" y="551" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1153.70" y="561.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="85.2" y="599" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="88.21" y="609.5" ></text>
+</g>
+<g >
+<title>[libspdlog.so.1.10.0] (5,025,125 samples, 0.70%)</title><rect x="1113.1" y="775" width="12.5" height="15.0" fill="rgb(238,147,36)" rx="2" ry="2" />
+<text  x="1116.10" y="785.5" ></text>
+</g>
+<g >
+<title>InternalIndexPage::findChildPage (10,050,250 samples, 1.41%)</title><rect x="22.5" y="807" width="25.1" height="15.0" fill="rgb(248,180,47)" rx="2" ry="2" />
+<text  x="25.54" y="817.5" >I..</text>
+</g>
+<g >
+<title>[unknown] (15,075,375 samples, 2.11%)</title><rect x="900.0" y="535" width="37.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="903.00" y="545.5" >[u..</text>
+</g>
+<g >
+<title>[unknown] (20,100,500 samples, 2.82%)</title><rect x="1288.6" y="551" width="50.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1291.59" y="561.5" >[unk..</text>
+</g>
+<g >
+<title>InternalIndexPage::findChildPage (5,025,125 samples, 0.70%)</title><rect x="1702.3" y="791" width="12.5" height="15.0" fill="rgb(248,180,47)" rx="2" ry="2" />
+<text  x="1705.25" y="801.5" ></text>
+</g>
+<g >
+<title>std::__insertion_sort&lt;__gnu_cxx::__normal_iterator&lt;IntermediateCell*, std::vector&lt;IntermediateCell, std::allocator&lt;IntermediateCell&gt; &gt; &gt;, __gnu_cxx::__ops::_Iter_comp_iter&lt;InternalIndexPage::findChildPage (5,025,125 samples, 0.70%)</title><rect x="862.4" y="727" width="12.5" height="15.0" fill="rgb(248,146,47)" rx="2" ry="2" />
+<text  x="865.39" y="737.5" ></text>
+</g>
+<g >
+<title>fstatat64 (5,025,125 samples, 0.70%)</title><rect x="122.8" y="647" width="12.6" height="15.0" fill="rgb(234,163,32)" rx="2" ry="2" />
+<text  x="125.82" y="657.5" ></text>
+</g>
+<g >
+<title>FrameDirectory::findVictimFrame (5,025,125 samples, 0.70%)</title><rect x="1777.5" y="775" width="12.5" height="15.0" fill="rgb(241,206,40)" rx="2" ry="2" />
+<text  x="1780.46" y="785.5" ></text>
+</g>
+<g >
+<title>dbfs_extract_func_name (5,025,125 samples, 0.70%)</title><rect x="1063.0" y="823" width="12.5" height="15.0" fill="rgb(241,160,40)" rx="2" ry="2" />
+<text  x="1065.96" y="833.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="47.6" y="615" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="50.61" y="625.5" ></text>
+</g>
+<g >
+<title>[unknown] (15,075,375 samples, 2.11%)</title><rect x="812.3" y="279" width="37.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="815.25" y="289.5" >[u..</text>
+</g>
+<g >
+<title>spdlog::logger::log_&lt;std::basic_string_view&lt;char, std::char_traits&lt;char&gt; &gt;, std::string, unsigned short&amp;, unsigned short&amp;&gt; (5,025,125 samples, 0.70%)</title><rect x="1138.2" y="823" width="12.5" height="15.0" fill="rgb(240,167,38)" rx="2" ry="2" />
+<text  x="1141.17" y="833.5" ></text>
+</g>
+<g >
+<title>[unknown] (10,050,250 samples, 1.41%)</title><rect x="1714.8" y="487" width="25.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1717.79" y="497.5" >[..</text>
+</g>
+<g >
+<title>_IO_do_write (10,050,250 samples, 1.41%)</title><rect x="1714.8" y="695" width="25.1" height="15.0" fill="rgb(240,132,38)" rx="2" ry="2" />
+<text  x="1717.79" y="705.5" >_..</text>
+</g>
+<g >
+<title>__cxa_throw (150,753,750 samples, 21.13%)</title><rect x="386.1" y="695" width="376.0" height="15.0" fill="rgb(234,144,31)" rx="2" ry="2" />
+<text  x="389.06" y="705.5" >__cxa_throw</text>
+</g>
+<g >
+<title>[unknown] (10,050,250 samples, 1.41%)</title><rect x="824.8" y="183" width="25.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="827.79" y="193.5" >[..</text>
+</g>
+<g >
+<title>heap_file_access::appendCell (5,025,125 samples, 0.70%)</title><rect x="85.2" y="839" width="12.5" height="15.0" fill="rgb(227,184,24)" rx="2" ry="2" />
+<text  x="88.21" y="849.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="774.6" y="663" width="12.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="777.65" y="673.5" ></text>
+</g>
+<g >
+<title>malloc (5,025,125 samples, 0.70%)</title><rect x="22.5" y="759" width="12.6" height="15.0" fill="rgb(238,112,36)" rx="2" ry="2" />
+<text  x="25.54" y="769.5" ></text>
+</g>
+<g >
+<title>[unknown] (15,075,375 samples, 2.11%)</title><rect x="812.3" y="327" width="37.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="815.25" y="337.5" >[u..</text>
+</g>
+<g >
+<title>[unknown] (10,050,250 samples, 1.41%)</title><rect x="1714.8" y="439" width="25.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1717.79" y="449.5" >[..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="10.0" y="663" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="13.00" y="673.5" ></text>
+</g>
+<g >
+<title>BufferPool::acquireFrame (5,025,125 samples, 0.70%)</title><rect x="1777.5" y="807" width="12.5" height="15.0" fill="rgb(241,127,40)" rx="2" ry="2" />
+<text  x="1780.46" y="817.5" ></text>
+</g>
+<g >
+<title>BufferPool::evictOnePage (5,025,125 samples, 0.70%)</title><rect x="47.6" y="775" width="12.5" height="15.0" fill="rgb(248,127,47)" rx="2" ry="2" />
+<text  x="50.61" y="785.5" ></text>
+</g>
+<g >
+<title>[unknown] (15,075,375 samples, 2.11%)</title><rect x="900.0" y="471" width="37.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="903.00" y="481.5" >[u..</text>
+</g>
+<g >
+<title>fmt::v9::detail::vformat_to&lt;char&gt; (10,050,250 samples, 1.41%)</title><rect x="185.5" y="647" width="25.1" height="15.0" fill="rgb(246,137,45)" rx="2" ry="2" />
+<text  x="188.49" y="657.5" >f..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="1113.1" y="567" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1116.10" y="577.5" ></text>
+</g>
+<g >
+<title>[libspdlog.so.1.10.0] (10,050,250 samples, 1.41%)</title><rect x="1714.8" y="775" width="25.1" height="15.0" fill="rgb(238,147,36)" rx="2" ry="2" />
+<text  x="1717.79" y="785.5" >[..</text>
+</g>
+<g >
+<title>BufferPool::pinPage (301,507,500 samples, 42.25%)</title><rect x="97.7" y="743" width="752.2" height="15.0" fill="rgb(248,127,47)" rx="2" ry="2" />
+<text  x="100.75" y="753.5" >BufferPool::pinPage</text>
+</g>
+<g >
+<title>fmt::v9::detail::parse_replacement_field&lt;char, fmt::v9::detail::vformat_to&lt;char&gt; (10,050,250 samples, 1.41%)</title><rect x="1213.4" y="695" width="25.1" height="15.0" fill="rgb(246,137,45)" rx="2" ry="2" />
+<text  x="1216.38" y="705.5" >f..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="1150.7" y="599" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1153.70" y="609.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="85.2" y="551" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="88.21" y="561.5" ></text>
+</g>
+<g >
+<title>[libc.so.6] (5,025,125 samples, 0.70%)</title><rect x="1764.9" y="791" width="12.6" height="15.0" fill="rgb(231,147,29)" rx="2" ry="2" />
+<text  x="1767.93" y="801.5" ></text>
+</g>
+<g >
+<title>[unknown] (50,251,250 samples, 7.04%)</title><rect x="248.2" y="423" width="125.3" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="251.17" y="433.5" >[unknown]</text>
+</g>
+<g >
+<title>[unknown] (25,125,625 samples, 3.52%)</title><rect x="787.2" y="503" width="62.7" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="790.18" y="513.5" >[unkn..</text>
+</g>
+<g >
+<title>[unknown] (15,075,375 samples, 2.11%)</title><rect x="900.0" y="519" width="37.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="903.00" y="529.5" >[u..</text>
+</g>
+<g >
+<title>_IO_file_fopen (5,025,125 samples, 0.70%)</title><rect x="97.7" y="615" width="12.6" height="15.0" fill="rgb(250,132,49)" rx="2" ry="2" />
+<text  x="100.75" y="625.5" ></text>
+</g>
+<g >
+<title>IntermediateCell::decodeCell (5,025,125 samples, 0.70%)</title><rect x="962.7" y="791" width="12.5" height="15.0" fill="rgb(227,180,24)" rx="2" ry="2" />
+<text  x="965.68" y="801.5" ></text>
+</g>
+<g >
+<title>[unknown] (15,075,375 samples, 2.11%)</title><rect x="812.3" y="231" width="37.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="815.25" y="241.5" >[u..</text>
+</g>
+<g >
+<title>[libc.so.6] (5,025,125 samples, 0.70%)</title><rect x="411.1" y="647" width="12.6" height="15.0" fill="rgb(231,147,29)" rx="2" ry="2" />
+<text  x="414.13" y="657.5" ></text>
+</g>
+<g >
+<title>_start (713,567,750 samples, 100.00%)</title><rect x="10.0" y="951" width="1780.0" height="15.0" fill="rgb(239,139,37)" rx="2" ry="2" />
+<text  x="13.00" y="961.5" >_start</text>
+</g>
+<g >
+<title>[unknown] (45,226,125 samples, 6.34%)</title><rect x="260.7" y="375" width="112.8" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="263.70" y="385.5" >[unknown]</text>
+</g>
+<g >
+<title>std::istream::read (25,125,625 samples, 3.52%)</title><rect x="787.2" y="711" width="62.7" height="15.0" fill="rgb(241,146,40)" rx="2" ry="2" />
+<text  x="790.18" y="721.5" >std::..</text>
+</g>
+<g >
+<title>[ld-linux-aarch64.so.1] (5,025,125 samples, 0.70%)</title><rect x="937.6" y="711" width="12.5" height="15.0" fill="rgb(237,163,35)" rx="2" ry="2" />
+<text  x="940.61" y="721.5" ></text>
+</g>
+<g >
+<title>BTreeCursor::findLeafPageID (25,125,625 samples, 3.52%)</title><rect x="1075.5" y="823" width="62.7" height="15.0" fill="rgb(229,127,27)" rx="2" ry="2" />
+<text  x="1078.49" y="833.5" >BTree..</text>
+</g>
+<g >
+<title>fmt::v9::detail::vformat_to&lt;char&gt; (5,025,125 samples, 0.70%)</title><rect x="1351.3" y="711" width="12.5" height="15.0" fill="rgb(246,137,45)" rx="2" ry="2" />
+<text  x="1354.27" y="721.5" ></text>
+</g>
+<g >
+<title>[unknown] (10,050,250 samples, 1.41%)</title><rect x="1163.2" y="375" width="25.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1166.24" y="385.5" >[..</text>
+</g>
+<g >
+<title>[libgcc_s.so.1] (120,603,000 samples, 16.90%)</title><rect x="386.1" y="663" width="300.8" height="15.0" fill="rgb(237,147,35)" rx="2" ry="2" />
+<text  x="389.06" y="673.5" >[libgcc_s.so.1]</text>
+</g>
+<g >
+<title>BufferPool::pinPage (221,105,500 samples, 30.99%)</title><rect x="1150.7" y="791" width="551.6" height="15.0" fill="rgb(248,127,47)" rx="2" ry="2" />
+<text  x="1153.70" y="801.5" >BufferPool::pinPage</text>
+</g>
+<g >
+<title>IndexScanOperator::next (336,683,375 samples, 47.18%)</title><rect x="97.7" y="791" width="839.9" height="15.0" fill="rgb(230,193,27)" rx="2" ry="2" />
+<text  x="100.75" y="801.5" >IndexScanOperator::next</text>
+</g>
+<g >
+<title>spdlog::logger::log_&lt;std::basic_string_view&lt;char, std::char_traits&lt;char&gt; &gt;, std::string&amp;&gt; (35,175,875 samples, 4.93%)</title><rect x="1276.1" y="727" width="87.7" height="15.0" fill="rgb(241,167,39)" rx="2" ry="2" />
+<text  x="1279.06" y="737.5" >spdlog::..</text>
+</g>
+<g >
+<title>[libc.so.6] (20,100,500 samples, 2.82%)</title><rect x="1288.6" y="615" width="50.1" height="15.0" fill="rgb(231,147,29)" rx="2" ry="2" />
+<text  x="1291.59" y="625.5" >[lib..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="85.2" y="615" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="88.21" y="625.5" ></text>
+</g>
+<g >
+<title>std::__unguarded_linear_insert&lt;__gnu_cxx::__normal_iterator&lt;IntermediateCell*, std::vector&lt;IntermediateCell, std::allocator&lt;IntermediateCell&gt; &gt; &gt;, __gnu_cxx::__ops::_Val_comp_iter&lt;InternalIndexPage::findChildPage (5,025,125 samples, 0.70%)</title><rect x="862.4" y="695" width="12.5" height="15.0" fill="rgb(248,146,47)" rx="2" ry="2" />
+<text  x="865.39" y="705.5" ></text>
+</g>
+<g >
+<title>dbfs_extract_func_name (5,025,125 samples, 0.70%)</title><rect x="1251.0" y="727" width="12.5" height="15.0" fill="rgb(241,160,40)" rx="2" ry="2" />
+<text  x="1253.99" y="737.5" ></text>
+</g>
+<g >
+<title>[unknown] (10,050,250 samples, 1.41%)</title><rect x="1163.2" y="423" width="25.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1166.24" y="433.5" >[..</text>
+</g>
+<g >
+<title>[unknown] (15,075,375 samples, 2.11%)</title><rect x="900.0" y="503" width="37.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="903.00" y="513.5" >[u..</text>
+</g>
+<g >
+<title>[unknown] (25,125,625 samples, 3.52%)</title><rect x="787.2" y="519" width="62.7" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="790.18" y="529.5" >[unkn..</text>
+</g>
+<g >
+<title>std::__insertion_sort&lt;__gnu_cxx::__normal_iterator&lt;IntermediateCell*, std::vector&lt;IntermediateCell, std::allocator&lt;IntermediateCell&gt; &gt; &gt;, __gnu_cxx::__ops::_Iter_comp_iter&lt;InternalIndexPage::findChildPage (5,025,125 samples, 0.70%)</title><rect x="975.2" y="791" width="12.5" height="15.0" fill="rgb(248,146,47)" rx="2" ry="2" />
+<text  x="978.21" y="801.5" ></text>
+</g>
+<g >
+<title>[libc.so.6] (5,025,125 samples, 0.70%)</title><rect x="599.2" y="599" width="12.5" height="15.0" fill="rgb(231,147,29)" rx="2" ry="2" />
+<text  x="602.15" y="609.5" ></text>
+</g>
+<g >
+<title>std::vector&lt;IntermediateCell, std::allocator&lt;IntermediateCell&gt; &gt;::emplace_back&lt;IntermediateCell&gt; (5,025,125 samples, 0.70%)</title><rect x="35.1" y="791" width="12.5" height="15.0" fill="rgb(241,146,40)" rx="2" ry="2" />
+<text  x="38.07" y="801.5" ></text>
+</g>
+<g >
+<title>std::istream::read (5,025,125 samples, 0.70%)</title><rect x="10.0" y="775" width="12.5" height="15.0" fill="rgb(241,146,40)" rx="2" ry="2" />
+<text  x="13.00" y="785.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="47.6" y="647" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="50.61" y="657.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="10.0" y="423" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="13.00" y="433.5" ></text>
+</g>
+<g >
+<title>[unknown] (20,100,500 samples, 2.82%)</title><rect x="1288.6" y="407" width="50.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1291.59" y="417.5" >[unk..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="97.7" y="551" width="12.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="100.75" y="561.5" ></text>
+</g>
+<g >
+<title>[libc.so.6] (5,025,125 samples, 0.70%)</title><rect x="1627.0" y="663" width="12.6" height="15.0" fill="rgb(231,147,29)" rx="2" ry="2" />
+<text  x="1630.04" y="673.5" ></text>
+</g>
+<g >
+<title>std::ostream::write (10,050,250 samples, 1.41%)</title><rect x="1163.2" y="727" width="25.1" height="15.0" fill="rgb(240,146,38)" rx="2" ry="2" />
+<text  x="1166.24" y="737.5" >s..</text>
+</g>
+<g >
+<title>IndexScanOperator::next (251,256,250 samples, 35.21%)</title><rect x="1150.7" y="839" width="626.8" height="15.0" fill="rgb(230,193,27)" rx="2" ry="2" />
+<text  x="1153.70" y="849.5" >IndexScanOperator::next</text>
+</g>
+<g >
+<title>memchr@plt (5,025,125 samples, 0.70%)</title><rect x="1012.8" y="775" width="12.6" height="15.0" fill="rgb(231,144,29)" rx="2" ry="2" />
+<text  x="1015.82" y="785.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="1150.7" y="407" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1153.70" y="417.5" ></text>
+</g>
+<g >
+<title>memcmp (5,025,125 samples, 0.70%)</title><rect x="849.9" y="727" width="12.5" height="15.0" fill="rgb(238,144,36)" rx="2" ry="2" />
+<text  x="852.86" y="737.5" ></text>
+</g>
+<g >
+<title>[unknown] (10,050,250 samples, 1.41%)</title><rect x="1714.8" y="455" width="25.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1717.79" y="465.5" >[..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="47.6" y="599" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="50.61" y="609.5" ></text>
+</g>
+<g >
+<title>[libc.so.6] (60,301,500 samples, 8.45%)</title><rect x="223.1" y="567" width="150.4" height="15.0" fill="rgb(231,147,29)" rx="2" ry="2" />
+<text  x="226.10" y="577.5" >[libc.so.6]</text>
+</g>
+<g >
+<title>fmt::v9::detail::copy_str_noinline&lt;char, char const*, fmt::v9::appender&gt; (5,025,125 samples, 0.70%)</title><rect x="1200.8" y="695" width="12.6" height="15.0" fill="rgb(243,137,42)" rx="2" ry="2" />
+<text  x="1203.85" y="705.5" ></text>
+</g>
+<g >
+<title>File::File (5,025,125 samples, 0.70%)</title><rect x="85.2" y="775" width="12.5" height="15.0" fill="rgb(237,199,35)" rx="2" ry="2" />
+<text  x="88.21" y="785.5" ></text>
+</g>
+<g >
+<title>[unknown] (25,125,625 samples, 3.52%)</title><rect x="787.2" y="471" width="62.7" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="790.18" y="481.5" >[unkn..</text>
+</g>
+<g >
+<title>[unknown] (15,075,375 samples, 2.11%)</title><rect x="812.3" y="295" width="37.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="815.25" y="305.5" >[u..</text>
+</g>
+<g >
+<title>_Unwind_Find_FDE (15,075,375 samples, 2.11%)</title><rect x="1602.0" y="695" width="37.6" height="15.0" fill="rgb(230,143,27)" rx="2" ry="2" />
+<text  x="1604.97" y="705.5" >_U..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="85.2" y="679" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="88.21" y="689.5" ></text>
+</g>
+<g >
+<title>[unknown] (25,125,625 samples, 3.52%)</title><rect x="787.2" y="359" width="62.7" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="790.18" y="369.5" >[unkn..</text>
+</g>
+<g >
+<title>[unknown] (10,050,250 samples, 1.41%)</title><rect x="1163.2" y="583" width="25.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1166.24" y="593.5" >[..</text>
+</g>
+<g >
+<title>arc4random (5,025,125 samples, 0.70%)</title><rect x="210.6" y="679" width="12.5" height="15.0" fill="rgb(235,144,33)" rx="2" ry="2" />
+<text  x="213.56" y="689.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="122.8" y="615" width="12.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="125.82" y="625.5" ></text>
+</g>
+<g >
+<title>std::_V2::system_category (5,025,125 samples, 0.70%)</title><rect x="110.3" y="663" width="12.5" height="15.0" fill="rgb(246,146,45)" rx="2" ry="2" />
+<text  x="113.28" y="673.5" ></text>
+</g>
+<g >
+<title>[unknown] (10,050,250 samples, 1.41%)</title><rect x="1163.2" y="535" width="25.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1166.24" y="545.5" >[..</text>
+</g>
+<g >
+<title>operator new (5,025,125 samples, 0.70%)</title><rect x="22.5" y="775" width="12.6" height="15.0" fill="rgb(235,195,33)" rx="2" ry="2" />
+<text  x="25.54" y="785.5" ></text>
+</g>
+<g >
+<title>std::string::reserve (5,025,125 samples, 0.70%)</title><rect x="1125.6" y="807" width="12.6" height="15.0" fill="rgb(240,146,38)" rx="2" ry="2" />
+<text  x="1128.63" y="817.5" ></text>
+</g>
+<g >
+<title>BTreeCursor::findRID (251,256,250 samples, 35.21%)</title><rect x="1150.7" y="823" width="626.8" height="15.0" fill="rgb(226,127,23)" rx="2" ry="2" />
+<text  x="1153.70" y="833.5" >BTreeCursor::findRID</text>
+</g>
+<g >
+<title>std::basic_filebuf&lt;char, std::char_traits&lt;char&gt; &gt;::underflow (5,025,125 samples, 0.70%)</title><rect x="1150.7" y="679" width="12.5" height="15.0" fill="rgb(238,146,36)" rx="2" ry="2" />
+<text  x="1153.70" y="689.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="1113.1" y="647" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1116.10" y="657.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="774.6" y="535" width="12.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="777.65" y="545.5" ></text>
+</g>
+<g >
+<title>write (15,075,375 samples, 2.11%)</title><rect x="900.0" y="599" width="37.6" height="15.0" fill="rgb(240,108,38)" rx="2" ry="2" />
+<text  x="903.00" y="609.5" >wr..</text>
+</g>
+<g >
+<title>[ld-linux-aarch64.so.1] (5,025,125 samples, 0.70%)</title><rect x="624.2" y="631" width="12.6" height="15.0" fill="rgb(237,163,35)" rx="2" ry="2" />
+<text  x="627.23" y="641.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="210.6" y="551" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="213.56" y="561.5" ></text>
+</g>
+<g >
+<title>[libspdlog.so.1.10.0] (5,025,125 samples, 0.70%)</title><rect x="1276.1" y="663" width="12.5" height="15.0" fill="rgb(238,147,36)" rx="2" ry="2" />
+<text  x="1279.06" y="673.5" ></text>
+</g>
+<g >
+<title>BufferPool::pinPage (5,025,125 samples, 0.70%)</title><rect x="1037.9" y="823" width="12.5" height="15.0" fill="rgb(248,127,47)" rx="2" ry="2" />
+<text  x="1040.89" y="833.5" ></text>
+</g>
+<g >
+<title>std::__introsort_loop&lt;__gnu_cxx::__normal_iterator&lt;IntermediateCell*, std::vector&lt;IntermediateCell, std::allocator&lt;IntermediateCell&gt; &gt; &gt;, long, __gnu_cxx::__ops::_Iter_comp_iter&lt;InternalIndexPage::findChildPage (5,025,125 samples, 0.70%)</title><rect x="1088.0" y="791" width="12.6" height="15.0" fill="rgb(248,146,47)" rx="2" ry="2" />
+<text  x="1091.03" y="801.5" ></text>
+</g>
+<g >
+<title>std::basic_filebuf&lt;char, std::char_traits&lt;char&gt; &gt;::underflow (5,025,125 samples, 0.70%)</title><rect x="10.0" y="727" width="12.5" height="15.0" fill="rgb(238,146,36)" rx="2" ry="2" />
+<text  x="13.00" y="737.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="10.0" y="535" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="13.00" y="545.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="1113.1" y="599" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1116.10" y="609.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="97.7" y="391" width="12.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="100.75" y="401.5" ></text>
+</g>
+<g >
+<title>[unknown] (10,050,250 samples, 1.41%)</title><rect x="824.8" y="103" width="25.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="827.79" y="113.5" >[..</text>
+</g>
+<g >
+<title>spdlog::logger::log_&lt;std::basic_string_view&lt;char, std::char_traits&lt;char&gt; &gt;, std::string&amp;&gt; (60,301,500 samples, 8.45%)</title><rect x="223.1" y="679" width="150.4" height="15.0" fill="rgb(241,167,39)" rx="2" ry="2" />
+<text  x="226.10" y="689.5" >spdlog::logger::..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="774.6" y="583" width="12.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="777.65" y="593.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="1150.7" y="567" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1153.70" y="577.5" ></text>
+</g>
+<g >
+<title>[unknown] (10,050,250 samples, 1.41%)</title><rect x="1714.8" y="615" width="25.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1717.79" y="625.5" >[..</text>
+</g>
+<g >
+<title>__gxx_personality_v0 (30,150,750 samples, 4.23%)</title><rect x="686.9" y="663" width="75.2" height="15.0" fill="rgb(224,132,21)" rx="2" ry="2" />
+<text  x="689.90" y="673.5" >__gxx_p..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="10.0" y="583" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="13.00" y="593.5" ></text>
+</g>
+<g >
+<title>File::readPageIntoBuffer (5,025,125 samples, 0.70%)</title><rect x="10.0" y="791" width="12.5" height="15.0" fill="rgb(241,199,40)" rx="2" ry="2" />
+<text  x="13.00" y="801.5" ></text>
+</g>
+<g >
+<title>[unknown] (45,226,125 samples, 6.34%)</title><rect x="260.7" y="327" width="112.8" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="263.70" y="337.5" >[unknown]</text>
+</g>
+<g >
+<title>[unknown] (20,100,500 samples, 2.82%)</title><rect x="1288.6" y="567" width="50.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1291.59" y="577.5" >[unk..</text>
+</g>
+<g >
+<title>[libc.so.6] (713,567,750 samples, 100.00%)</title><rect x="10.0" y="919" width="1780.0" height="15.0" fill="rgb(231,147,29)" rx="2" ry="2" />
+<text  x="13.00" y="929.5" >[libc.so.6]</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="122.8" y="551" width="12.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="125.82" y="561.5" ></text>
+</g>
+<g >
+<title>BufferPool::evictOnePage (5,025,125 samples, 0.70%)</title><rect x="85.2" y="791" width="12.5" height="15.0" fill="rgb(248,127,47)" rx="2" ry="2" />
+<text  x="88.21" y="801.5" ></text>
+</g>
+<g >
+<title>[unknown] (20,100,500 samples, 2.82%)</title><rect x="1288.6" y="439" width="50.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1291.59" y="449.5" >[unk..</text>
+</g>
+<g >
+<title>fmt::v9::detail::buffer&lt;char&gt;::append&lt;char&gt; (5,025,125 samples, 0.70%)</title><rect x="1213.4" y="663" width="12.5" height="15.0" fill="rgb(246,137,45)" rx="2" ry="2" />
+<text  x="1216.38" y="673.5" ></text>
+</g>
+<g >
+<title>_IO_fflush (60,301,500 samples, 8.45%)</title><rect x="223.1" y="615" width="150.4" height="15.0" fill="rgb(236,132,34)" rx="2" ry="2" />
+<text  x="226.10" y="625.5" >_IO_fflush</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="1150.7" y="439" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1153.70" y="449.5" ></text>
+</g>
+<g >
+<title>[libc.so.6] (5,025,125 samples, 0.70%)</title><rect x="1050.4" y="791" width="12.6" height="15.0" fill="rgb(231,147,29)" rx="2" ry="2" />
+<text  x="1053.42" y="801.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="47.6" y="695" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="50.61" y="705.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="47.6" y="567" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="50.61" y="577.5" ></text>
+</g>
+<g >
+<title>HeapFetchOperator::next (336,683,375 samples, 47.18%)</title><rect x="97.7" y="807" width="839.9" height="15.0" fill="rgb(230,200,27)" rx="2" ry="2" />
+<text  x="100.75" y="817.5" >HeapFetchOperator::next</text>
+</g>
+<g >
+<title>BTreeCursor::findRID (55,276,375 samples, 7.75%)</title><rect x="937.6" y="839" width="137.9" height="15.0" fill="rgb(226,127,23)" rx="2" ry="2" />
+<text  x="940.61" y="849.5" >BTreeCursor::f..</text>
+</g>
+<g >
+<title>[unknown] (20,100,500 samples, 2.82%)</title><rect x="1288.6" y="487" width="50.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1291.59" y="497.5" >[unk..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="1150.7" y="487" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1153.70" y="497.5" ></text>
+</g>
+<g >
+<title>[unknown] (10,050,250 samples, 1.41%)</title><rect x="1714.8" y="551" width="25.1" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="1717.79" y="561.5" >[..</text>
+</g>
+<g >
+<title>_IO_do_write (15,075,375 samples, 2.11%)</title><rect x="900.0" y="647" width="37.6" height="15.0" fill="rgb(240,132,38)" rx="2" ry="2" />
+<text  x="903.00" y="657.5" >_I..</text>
+</g>
+<g >
+<title>free@plt (5,025,125 samples, 0.70%)</title><rect x="1263.5" y="727" width="12.6" height="15.0" fill="rgb(231,177,29)" rx="2" ry="2" />
+<text  x="1266.52" y="737.5" ></text>
+</g>
+<g >
+<title>write (5,025,125 samples, 0.70%)</title><rect x="1113.1" y="663" width="12.5" height="15.0" fill="rgb(240,108,38)" rx="2" ry="2" />
+<text  x="1116.10" y="673.5" ></text>
+</g>
+<g >
+<title>operator new (5,025,125 samples, 0.70%)</title><rect x="1238.5" y="711" width="12.5" height="15.0" fill="rgb(235,195,33)" rx="2" ry="2" />
+<text  x="1241.45" y="721.5" ></text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="97.7" y="455" width="12.6" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="100.75" y="465.5" ></text>
+</g>
+<g >
+<title>_IO_file_sync (10,050,250 samples, 1.41%)</title><rect x="1714.8" y="711" width="25.1" height="15.0" fill="rgb(238,132,36)" rx="2" ry="2" />
+<text  x="1717.79" y="721.5" >_..</text>
+</g>
+<g >
+<title>BufferPool::acquireFrame (5,025,125 samples, 0.70%)</title><rect x="937.6" y="791" width="12.5" height="15.0" fill="rgb(241,127,40)" rx="2" ry="2" />
+<text  x="940.61" y="801.5" ></text>
+</g>
+<g >
+<title>BufferPool::acquireFrame (221,105,500 samples, 30.99%)</title><rect x="1150.7" y="775" width="551.6" height="15.0" fill="rgb(241,127,40)" rx="2" ry="2" />
+<text  x="1153.70" y="785.5" >BufferPool::acquireFrame</text>
+</g>
+<g >
+<title>[libstdc++.so.6.0.30] (25,125,625 samples, 3.52%)</title><rect x="686.9" y="647" width="62.7" height="15.0" fill="rgb(243,147,42)" rx="2" ry="2" />
+<text  x="689.90" y="657.5" >[libs..</text>
+</g>
+<g >
+<title>[unknown] (5,025,125 samples, 0.70%)</title><rect x="210.6" y="615" width="12.5" height="15.0" fill="rgb(242,180,40)" rx="2" ry="2" />
+<text  x="213.56" y="625.5" ></text>
+</g>
+<g >
+<title>std::__introsort_loop&lt;__gnu_cxx::__normal_iterator&lt;IntermediateCell*, std::vector&lt;IntermediateCell, std::allocator&lt;IntermediateCell&gt; &gt; &gt;, long, __gnu_cxx::__ops::_Iter_comp_iter&lt;InternalIndexPage::findChildPage (5,025,125 samples, 0.70%)</title><rect x="1000.3" y="775" width="12.5" height="15.0" fill="rgb(248,146,47)" rx="2" ry="2" />
+<text  x="1003.28" y="785.5" ></text>
+</g>
+<g >
+<title>FrameDirectory::findResidentFrame (5,025,125 samples, 0.70%)</title><rect x="950.1" y="791" width="12.6" height="15.0" fill="rgb(241,206,40)" rx="2" ry="2" />
+<text  x="953.14" y="801.5" ></text>
+</g>
+<g >
+<title>[[vdso]] (5,025,125 samples, 0.70%)</title><rect x="1338.7" y="663" width="12.6" height="15.0" fill="rgb(242,174,40)" rx="2" ry="2" />
+<text  x="1341.73" y="673.5" ></text>
+</g>
+<g >
+<title>_Unwind_Find_FDE (10,050,250 samples, 1.41%)</title><rect x="611.7" y="647" width="25.1" height="15.0" fill="rgb(230,143,27)" rx="2" ry="2" />
+<text  x="614.69" y="657.5" >_..</text>
+</g>
+</g>
+</svg>
