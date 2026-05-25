@@ -8,7 +8,7 @@ namespace {
 std::optional<ExactMatchIndexColumnValue> tryExtractExactMatchLookupValue(
     const UnboundComparisonPredicate& predicate) {
   if (predicate.op != Op::Eq) {
-    LOG_DEBUG("skipping non-equality predicate for index lookup");
+    dbfs_log::execution().debug("skipping non-equality predicate for index lookup");
     return std::nullopt;
   }
 

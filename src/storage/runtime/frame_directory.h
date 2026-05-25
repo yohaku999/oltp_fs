@@ -11,7 +11,7 @@
 
 class FrameDirectory {
  public:
-  static constexpr size_t MAX_FRAME_COUNT = 10;
+  static constexpr size_t MAX_FRAME_COUNT = 16384;
 
  private:
   struct Frame {

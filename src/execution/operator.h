@@ -11,7 +11,6 @@
 #include <utility>
 #include <vector>
 
-#include "logging.h"
 #include "storage/index/rid.h"
 #include "tuple/typed_row.h"
 

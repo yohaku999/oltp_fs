@@ -84,7 +84,7 @@ void Table::createIndex(const std::vector<std::string>& column_names) {
     if (indexed_column_names_ == column_names) {
       return;
     }
-    LOG_WARN(
+    dbfs_log::catalog().warn(
         "Ignoring additional index on table {} because only one index is supported.",
         name_);
     return;

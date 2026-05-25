@@ -19,7 +19,7 @@ std::optional<int> FrameDirectory::reserveFreeFrame() {
 
   int frame_id = *free_frames_.begin();
   free_frames_.erase(free_frames_.begin());
-  LOG_DEBUG("Found free frame {}", frame_id);
+  dbfs_log::storage().debug("Found free frame {}", frame_id);
   return frame_id;
 }
 
@@ -44,7 +44,7 @@ void FrameDirectory::registerResidentPage(int frame_id, int page_id,
   auto key = std::make_pair(page_id, file_path);
   page_to_frame_[key] = frame_id;
 
-  LOG_DEBUG("Registered page {} from {} in frame {}", page_id, file_path,
+  dbfs_log::storage().debug("Registered page {} from {} in frame {}", page_id, file_path,
             frame_id);
 }
 
@@ -57,19 +57,19 @@ void FrameDirectory::unregisterResidentPage(int frame_id) {
 
   free_frames_.insert(frame_id);
 
-  LOG_DEBUG("Unregistered and deleted page from frame {}", frame_id);
+  dbfs_log::storage().debug("Unregistered and deleted page from frame {}", frame_id);
 }
 
 void FrameDirectory::pin(int frame_id) {
   frames_[frame_id].pin_count++;
-  LOG_DEBUG("Marked frame {} as pinned, count = {}", frame_id,
+  dbfs_log::storage().debug("Marked frame {} as pinned, count = {}", frame_id,
             frames_[frame_id].pin_count);
 }
 
 void FrameDirectory::unpin(int frame_id) {
   if (frames_[frame_id].pin_count > 0) {
     frames_[frame_id].pin_count--;
-    LOG_DEBUG("Marked frame {} as unpinned, count = {}", frame_id,
+    dbfs_log::storage().debug("Marked frame {} as unpinned, count = {}", frame_id,
               frames_[frame_id].pin_count);
   }
 }
@@ -93,7 +93,7 @@ std::optional<int> FrameDirectory::findVictimFrame() {
       dump += fmt::format("[id={} pin={} has_page={}] ", i,
                           frames_[i].pin_count, frames_[i].page != nullptr);
     }
-    LOG_WARN("No evictable frames found (all pinned or empty). {}", dump);
+    dbfs_log::storage().warn("No evictable frames found (all pinned or empty). {}", dump);
     return std::nullopt;
   }
 
@@ -103,7 +103,7 @@ std::optional<int> FrameDirectory::findVictimFrame() {
   std::uniform_int_distribution<> dis(0, candidates.size() - 1);
   int victim = candidates[dis(gen)];
 
-  LOG_DEBUG("Found victim frame {} (randomly selected from {} candidates)",
+  dbfs_log::storage().debug("Found victim frame {} (randomly selected from {} candidates)",
             victim, candidates.size());
   return victim;
 }

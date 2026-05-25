@@ -58,7 +58,7 @@ Page::Page(char* page_buffer, uint16_t page_id)
  */
 std::optional<int> Page::insertCell(
     const std::vector<std::byte>& serialized_cell) {
-  LOG_DEBUG("Attempting to insert serialized cell into page ID {}", getPageID());
+  dbfs_log::storage().debug("Attempting to insert serialized cell into page ID {}", getPageID());
 
   const size_t current_cell_offset = getSlotDirectoryOffset();
   const size_t next_slot_offset =
@@ -66,7 +66,7 @@ std::optional<int> Page::insertCell(
       Page::CELL_POINTER_SIZE * (static_cast<size_t>(getSlotCount()) + 1);
   if (serialized_cell.size() > current_cell_offset ||
       current_cell_offset - serialized_cell.size() < next_slot_offset) {
-    LOG_DEBUG(
+    dbfs_log::storage().debug(
       "This page does not have enough space to insert the cell anymore.");
     return std::nullopt;
   }
@@ -92,7 +92,7 @@ std::optional<int> Page::insertCell(
 
   this->markDirty();
 
-    LOG_DEBUG(
+    dbfs_log::storage().debug(
       "Inserted a new cell into page. New slot count: {}, new slot directory "
       "offset: {}",
       getSlotCount(), getSlotDirectoryOffset());
@@ -100,7 +100,7 @@ std::optional<int> Page::insertCell(
 }
 
 std::optional<int> Page::insertCell(const Cell& cell) {
-  LOG_DEBUG("Attempting to insert {} cell into page ID {}",
+  dbfs_log::storage().debug("Attempting to insert {} cell into page ID {}",
             static_cast<int>(cell.kind()), getPageID());
   std::vector<std::byte> serialized_data = cell.serialize();
   return insertCell(serialized_data);
@@ -122,6 +122,8 @@ char* Page::getSlotCellStart(int slot_id) {
 }
 
 /**
+ * This method is used for page splitting. It returns the cell that should be used as the split key.
+ * The split key is typically the middle key of the page, but if the middle key is invalid, we will try to find the next valid key until we find one or we reach the end of the page.
  * @return pointer to the cell to be used for page separation.
  */
 char* Page::getSplitKeyCellStart() {

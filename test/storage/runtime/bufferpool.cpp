@@ -34,9 +34,11 @@ class BufferPoolTest : public ::testing::Test {
  protected:
   static constexpr const char* kTestFile = "testfile.db";
   static constexpr const char* kWalFile = "bufferpool_test.wal";
+  static constexpr const size_t max_frames_count = 10;
   std::unique_ptr<BufferPool> pool;
   std::unique_ptr<File> testFile;
   std::unique_ptr<WAL> wal;
+  
 
   void SetUp() override {
     std::remove(kTestFile);
@@ -67,7 +69,7 @@ TEST_F(BufferPoolTest, GetPageSamePageReturnsCachedPage) {
 }
 
 TEST_F(BufferPoolTest, createNewPageAllFramesFilledSuccessfully) {
-  for (size_t i = 0; i < BufferPool::MAX_FRAME_COUNT; ++i) {
+  for (size_t i = 0; i < max_frames_count; ++i) {
     uint16_t page_id = pool->createPage(PageKind::Heap, *testFile);
     Page* page = pool->pinPage(page_id, *testFile);
     ASSERT_NE(page, nullptr);
@@ -81,11 +83,11 @@ TEST_F(BufferPoolTest, createNewPageWithEviction) {
   // Keep page snapshots so the test can compare the reloaded page bytes after
   // eviction writes them out to disk.
   std::array<std::array<char, Page::PAGE_SIZE_BYTE>,
-             BufferPool::MAX_FRAME_COUNT + 10>
+             max_frames_count + 10>
       page_copies;
-  std::array<uint16_t, BufferPool::MAX_FRAME_COUNT + 10> page_ids;
+  std::array<uint16_t, max_frames_count + 10> page_ids;
 
-  for (size_t i = 0; i < BufferPool::MAX_FRAME_COUNT + 10; ++i) {
+  for (size_t i = 0; i < max_frames_count + 10; ++i) {
     uint16_t page_id = pool->createPage(PageKind::Heap, *testFile);
     Page* page = pool->pinPage(page_id, *testFile);
     ASSERT_NE(page, nullptr);
@@ -109,7 +111,7 @@ TEST_F(BufferPoolTest, createNewPageWithEviction) {
   EXPECT_GE(file_size, 0);
 
   // Every page should round-trip through eviction without byte-level changes.
-  for (size_t i = 0; i < BufferPool::MAX_FRAME_COUNT + 10; ++i) {
+  for (size_t i = 0; i < max_frames_count + 10; ++i) {
     Page* page = pool->pinPage(page_ids[i], *testFile);
     ASSERT_NE(page, nullptr) << "Should be able to access/reload page " << i;
 
@@ -129,7 +131,7 @@ TEST_F(BufferPoolTest, EvictionFlushesWALUpToPageLSN) {
   wal->write(WALRecord::RecordType::INSERT, 1, body);
   EXPECT_EQ(wal->getFlushedLSN(), 0u);
 
-  for (size_t i = 0; i < BufferPool::MAX_FRAME_COUNT; ++i) {
+  for (size_t i = 0; i < max_frames_count; ++i) {
     uint16_t page_id = pool->createPage(PageKind::Heap, *testFile);
     Page* page = pool->pinPage(page_id, *testFile);
     // Mark each resident page as depending on the same WAL record.

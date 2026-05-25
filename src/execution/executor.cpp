@@ -168,7 +168,7 @@ void insertRow(BufferPool& pool, Table& table, const TypedRow& row, WAL& wal) {
   std::optional<std::string> key;
   if (index_file.has_value()) {
     key = table.extractIndexKey(row);
-    LOG_DEBUG("Inserting record with key {} into table {}.",
+    dbfs_log::execution().debug("Inserting record with key {} into table {}.",
          index_key::formatForDebug(key.value()),
          table.name());
     std::optional<RID> existing_rid =
@@ -178,7 +178,7 @@ void insertRow(BufferPool& pool, Table& table, const TypedRow& row, WAL& wal) {
           "Duplicate key is not allowed for indexed table: " + table.name());
     }
   } else {
-    LOG_DEBUG("Inserting record into table {}.", table.name());
+    dbfs_log::execution().debug("Inserting record into table {}.", table.name());
   }
 
   RecordSerializer cell(table.schema(), row);
@@ -360,7 +360,7 @@ std::vector<TypedRow> executor::read(BufferPool& pool,
     ProjectionOperator projection(std::move(pipeline), projection_indices);
     items = collectItems<TypedRow>(projection);
   }
-  LOG_INFO("Query returned {} rows.", items.size());  
+  dbfs_log::execution().info("Query returned {} rows.", items.size());  
   return items;
 }
 

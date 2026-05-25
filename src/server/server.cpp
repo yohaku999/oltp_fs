@@ -256,19 +256,19 @@ void Server::start() {
         if (!request.empty()) {
           const std::size_t maxlen = 2000;
           if (request.size() > maxlen) {
-            LOG_DEBUG("caught exception processing request (truncated): {}", request.substr(0, maxlen));
+            dbfs_log::server().error("caught exception processing request (truncated): {}", request.substr(0, maxlen));
           } else {
-            LOG_DEBUG("caught exception processing request: {}", request);
+            dbfs_log::server().error("caught exception processing request: {}", request);
           }
         } else {
-          LOG_DEBUG("caught exception processing request: <empty request>");
+          dbfs_log::server().error("caught exception processing request: <empty request>");
         }
 
         std::string what = e.what();
         if (what.find("client closed connection") != std::string::npos) {
-          LOG_DEBUG("client closed connection while processing request");
+          dbfs_log::server().debug("client closed connection while processing request");
         } else {
-          LOG_ERROR("exception: {}", what);
+          dbfs_log::server().error("exception: {}", what);
         }
 
         // backtrace symbols at debug level
@@ -277,12 +277,12 @@ void Server::start() {
         char** bt_syms = backtrace_symbols(bt, bt_size);
         if (bt_syms) {
           for (int i = 0; i < bt_size; ++i) {
-            LOG_DEBUG("backtrace[{}] {}", i, bt_syms[i]);
+            dbfs_log::server().debug("backtrace[{}] {}", i, bt_syms[i]);
           }
           free(bt_syms);
         }
       } catch (...) {
-        LOG_ERROR("failed while attempting to log exception/backtrace");
+        dbfs_log::server().error("failed while attempting to log exception/backtrace");
       }
 
       nlohmann::json error;
@@ -322,7 +322,7 @@ void Server::writeFrame(int client_fd, const std::string& payload) {
 }
 
 std::string Server::handleRequest(const std::string& request) {
-  LOG_INFO("received request: {}", request);
+  dbfs_log::server().info("received request: {}", request);
   nlohmann::json req = nlohmann::json::parse(request);
 
   const std::string operation = req.value("operation", "");
@@ -331,7 +331,7 @@ std::string Server::handleRequest(const std::string& request) {
       req.value("parameters", nlohmann::json::array()));
   const nlohmann::json parameters = req.value("parameters", nlohmann::json::array());
 
-  LOG_DEBUG("parsed SQL: {}", sql);
+  dbfs_log::server().debug("parsed SQL: {}", sql);
   nlohmann::json res;
   res["ok"] = true;
 
@@ -381,10 +381,10 @@ std::string Server::handleRequest(const std::string& request) {
   std::string response = res.dump();
   const std::size_t max_log_len = 2000;
   if (response.size() > max_log_len) {
-    LOG_INFO("response (truncated to {} bytes): {}...", max_log_len,
+    dbfs_log::server().info("response (truncated to {} bytes): {}...", max_log_len,
              response.substr(0, max_log_len));
   } else {
-    LOG_INFO("response: {}", response);
+    dbfs_log::server().info("response: {}", response);
   }
   return response;
 }

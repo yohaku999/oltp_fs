@@ -34,7 +34,7 @@ uint16_t BufferPool::createPage(PageKind kind, File& file,
       kind_label = "internal index";
       break;
   }
-  LOG_DEBUG("Created new page ID {} as {} page in frame ID {}", page_id,
+  dbfs_log::storage().debug("Created new page ID {} as {} page in frame ID {}", page_id,
             kind_label, frame_id);
   return page_id;
 }
@@ -47,7 +47,7 @@ Page* BufferPool::pinPage(int page_id, File& file) {
                     page_id, file.getFilePath()));
   }
 
-  LOG_DEBUG("Requesting page ID {} from file {}", page_id, file.getFilePath());
+  dbfs_log::storage().debug("Requesting page ID {} from file {}", page_id, file.getFilePath());
   auto resident_frame_id =
       frame_directory_.findResidentFrame(page_id, file.getFilePath());
   if (resident_frame_id.has_value()) {
@@ -63,7 +63,7 @@ Page* BufferPool::pinPage(int page_id, File& file) {
     frame_directory_.registerResidentPage(frame_id, page_id, file.getFilePath(),
                                           std::move(page));
     frame_directory_.pin(frame_id);
-    LOG_DEBUG("Loaded page ID {} into frame ID {}", page_id, frame_id);
+    dbfs_log::storage().debug("Loaded page ID {} into frame ID {}", page_id, frame_id);
     return loaded_page;
   }
 };
@@ -117,12 +117,12 @@ void BufferPool::evictOnePage() {
     file.writePageFromBuffer(evict_page_id, victim_frame.page->data());
   }
   frame_directory_.unregisterResidentPage(victim_frame_id);
-  LOG_DEBUG("Evicted page ID {} from frame ID {}", evict_page_id,
+  dbfs_log::storage().debug("Evicted page ID {} from frame ID {}", evict_page_id,
             victim_frame_id);
 };
 
 void BufferPool::zeroOutFrame(int frame_id) {
-  LOG_DEBUG("Zeroing out frame ID: {}", frame_id);
+  dbfs_log::storage().debug("Zeroing out frame ID: {}", frame_id);
   char* frame_buffer =
       static_cast<char*>(buffer_) + frame_id * BufferPool::FRAME_SIZE_BYTE;
   std::memset(frame_buffer, 0, BufferPool::FRAME_SIZE_BYTE);
@@ -131,7 +131,7 @@ void BufferPool::zeroOutFrame(int frame_id) {
 std::pair<int, char*> BufferPool::acquireFrame() {
   auto free_frame = frame_directory_.reserveFreeFrame();
   if (!free_frame.has_value()) {
-    LOG_DEBUG("No free frame available, attempting eviction");
+    dbfs_log::storage().debug("No free frame available, attempting eviction");
     evictOnePage();
     free_frame = frame_directory_.reserveFreeFrame();
     if (!free_frame.has_value()) {
@@ -141,7 +141,7 @@ std::pair<int, char*> BufferPool::acquireFrame() {
           "Failed to acquire a free frame even after eviction. This should not "
           "happen in single-threaded execution.");
     } else {
-      LOG_DEBUG("Eviction reclaimed free frame {}", free_frame.value());
+      dbfs_log::storage().debug("Eviction reclaimed free frame {}", free_frame.value());
     }
   }
   int frame_id = free_frame.value();

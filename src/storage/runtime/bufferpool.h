@@ -12,7 +12,7 @@ class WAL;
 
 class BufferPool {
  public:
-  static constexpr size_t MAX_FRAME_COUNT = 10;
+  static constexpr size_t MAX_FRAME_COUNT = 16384;
   static constexpr uint16_t HAS_NO_CHILD = -1;
   explicit BufferPool(WAL& wal);
   Page* pinPage(int page_id, File& file);
@@ -22,9 +22,9 @@ class BufferPool {
   ~BufferPool();
 
  private:
-  static constexpr size_t BUFFER_SIZE_BYTE = 4096 * 10;
-  static constexpr size_t FRAME_SIZE_BYTE = 4096;
-  static constexpr size_t MAX_PAGE_COUNT = 10;
+  static constexpr size_t BUFFER_SIZE_BYTE = 4096*2 * 16384;
+  static constexpr size_t FRAME_SIZE_BYTE = 4096*2;
+  static constexpr size_t MAX_PAGE_COUNT = 16384;
   void* buffer_;
   WAL& wal_;
   void evictOnePage();

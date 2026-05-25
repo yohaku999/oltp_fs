@@ -33,20 +33,20 @@ std::optional<RID> LeafIndexPage::findRef(const std::string& key,
   for (int idx = 0; idx < page_.getSlotCount(); ++idx) {
     char* cell_data = page_.data() + page_.getCellOffsetOnXthPointer(idx);
     if (!Cell::isValid(cell_data)) {
-      LOG_DEBUG("LeafIndexPage::findRef skipping invalid slot {}", idx);
+      dbfs_log::index().debug("LeafIndexPage::findRef skipping invalid slot {}", idx);
       continue;
     }
     LeafCell cell = cellAt(idx);
     if (index_key::compare(cell.key(), key) == 0) {
       if (do_invalidate) {
-        LOG_DEBUG("LeafIndexPage::findRef invalidating slot {} for key {}", idx,
+        dbfs_log::index().debug("LeafIndexPage::findRef invalidating slot {} for key {}", idx,
                   index_key::formatForDebug(key));
         page_.invalidateSlot(idx);
       }
       return RID{cell.heap_page_id(), cell.slot_id()};
     }
   }
-  LOG_DEBUG("LeafIndexPage::findRef key {} not found in this page.",
+  dbfs_log::index().debug("LeafIndexPage::findRef key {} not found in this page.",
             index_key::formatForDebug(key));
   return std::nullopt;
 }
@@ -105,7 +105,7 @@ void LeafIndexPage::transferAndCompactTo(LeafIndexPage& dst,
   page_.updateSlotDirectoryOffset(write_offset);
   page_.markDirty();
 
-    LOG_INFO(
+    dbfs_log::index().info(
       "Completed transfer and compaction of LeafIndexPage. New slot count: {}, "
       "new slot directory offset: {}",
       new_slot_count, write_offset);
@@ -140,7 +140,7 @@ uint16_t InternalIndexPage::findChildPage(const std::string& key) {
       return cell.page_id();
     }
   }
-  LOG_DEBUG("InternalIndexPage::findChildPage: Going to right most child {}.",
+  dbfs_log::index().debug("InternalIndexPage::findChildPage: Going to right most child {}.",
             rightMostChildPageId());
   return rightMostChildPageId();
 }
@@ -214,7 +214,7 @@ void InternalIndexPage::transferAndCompactTo(InternalIndexPage& dst,
   page_.updateSlotDirectoryOffset(write_offset);
   page_.markDirty();
 
-    LOG_INFO(
+    dbfs_log::index().info(
       "Completed transfer and compaction of InternalIndexPage. New slot count: "
       "{}, new slot directory offset: {}",
       new_slot_count, write_offset);
