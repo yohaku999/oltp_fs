@@ -12,6 +12,7 @@
 #include "storage/runtime/file.h"
 #include "storage/page/page.h"
 #include "storage/index/index_key.h"
+#include "storage/index/leaf_cell.h"
 #include "storage/wal/wal.h"
 
 class BTreeCursorTest : public ::testing::Test {
@@ -120,6 +121,34 @@ TEST_F(BTreeCursorTest, InsertManyKeysTriggersSplitAndIsSearchable) {
     EXPECT_EQ(rid->heap_page_id, heap_page_id);
     EXPECT_EQ(rid->slot_id, slot_id);
   }
+}
+
+TEST_F(BTreeCursorTest, InsertCompactsFullyInvalidLeafBeforeSplitting) {
+  Page* root_page = pool_->pinPage(index_file_->getRootPageID(), *index_file_);
+  int inserted_stale_keys = 0;
+  while (true) {
+    const std::string key =
+        "stale_key_" + std::string(96, 'x') + std::to_string(inserted_stale_keys);
+    LeafCell cell(key, 1, static_cast<uint16_t>(inserted_stale_keys));
+    std::optional<int> slot_id = root_page->insertCell(cell);
+    if (!slot_id.has_value()) {
+      break;
+    }
+
+    root_page->invalidateSlot(static_cast<uint16_t>(slot_id.value()));
+    ++inserted_stale_keys;
+  }
+  pool_->unpinPage(root_page, *index_file_);
+  ASSERT_GT(inserted_stale_keys, 0);
+
+  const std::string live_key = "live_key_" + std::string(96, 'y');
+  BTreeCursor::insertIntoIndex(*pool_, *index_file_, live_key, 7, 9);
+
+  std::optional<RID> rid =
+      BTreeCursor::findRID(*pool_, *index_file_, live_key);
+  ASSERT_TRUE(rid.has_value());
+  EXPECT_EQ(rid->heap_page_id, 7);
+  EXPECT_EQ(rid->slot_id, 9);
 }
 
 TEST_F(BTreeCursorTest, InsertCompositeKeysAcrossInternalSplitsRemainsSearchable) {

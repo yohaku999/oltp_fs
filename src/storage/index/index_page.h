@@ -26,6 +26,7 @@ class LeafIndexPage {
   LeafCell cellAt(int slot_id) const;
   bool hasKey(const std::string& key) const;
   std::optional<RID> findRef(const std::string& key, bool do_invalidate);
+  void compact();
 
   void transferAndCompactTo(LeafIndexPage& dst,
                             const std::string& separate_key);
@@ -48,6 +49,7 @@ class InternalIndexPage {
   IntermediateCell cellAt(int slot_id) const;
   uint16_t rightMostChildPageId() const;
   uint16_t findChildPage(const std::string& key);
+  void compact();
   void transferAndCompactTo(InternalIndexPage& dst,
                             const std::string& separate_key);
 

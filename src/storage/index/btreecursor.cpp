@@ -64,6 +64,37 @@ void dumpIndexPage(const Page& page, std::ostream& os) {
   os << "\n";
 }
 
+void compactIndexPage(Page& page) {
+  if (page.isLeaf()) {
+    LeafIndexPage(page).compact();
+    return;
+  }
+  InternalIndexPage(page).compact();
+}
+
+bool hasInvalidCell(const Page& page) {
+  for (uint16_t slot_id = 0; slot_id < page.slotCount(); ++slot_id) {
+    if (!Cell::isValid(page.slotCellStartUnchecked(slot_id))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+std::optional<int> insertCellWithCompaction(Page& page, const Cell& cell) {
+  std::optional<int> inserted_slot_id = page.insertCell(cell);
+  if (inserted_slot_id.has_value()) {
+    return inserted_slot_id;
+  }
+
+  if (!hasInvalidCell(page)) {
+    return std::nullopt;
+  }
+
+  compactIndexPage(page);
+  return page.insertCell(cell);
+}
+
 }  // namespace
 
 /**
@@ -147,7 +178,8 @@ void BTreeCursor::insertIntoIndex(BufferPool& pool, File& indexFile,
       std::make_unique<LeafCell>(key, heap_page_id, slot_id);
 
   while (true) {
-    auto inserted_slot_id = target_page->insertCell(*cell_to_insert);
+    auto inserted_slot_id =
+        insertCellWithCompaction(*target_page, *cell_to_insert);
     if (inserted_slot_id.has_value()) {
       pool.unpinPage(target_page, indexFile);
       break;
@@ -166,7 +198,7 @@ void BTreeCursor::insertIntoIndex(BufferPool& pool, File& indexFile,
       retry_page = new_page;
     }
 
-    inserted_slot_id = retry_page->insertCell(*cell_to_insert);
+    inserted_slot_id = insertCellWithCompaction(*retry_page, *cell_to_insert);
     if (new_page != nullptr) {
       pool.unpinPage(new_page, indexFile);
     }

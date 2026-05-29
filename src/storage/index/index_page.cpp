@@ -51,6 +51,38 @@ std::optional<RID> LeafIndexPage::findRef(const std::string& key,
   return std::nullopt;
 }
 
+void LeafIndexPage::compact() {
+  const uint16_t old_slot_count = page_.getSlotCount();
+  std::vector<LeafCell> cells;
+  cells.reserve(old_slot_count);
+  for (uint16_t idx = 0; idx < old_slot_count; ++idx) {
+    char* cell_data = page_.data() + page_.getCellOffsetOnXthPointer(idx);
+    if (!Cell::isValid(cell_data)) {
+      continue;
+    }
+    cells.push_back(cellAt(idx));
+  }
+
+  const uint16_t new_slot_count = static_cast<uint16_t>(cells.size());
+  uint16_t write_offset = static_cast<uint16_t>(Page::PAGE_SIZE_BYTE);
+  for (uint16_t idx = 0; idx < new_slot_count; ++idx) {
+    const LeafCell& cell = cells[idx];
+    write_offset =
+        static_cast<uint16_t>(write_offset - cell.payloadSize());
+    char* cell_destination = page_.data() + write_offset;
+    std::vector<std::byte> serialized = cell.serialize();
+    std::memcpy(cell_destination, serialized.data(), serialized.size());
+
+    char* slot_pointer = page_.data() + Page::HEADDER_SIZE_BYTE +
+                         Page::CELL_POINTER_SIZE * idx;
+    std::memcpy(slot_pointer, &write_offset, sizeof(uint16_t));
+  }
+
+  page_.updateSlotCount(new_slot_count);
+  page_.updateSlotDirectoryOffset(write_offset);
+  page_.markDirty();
+}
+
 void LeafIndexPage::transferAndCompactTo(LeafIndexPage& dst,
                                          const std::string& separate_key) {
 
@@ -143,6 +175,38 @@ uint16_t InternalIndexPage::findChildPage(const std::string& key) {
   dbfs_log::index().debug("InternalIndexPage::findChildPage: Going to right most child {}.",
             rightMostChildPageId());
   return rightMostChildPageId();
+}
+
+void InternalIndexPage::compact() {
+  const uint16_t old_slot_count = page_.getSlotCount();
+  std::vector<IntermediateCell> cells;
+  cells.reserve(old_slot_count);
+  for (uint16_t idx = 0; idx < old_slot_count; ++idx) {
+    char* cell_data = page_.data() + page_.getCellOffsetOnXthPointer(idx);
+    if (!Cell::isValid(cell_data)) {
+      continue;
+    }
+    cells.push_back(cellAt(idx));
+  }
+
+  const uint16_t new_slot_count = static_cast<uint16_t>(cells.size());
+  uint16_t write_offset = static_cast<uint16_t>(Page::PAGE_SIZE_BYTE);
+  for (uint16_t idx = 0; idx < new_slot_count; ++idx) {
+    const IntermediateCell& cell = cells[idx];
+    write_offset =
+        static_cast<uint16_t>(write_offset - cell.payloadSize());
+    char* cell_destination = page_.data() + write_offset;
+    std::vector<std::byte> serialized = cell.serialize();
+    std::memcpy(cell_destination, serialized.data(), serialized.size());
+
+    char* slot_pointer = page_.data() + Page::HEADDER_SIZE_BYTE +
+                         Page::CELL_POINTER_SIZE * idx;
+    std::memcpy(slot_pointer, &write_offset, sizeof(uint16_t));
+  }
+
+  page_.updateSlotCount(new_slot_count);
+  page_.updateSlotDirectoryOffset(write_offset);
+  page_.markDirty();
 }
 
 void InternalIndexPage::transferAndCompactTo(InternalIndexPage& dst,
