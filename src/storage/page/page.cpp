@@ -60,20 +60,26 @@ std::optional<int> Page::insertCell(
     const std::vector<std::byte>& serialized_cell) {
   dbfs_log::storage().debug("Attempting to insert serialized cell into page ID {}", getPageID());
 
-  const size_t current_cell_offset = getSlotDirectoryOffset();
-  const size_t next_slot_offset =
+  const size_t cell_content_start_offset = getSlotDirectoryOffset();
+  const size_t existing_slot_end_offset =
       Page::HEADDER_SIZE_BYTE +
-      Page::CELL_POINTER_SIZE * (static_cast<size_t>(getSlotCount()) + 1);
-  if (serialized_cell.size() > current_cell_offset ||
-      current_cell_offset - serialized_cell.size() < next_slot_offset) {
+      Page::CELL_POINTER_SIZE * (static_cast<size_t>(getSlotCount()));
+
+  if (cell_content_start_offset < existing_slot_end_offset + Page::CELL_POINTER_SIZE + serialized_cell.size()) {
     dbfs_log::storage().debug(
       "This page does not have enough space to insert the cell anymore.");
     return std::nullopt;
   }
 
-  uint16_t new_cell_offset =
-      static_cast<uint16_t>(current_cell_offset - serialized_cell.size());
-  char* cell_data_start = page_buffer_ + new_cell_offset;
+  if(serialized_cell.size() > cell_content_start_offset) {
+    dbfs_log::storage().debug(
+        "The size of the serialized cell is larger than the available space in the page.");
+    return std::nullopt;
+  }
+
+  uint16_t new_cell_start_offset =
+      static_cast<uint16_t>(cell_content_start_offset - serialized_cell.size());
+  char* cell_data_start = page_buffer_ + new_cell_start_offset;
 
   std::memcpy(cell_data_start, serialized_cell.data(), serialized_cell.size());
 
@@ -82,12 +88,11 @@ std::optional<int> Page::insertCell(
   // insert the new cell pointer to the end of cell pointers, so the cell
   // pointers are not sorted by key, but we can implement the sorting in the
   // future if needed.
-  char* slot_pointer = page_buffer_ + Page::HEADDER_SIZE_BYTE +
-                       Page::CELL_POINTER_SIZE * getSlotCount();
-  std::memcpy(slot_pointer, &new_cell_offset, sizeof(uint16_t));
+  char* slot_pointer = page_buffer_ + existing_slot_end_offset;
+  std::memcpy(slot_pointer, &new_cell_start_offset, sizeof(uint16_t));
 
   // update headder.
-  updateSlotDirectoryOffset(new_cell_offset);
+  updateSlotDirectoryOffset(new_cell_start_offset);
   updateSlotCount(getSlotCount() + 1);
 
   this->markDirty();
