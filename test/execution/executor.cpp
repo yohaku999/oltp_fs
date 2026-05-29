@@ -272,6 +272,39 @@ TEST_F(ExecutorTest, ReadSelectReturnsFilteredSumForIntegerColumn) {
   EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[0]), 211);
 }
 
+TEST_F(ExecutorTest, ReadSelectReturnsSumForDoubleColumn) {
+  const std::string table_name = uniqueTableName("sum_double_test");
+
+  executor::create_table(CreateTableParser(
+      "CREATE TABLE " + table_name + " ("
+      "id int NOT NULL, "
+      "amount decimal(12, 2) NOT NULL, "
+      "PRIMARY KEY (id))"));
+
+  {
+    Table table = Table::getTable(table_name);
+    executor::insert(*pool_, table,
+                     InsertParser("INSERT INTO " + table_name +
+                                  " VALUES (1, 10.5)"),
+                     *wal_);
+    executor::insert(*pool_, table,
+                     InsertParser("INSERT INTO " + table_name +
+                                  " VALUES (2, 2.25)"),
+                     *wal_);
+  }
+
+  std::vector<TypedRow> rows = executor::read(
+      *pool_, SelectParser("SELECT SUM(amount) FROM " + table_name));
+
+  ASSERT_EQ(rows.size(), 1u);
+  ASSERT_EQ(rows[0].values.size(), 1u);
+  ASSERT_TRUE(std::holds_alternative<Column::DoubleType>(rows[0].values[0]));
+  EXPECT_DOUBLE_EQ(std::get<Column::DoubleType>(rows[0].values[0]), 12.75);
+
+  executor::drop_table(DropTableParser("DROP TABLE " + table_name));
+  EXPECT_FALSE(Table::isPersisted(table_name));
+}
+
 TEST_F(ExecutorTest, ReadSelectReturnsCountStar) {
   std::vector<TypedRow> rows = executor::read(
       *pool_, SelectParser("SELECT COUNT(*) FROM executor_test_table"));

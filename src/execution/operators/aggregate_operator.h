@@ -110,7 +110,17 @@ class AggregateOperator : public TypedRowOperator {
         return;
       }
 
-      integer_sum_ += std::get<Column::IntegerType>(value);
+      if (std::holds_alternative<Column::IntegerType>(value)) {
+        const Column::IntegerType integer_value =
+            std::get<Column::IntegerType>(value);
+        integer_sum_ += integer_value;
+        double_sum_ += static_cast<Column::DoubleType>(integer_value);
+      } else if (std::holds_alternative<Column::DoubleType>(value)) {
+        double_sum_ += std::get<Column::DoubleType>(value);
+        saw_double_ = true;
+      } else {
+        throw std::runtime_error("SUM requires a numeric value.");
+      }
       saw_value_ = true;
     }
 
@@ -118,13 +128,18 @@ class AggregateOperator : public TypedRowOperator {
       if (!saw_value_) {
         return std::monostate{};
       }
+      if (saw_double_) {
+        return static_cast<Column::DoubleType>(double_sum_);
+      }
       return static_cast<Column::IntegerType>(integer_sum_);
     }
 
    private:
     BoundColumnRef argument_;
     long long integer_sum_ = 0;
+    Column::DoubleType double_sum_ = 0.0;
     bool saw_value_ = false;
+    bool saw_double_ = false;
   };
 
   static std::unique_ptr<AggregateAccumulator> createAccumulator(
