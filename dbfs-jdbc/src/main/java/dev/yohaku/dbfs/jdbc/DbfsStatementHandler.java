@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.function.Supplier;
 
@@ -56,8 +57,11 @@ class DbfsStatementHandler extends DbfsProxyHandler {
         if (name.equals("executeQuery") && args.length == 1) {
             ensureOpen();
             String sql = normalizedSql(args[0]);
-            QueryResult result = executeWithTrace("QUERY", sql, () -> sql,
-                    () -> state.client().executeQuery(sql, List.of()));
+            QueryResult result = builtInQueryResult(sql, List.of());
+            if (result == null) {
+                result = executeWithTrace("QUERY", sql, () -> sql,
+                        () -> state.client().executeQuery(sql, List.of()));
+            }
             currentResultSet = DbfsJdbcProxyFactory.newResultSet(result);
             updateCount = -1;
             return currentResultSet;
@@ -78,8 +82,11 @@ class DbfsStatementHandler extends DbfsProxyHandler {
             ensureOpen();
             String sql = normalizedSql(args[0]);
             if (looksLikeQuery(sql)) {
-                QueryResult result = executeWithTrace("QUERY", sql, () -> sql,
-                        () -> state.client().executeQuery(sql, List.of()));
+                QueryResult result = builtInQueryResult(sql, List.of());
+                if (result == null) {
+                    result = executeWithTrace("QUERY", sql, () -> sql,
+                            () -> state.client().executeQuery(sql, List.of()));
+                }
                 currentResultSet = DbfsJdbcProxyFactory.newResultSet(result);
                 updateCount = -1;
                 return true;
@@ -253,6 +260,40 @@ class DbfsStatementHandler extends DbfsProxyHandler {
         return (System.nanoTime() - startedAtNanos) / 1000;
     }
 
+    protected QueryResult builtInQueryResult(String sql, List<Object> parameters) {
+        if (parameters != null && !parameters.isEmpty()) {
+            return null;
+        }
+
+        String normalized = sql == null ? "" : sql.trim().replaceAll("\\s+", " ");
+        while (normalized.endsWith(";")) {
+            normalized = normalized.substring(0, normalized.length() - 1).trim();
+        }
+
+        String normalizedLower = normalized.toLowerCase(Locale.ROOT);
+        if (normalizedLower.equals("select version()")) {
+            return new QueryResult(
+                    List.of("version"),
+                    List.of(List.of("dbfs-jdbc 0.0.0")));
+        }
+
+        if (normalizedLower.equals("show all")) {
+            return new QueryResult(
+                    List.of("name", "setting", "description"),
+                    List.of(
+                            List.of("server_version", "dbfs-jdbc 0.0.0", "DBFS JDBC compatibility value"),
+                            List.of("server_encoding", "UTF8", "DBFS JDBC compatibility value"),
+                            List.of("client_encoding", "UTF8", "DBFS JDBC compatibility value")));
+        }
+
+        if (normalizedLower.startsWith("select * from pg_stat_")
+                || normalizedLower.startsWith("select * from pg_statio_")) {
+            return new QueryResult(List.of(), List.of());
+        }
+
+        return null;
+    }
+
     private Object unwrapStatement(Object proxy, Class<?> targetType) throws SQLException {
         if (targetType.isInstance(proxy)) {
             return proxy;
@@ -278,11 +319,14 @@ final class DbfsPreparedStatementHandler extends DbfsStatementHandler {
         if (name.equals("executeQuery") && args.length == 0) {
             ensureOpen();
             List<Object> ordered = orderedParameters(parameters);
-            QueryResult result = executeWithTrace(
-                    "QUERY",
-                    sql,
-                    () -> SqlLiteralRenderer.render(sql, ordered),
-                    () -> state.client().executeQuery(sql, ordered));
+            QueryResult result = builtInQueryResult(sql, ordered);
+            if (result == null) {
+                result = executeWithTrace(
+                        "QUERY",
+                        sql,
+                        () -> SqlLiteralRenderer.render(sql, ordered),
+                        () -> state.client().executeQuery(sql, ordered));
+            }
             ResultSet resultSet = DbfsJdbcProxyFactory.newResultSet(result);
             setCurrentResultSet(resultSet);
             setUpdateCount(-1);
@@ -307,11 +351,14 @@ final class DbfsPreparedStatementHandler extends DbfsStatementHandler {
             ensureOpen();
             List<Object> ordered = orderedParameters(parameters);
             if (looksLikeQuery(sql)) {
-                QueryResult result = executeWithTrace(
-                        "QUERY",
-                        sql,
-                        () -> SqlLiteralRenderer.render(sql, ordered),
-                        () -> state.client().executeQuery(sql, ordered));
+                QueryResult result = builtInQueryResult(sql, ordered);
+                if (result == null) {
+                    result = executeWithTrace(
+                            "QUERY",
+                            sql,
+                            () -> SqlLiteralRenderer.render(sql, ordered),
+                            () -> state.client().executeQuery(sql, ordered));
+                }
                 setCurrentResultSet(DbfsJdbcProxyFactory.newResultSet(result));
                 setUpdateCount(-1);
                 return true;

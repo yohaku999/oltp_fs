@@ -90,6 +90,50 @@ class DbfsDriverTest {
     }
 
     @Test
+    void statementHandlesVersionQueryLocally() throws SQLException {
+        try (Connection connection = DriverManager.getConnection("jdbc:dbfs://localhost:1/metadata");
+             Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery("SELECT version();")) {
+            assertTrue(resultSet.next());
+            assertEquals("dbfs-jdbc 0.0.0", resultSet.getString("version"));
+            assertFalse(resultSet.next());
+        }
+    }
+
+    @Test
+    void preparedStatementHandlesVersionQueryLocally() throws SQLException {
+        try (Connection connection = DriverManager.getConnection("jdbc:dbfs://localhost:1/metadata");
+             PreparedStatement statement = connection.prepareStatement("  select   version()  ");
+             ResultSet resultSet = statement.executeQuery()) {
+            assertTrue(resultSet.next());
+            assertEquals("dbfs-jdbc 0.0.0", resultSet.getString(1));
+            assertFalse(resultSet.next());
+        }
+    }
+
+    @Test
+    void statementHandlesShowAllLocally() throws SQLException {
+        try (Connection connection = DriverManager.getConnection("jdbc:dbfs://localhost:1/metadata");
+             Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery("SHOW ALL;")) {
+            assertTrue(resultSet.next());
+            assertEquals("server_version", resultSet.getString("name"));
+            assertEquals("dbfs-jdbc 0.0.0", resultSet.getString("setting"));
+            assertEquals("DBFS JDBC compatibility value", resultSet.getString("description"));
+        }
+    }
+
+    @Test
+    void statementHandlesPostgresMetricViewsLocally() throws SQLException {
+        try (Connection connection = DriverManager.getConnection("jdbc:dbfs://localhost:1/metadata");
+             Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery("SELECT * FROM pg_stat_database")) {
+            assertEquals(0, resultSet.getMetaData().getColumnCount());
+            assertFalse(resultSet.next());
+        }
+    }
+
+    @Test
     void sqlLiteralRendererRendersRepresentativePreparedStatementSql() {
         String rendered = SqlLiteralRenderer.render(
                 "INSERT INTO order_line VALUES (?, ?, ?, ?)",
