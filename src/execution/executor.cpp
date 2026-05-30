@@ -119,7 +119,7 @@ std::vector<RID> collectRidsNarrowedByPredicates(
   }
 
   IndexScanOperator scan(pool, table.requireIndexFile(),
-                         std::move(plan.encoded_keys));
+                         std::move(plan.encoded_keys), Op::Eq);
   return collectItems<RID>(scan);
 }
 
@@ -150,7 +150,7 @@ std::size_t removeMatchingRows(BufferPool& pool, Table& table,
     const auto index_file = table.indexFile();
     if (index_file.has_value()) {
       const std::string key = table.extractIndexKey(row);
-      BTreeCursor::findRID(pool, index_file->get(), key, true);
+      BTreeCursor::findRIDs(pool, index_file->get(), key, true);
     }
 
     wal.write(WALRecord::RecordType::DELETE, rid.heap_page_id,
@@ -171,9 +171,9 @@ void insertRow(BufferPool& pool, Table& table, const TypedRow& row, WAL& wal) {
     dbfs_log::execution().debug("Inserting record with key {} into table {}.",
          index_key::formatForDebug(key.value()),
          table.name());
-    std::optional<RID> existing_rid =
-        BTreeCursor::findRID(pool, index_file->get(), key.value());
-    if (existing_rid.has_value()) {
+    std::vector<RID> existing_rids =
+        BTreeCursor::findRIDs(pool, index_file->get(), key.value());
+    if (!existing_rids.empty()) {
       throw std::runtime_error(
           "Duplicate key is not allowed for indexed table: " + table.name());
     }
@@ -239,16 +239,27 @@ std::size_t updateMatchingRows(BufferPool& pool, Table& table,
 std::unique_ptr<TypedRowOperator> buildReadSource(
     BufferPool& pool, Table& table,
     const std::vector<UnboundComparisonPredicate>& predicates) {
-  IndexLookupPlan plan = IndexLookupPlanner::plan(table, predicates);
+  // IndexLookupPlan plan = IndexLookupPlanner::plan(table, predicates);
   const std::vector<BoundComparisonPredicate> bound_predicates =
       binder::bindPredicatesResolvableByTable(predicates, table);
-  if (!plan.canUseIndex()) {
-    return std::make_unique<SeqScanOperator>(pool, table.heapFile(),
-                                             table.schema(), bound_predicates);
-  }
+  // ここでindexが使えるかを確認する必要がある。
+  // キーの整合性の確認のみをすればいい。
+  // indexのキーの順番でそのカラムのいくつまでが、predicatesにあるかを確認する。それぞれのカラムの評価を抜き出す。
+  // その評価列をindex scan operatorに私、その順番でnarrow downしていく。
+  // あれ？でも今ってキーの大小をstringで比較しているので、キーを構成するカラムからstringを作成して、それを渡せばいい？
+  // でも、各キーで条件は違うよね。これより大きい小さいみたいな。どうすればいいんだっけ？
+  // if (!plan.canUseIndex()) {
+  //   return std::make_unique<SeqScanOperator>(pool, table.heapFile(),
+  //                                            table.schema(), bound_predicates);
+  // }
 
+  // 今は一つのキーに対して複数の比較方法が可能になった。
+  // 次は複数キーのテーブルに対して、複合キーでの比較、その次に一部のキーでの比較を可能にしていく。
+  // index scannerには、opとkeyのペアを複数渡せるようにする必要がある。
+  // planner必要か？
+  // requireしているけど、indexなかったらindexscanできんやん。
   auto scan = std::make_unique<IndexScanOperator>(
-      pool, table.requireIndexFile(), std::move(plan.encoded_keys));
+      pool, table.requireIndexFile(), std::move(plan.encoded_keys), Op::Eq);
   return std::make_unique<HeapFetchOperator>(std::move(scan), pool,
                                              table.heapFile(), table.schema(), bound_predicates);
 }

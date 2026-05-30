@@ -2,7 +2,9 @@
 #include <optional>
 #include <ostream>
 #include <string>
+#include <vector>
 
+#include "execution/comparison_predicate.h"
 #include "storage/runtime/bufferpool.h"
 #include "storage/index/rid.h"
 
@@ -20,9 +22,10 @@ class IntermediateCell;
  */
 class BTreeCursor {
  public:
-  static std::optional<RID> findRID(BufferPool& pool, File& indexFile,
-                                    const std::string& key,
-                                    bool do_invalidate = false);
+  static std::vector<RID> findRIDs(BufferPool& pool, File& indexFile,
+                                   const std::string& key,
+                                   bool do_invalidate = false,
+                                   Op op = Op::Eq);
   static int findLeafPageID(BufferPool& pool, File& indexFile,
                             const std::string& key);
   static IntermediateCell splitPage(BufferPool& pool, File& indexFile, Page* old_page, Page* parent_page);

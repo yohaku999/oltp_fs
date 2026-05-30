@@ -18,6 +18,7 @@ class SelectParser : private PgQueryJsonParser {
 
   std::vector<std::string> extractTableNames() const;
   std::vector<UnboundSelectItem> extractSelectItems() const;
+  std::vector<std::optional<std::string>> extractSelectAliases() const;
   std::vector<OrderBySpec> extractOrderBySpecs(const Schema& schema) const;
   std::optional<std::size_t> extractLimitCount() const;
   std::vector<UnboundComparisonPredicate> extractComparisonPredicates(

@@ -12,9 +12,9 @@
 #include "storage/runtime/bufferpool.h"
 #include "storage/page/cell.h"
 #include "index_key.h"
-#include "index_page.h"
 #include "logging.h"
 #include "storage/page/page.h"
+#include "storage/index/index_page.h"
 #include "storage/record/record_cell.h"
 
 namespace {
@@ -137,31 +137,55 @@ int BTreeCursor::findLeafPageID(BufferPool& pool, File& indexFile,
   return page_id;
 }
 
-std::optional<RID> BTreeCursor::findRID(BufferPool& pool, File& indexFile,
-                                        const std::string& key,
-                                        bool do_invalidate) {
+/**
+ * indexFileで定義される単一のindexキーに対して、"key"の値をopに基づいて比較し、一致しているRIDを返す。
+ * 一致はeq、gt、ge、lt、leのそれぞれに対応している。
+ * 
+ * この関数を複数キー、複数条件に対応させる。また、一部のキーに対しても対応させる。
+ * なぜ、index上でキーのdescなどが重要なのか？
+ */
+std::vector<RID> BTreeCursor::findRIDs(BufferPool& pool, File& indexFile,
+                                       const std::string& key,
+                                       bool do_invalidate,
+                                       Op op) {
   dbfs_log::index().debug("Finding RID for key {} in index file {}.",
             index_key::formatForDebug(key), indexFile.getFilePath());
   // NOTE: we decided not to invalidate intermediate nodes during traversal for
   // now. we will come back to this when we start to support concurrency.
-  int page_id = findLeafPageID(pool, indexFile, key);
-  Page* leaf_page = pool.pinPage(page_id, indexFile);
-  LeafIndexPage leaf(*leaf_page);
-  std::optional<RID> rid = leaf.findRef(key, do_invalidate);
-  pool.unpinPage(leaf_page, indexFile);
-  if (!rid.has_value()) {
-    dbfs_log::index().debug("Key {} not found in leaf page ID {} of index file {}.",
-          index_key::formatForDebug(key), page_id,
-          indexFile.getFilePath());
-    return std::nullopt;
-  }
+  std::vector<RID> matching_rids;
+  int page_id;
+  if (op == Op::Gt || op == Op::Ge || op == Op::Eq) {
+    // 右に走査する
+    page_id = findLeafPageID(pool, indexFile, key);
+  } else {
+    // get the left most leaf page and start searching from there.
+    page_id = indexFile.getRootPageID();
+    while (true) {
+      Page* page = pool.pinPage(page_id, indexFile);
+      if (page->isLeaf()) {
+        pool.unpinPage(page, indexFile);
+        break;
+      }
 
-    dbfs_log::index().debug(
-      "Found RID for key {} in leaf page ID {} of index file {}: "
-      "heap page ID {}, slot ID {}.",
-      index_key::formatForDebug(key), page_id, indexFile.getFilePath(),
-      rid->heap_page_id, rid->slot_id);
-  return rid;
+      InternalIndexPage internal(*page);
+      page_id = internal.leftMostChildPageId();
+      pool.unpinPage(page, indexFile);
+    }
+  }
+  while (page_id != LeafIndexPage::NO_RIGHT_SIBLING) {
+    Page* leaf_page = pool.pinPage(page_id, indexFile);
+    LeafIndexPage leaf(*leaf_page);
+    auto [next_page, rids] = leaf.findRef(key, do_invalidate, op);
+    pool.unpinPage(leaf_page, indexFile);
+    matching_rids.insert(matching_rids.end(), rids.begin(), rids.end());
+    page_id = next_page;
+  }
+  
+  if (matching_rids.empty()) {
+    dbfs_log::index().debug("Key {} not found in index file {}.",
+          index_key::formatForDebug(key), indexFile.getFilePath());
+  }
+  return matching_rids;
 }
 
 void BTreeCursor::insertIntoIndex(BufferPool& pool, File& indexFile,
@@ -260,9 +284,11 @@ IntermediateCell BTreeCursor::splitLeafPage(BufferPool& pool, File& index_file,
                                             const std::string& separate_key) {
   int new_page_id = pool.createPage(PageKind::LeafIndex, index_file);
   Page* new_page = pool.pinPage(new_page_id, index_file);
+  LeafIndexPage new_leaf(*new_page);
+  new_leaf.setRightSiblingPageId(old_page.getPageID());
+  
 
   LeafIndexPage old_leaf(old_page);
-  LeafIndexPage new_leaf(*new_page);
   old_leaf.transferAndCompactTo(new_leaf, separate_key);
 
   pool.unpinPage(new_page, index_file);

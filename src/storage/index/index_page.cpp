@@ -25,11 +25,13 @@ bool LeafIndexPage::hasKey(const std::string& key) const {
   return false;
 }
 
-std::optional<RID> LeafIndexPage::findRef(const std::string& key,
-                                          bool do_invalidate) {
+std::pair<uint16_t, std::vector<RID>> LeafIndexPage::findRef(const std::string& key,
+                                          bool do_invalidate, Op op) {
   /**
    * PERFORMANCE:Same consideration as Page::findLeafRef; kept verbatim.
    */
+  std::vector<RID> matching_rids;
+  bool need_to_scan_next_page = op != Op::Eq;
   for (int idx = 0; idx < page_.getSlotCount(); ++idx) {
     char* cell_data = page_.data() + page_.getCellOffsetOnXthPointer(idx);
     if (!Cell::isValid(cell_data)) {
@@ -37,18 +39,44 @@ std::optional<RID> LeafIndexPage::findRef(const std::string& key,
       continue;
     }
     LeafCell cell = cellAt(idx);
-    if (index_key::compare(cell.key(), key) == 0) {
+    const int compare_result = index_key::compare(cell.key(), key);
+    if (index_key::matches(cell.key(), key, op)) {
       if (do_invalidate) {
         dbfs_log::index().debug("LeafIndexPage::findRef invalidating slot {} for key {}", idx,
                   index_key::formatForDebug(key));
         page_.invalidateSlot(idx);
       }
-      return RID{cell.heap_page_id(), cell.slot_id()};
+      matching_rids.push_back(RID{cell.heap_page_id(), cell.slot_id()});
+    }
+    if(op == Op::Lt || op == Op::Le) {
+      // Since the cells are sorted by key, we can stop once the upper bound is reached.
+      if ((op == Op::Lt && compare_result >= 0) ||
+          (op == Op::Le && compare_result > 0)) {
+        need_to_scan_next_page = false;
+        break;
+      }
+    } else if (op == Op::Eq) {
+      if (compare_result > 0) {
+        need_to_scan_next_page = false;
+        break;
+      }
     }
   }
-  dbfs_log::index().debug("LeafIndexPage::findRef key {} not found in this page.",
-            index_key::formatForDebug(key));
-  return std::nullopt;
+  if (matching_rids.empty()) {
+    dbfs_log::index().debug("LeafIndexPage::findRef key {} not found in this page.",
+              index_key::formatForDebug(key));
+  }
+  
+  
+  if (need_to_scan_next_page) {
+    dbfs_log::index().debug("LeafIndexPage::findRef scanning next page for key {}.", index_key::formatForDebug(key));
+    // or should i just return page ID here?
+    return std::make_pair(this->getRightSiblingPageId(), matching_rids);  
+  }
+  else{
+    return std::make_pair(LeafIndexPage::NO_RIGHT_SIBLING, matching_rids);
+  }
+  
 }
 
 void LeafIndexPage::compact() {

@@ -9,6 +9,7 @@
 
 #include "schema/schema.h"
 #include "tuple/typed_row.h"
+#include "execution/comparison_predicate.h"
 
 namespace index_key {
 
@@ -117,6 +118,18 @@ inline std::string encodeRow(const Schema& schema, const TypedRow& row,
                                 schema.columns()[column_index].getType());
   }
   return encoded;
+}
+
+inline bool matches(std::string_view lhs, std::string_view rhs, Op op) {
+  const int result = lhs.compare(rhs);
+  switch (op) {
+    case Op::Eq: return result == 0;
+    case Op::Gt: return result > 0;
+    case Op::Ge: return result >= 0;
+    case Op::Lt: return result < 0;
+    case Op::Le: return result <= 0;
+  }
+  throw std::logic_error("Unsupported comparison operator.");
 }
 
 inline int compare(std::string_view lhs, std::string_view rhs) {

@@ -37,7 +37,13 @@ Page::Page(char* page_buffer, PageKind kind, uint16_t right_most_child_page_id,
   updateNodeTypeFlag(kind);
   updateSlotCount(0);
   updateSlotDirectoryOffset(Page::PAGE_SIZE_BYTE);
-  setRightMostChildPageId(right_most_child_page_id);
+  if (kind == PageKind::InternalIndex) {
+    setRightMostChildPageId(right_most_child_page_id);
+  } else if (kind == PageKind::LeafIndex) {
+    // for leaf page, we use the right-most child pointer in the header to store the right sibling page id.
+    // TODO: fix method name to avoid confusion.
+    setRightMostChildPageId(right_most_child_page_id);
+  }
   updatePageLSN(0);
   markDirty();
 }

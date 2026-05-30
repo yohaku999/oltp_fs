@@ -12,6 +12,7 @@
 #include "storage/runtime/file.h"
 #include "storage/page/page.h"
 #include "storage/index/index_key.h"
+#include "storage/index/index_page.h"
 #include "storage/index/leaf_cell.h"
 #include "storage/wal/wal.h"
 
@@ -42,7 +43,8 @@ class BTreeCursorTest : public ::testing::Test {
   static void initializeLeafPage(File& file) {
     std::array<char, Page::PAGE_SIZE_BYTE> buffer{};
     auto page = std::make_unique<Page>(
-        Page::initializeNew(buffer.data(), PageKind::LeafIndex, 0, 0));
+        Page::initializeNew(buffer.data(), PageKind::LeafIndex,
+                            LeafIndexPage::NO_RIGHT_SIBLING, 0));
     file.writePageFromBuffer(0, buffer.data());
   }
 };
@@ -89,11 +91,11 @@ TEST_F(BTreeCursorTest, InsertIntoIndexAndFindRecordLocation) {
   }
 
   for (int key : keys) {
-    auto rid =
-        BTreeCursor::findRID(*pool_, *index_file_, index_key::encodeInteger(key));
-    ASSERT_TRUE(rid.has_value());
-    EXPECT_EQ(rid->heap_page_id, heap_page_id);
-    EXPECT_EQ(rid->slot_id, slot_id);
+    auto rids =
+        BTreeCursor::findRIDs(*pool_, *index_file_, index_key::encodeInteger(key));
+    ASSERT_FALSE(rids.empty());
+    EXPECT_EQ(rids.front().heap_page_id, heap_page_id);
+    EXPECT_EQ(rids.front().slot_id, slot_id);
   }
 }
 
@@ -115,12 +117,47 @@ TEST_F(BTreeCursorTest, InsertManyKeysTriggersSplitAndIsSearchable) {
       << "index did not allocate any new pages";
 
   for (int key = 0; key < num_keys; ++key) {
-    auto rid =
-        BTreeCursor::findRID(*pool_, *index_file_, index_key::encodeInteger(key));
-    ASSERT_TRUE(rid.has_value()) << "missing index entry for key=" << key;
-    EXPECT_EQ(rid->heap_page_id, heap_page_id);
-    EXPECT_EQ(rid->slot_id, slot_id);
+    auto rids =
+        BTreeCursor::findRIDs(*pool_, *index_file_, index_key::encodeInteger(key));
+    ASSERT_FALSE(rids.empty()) << "missing index entry for key=" << key;
+    EXPECT_EQ(rids.front().heap_page_id, heap_page_id);
+    EXPECT_EQ(rids.front().slot_id, slot_id);
   }
+}
+
+TEST_F(BTreeCursorTest, FindRIDSupportsRangeOperatorsWithinLeaf) {
+  for (int key = 1; key <= 5; ++key) {
+    BTreeCursor::insertIntoIndex(*pool_, *index_file_,
+                                 index_key::encodeInteger(key),
+                                 static_cast<uint16_t>(key),
+                                 1);
+  }
+
+  auto heap_page_ids = [](const std::vector<RID>& rids) {
+    std::vector<uint16_t> values;
+    values.reserve(rids.size());
+    for (const RID& rid : rids) {
+      values.push_back(rid.heap_page_id);
+    }
+    return values;
+  };
+
+  EXPECT_EQ((std::vector<uint16_t>{3, 4, 5}),
+            heap_page_ids(BTreeCursor::findRIDs(
+                *pool_, *index_file_, index_key::encodeInteger(2), false,
+                Op::Gt)));
+  EXPECT_EQ((std::vector<uint16_t>{3, 4, 5}),
+            heap_page_ids(BTreeCursor::findRIDs(
+                *pool_, *index_file_, index_key::encodeInteger(3), false,
+                Op::Ge)));
+  EXPECT_EQ((std::vector<uint16_t>{1, 2}),
+            heap_page_ids(BTreeCursor::findRIDs(
+                *pool_, *index_file_, index_key::encodeInteger(3), false,
+                Op::Lt)));
+  EXPECT_EQ((std::vector<uint16_t>{1, 2}),
+            heap_page_ids(BTreeCursor::findRIDs(
+                *pool_, *index_file_, index_key::encodeInteger(2), false,
+                Op::Le)));
 }
 
 TEST_F(BTreeCursorTest, InsertCompactsFullyInvalidLeafBeforeSplitting) {
@@ -144,11 +181,11 @@ TEST_F(BTreeCursorTest, InsertCompactsFullyInvalidLeafBeforeSplitting) {
   const std::string live_key = "live_key_" + std::string(96, 'y');
   BTreeCursor::insertIntoIndex(*pool_, *index_file_, live_key, 7, 9);
 
-  std::optional<RID> rid =
-      BTreeCursor::findRID(*pool_, *index_file_, live_key);
-  ASSERT_TRUE(rid.has_value());
-  EXPECT_EQ(rid->heap_page_id, 7);
-  EXPECT_EQ(rid->slot_id, 9);
+  std::vector<RID> rids =
+      BTreeCursor::findRIDs(*pool_, *index_file_, live_key);
+  ASSERT_FALSE(rids.empty());
+  EXPECT_EQ(rids.front().heap_page_id, 7);
+  EXPECT_EQ(rids.front().slot_id, 9);
 }
 
 TEST_F(BTreeCursorTest, InsertCompositeKeysAcrossInternalSplitsRemainsSearchable) {
@@ -163,10 +200,10 @@ TEST_F(BTreeCursorTest, InsertCompositeKeysAcrossInternalSplitsRemainsSearchable
   }
 
   for (int customer_id : {1, 2, 127, 4096, 16384, 2297, 30000}) {
-    auto rid = BTreeCursor::findRID(*pool_, *index_file_,
+    auto rids = BTreeCursor::findRIDs(*pool_, *index_file_,
                                     encodeCustomerPrimaryKey(1, 7, customer_id));
-    ASSERT_TRUE(rid.has_value()) << "missing composite index entry for customer_id="
+    ASSERT_FALSE(rids.empty()) << "missing composite index entry for customer_id="
                                  << customer_id;
-    EXPECT_EQ(rid->heap_page_id, heap_page_id);
+    EXPECT_EQ(rids.front().heap_page_id, heap_page_id);
   }
 }

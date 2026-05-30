@@ -146,7 +146,16 @@ std::vector<std::string> selectColumnNames(const SelectParser& parser) {
 
   const Schema joined_schema = joinedSchemaForTables(tables);
   std::vector<std::string> columns;
-  for (const UnboundSelectItem& item : parser.extractSelectItems()) {
+  const std::vector<UnboundSelectItem> select_items = parser.extractSelectItems();
+  const std::vector<std::optional<std::string>> aliases =
+      parser.extractSelectAliases();
+  for (std::size_t idx = 0; idx < select_items.size(); ++idx) {
+    if (idx < aliases.size() && aliases[idx].has_value()) {
+      columns.push_back(aliases[idx].value());
+      continue;
+    }
+
+    const UnboundSelectItem& item = select_items[idx];
     if (std::holds_alternative<SelectAllItem>(item)) {
       for (const Column& column : joined_schema.columns()) {
         columns.push_back(column.getName());

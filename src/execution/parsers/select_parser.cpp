@@ -98,6 +98,22 @@ std::vector<UnboundSelectItem> SelectParser::extractSelectItems() const {
   return select_items;
 }
 
+std::vector<std::optional<std::string>> SelectParser::extractSelectAliases() const {
+  const auto& targets = statementNode().at("SelectStmt").at("targetList");
+
+  std::vector<std::optional<std::string>> aliases;
+  aliases.reserve(targets.size());
+  for (const auto& target : targets) {
+    const auto& res_target = target.at("ResTarget");
+    if (res_target.contains("name")) {
+      aliases.push_back(res_target.at("name").get<std::string>());
+    } else {
+      aliases.push_back(std::nullopt);
+    }
+  }
+  return aliases;
+}
+
 std::vector<OrderBySpec> SelectParser::extractOrderBySpecs(
     const Schema& schema) const {
   const auto& select_stmt = statementNode().at("SelectStmt");

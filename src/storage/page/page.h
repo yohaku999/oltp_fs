@@ -17,8 +17,8 @@ enum class PageKind { Heap, LeafIndex, InternalIndex };
  * - node type flag (1 byte): 0 for intermediate page, 1 for leaf page.
  * - slot count (2 bytes): the number of cells in the page.
  * - slot directory offset (2 bytes): the offset of the start of the cell area.
- * - right-most child pointer (2 bytes): valid for intermediate pages, 0 for
- * leaf pages.
+ * - intermediate pages : right-most child pointer (2 bytes): valid
+ *   - leaf pages : right sibling page id (2 bytes)
  * - page LSN (8 bytes): LSN of the latest WAL record whose effects are
  * reflected in this page (used for WAL / recovery coordination). The remaining
  * bytes in the 256-byte header are reserved for future use.

@@ -5,6 +5,7 @@
 #include <string>
 
 #include "intermediate_cell.h"
+#include "index_key.h"
 #include "leaf_cell.h"
 #include "storage/page/page.h"
 #include "rid.h"
@@ -14,6 +15,7 @@
 
 class LeafIndexPage {
  public:
+  static constexpr uint16_t NO_RIGHT_SIBLING = 65535; // special page ID indicating no right sibling for leaf pages.
   explicit LeafIndexPage(Page& page) : page_(page) {
     if (!page_.isLeaf()) {
       throw std::logic_error("LeafIndexPage constructed with non-leaf Page");
@@ -25,11 +27,19 @@ class LeafIndexPage {
 
   LeafCell cellAt(int slot_id) const;
   bool hasKey(const std::string& key) const;
-  std::optional<RID> findRef(const std::string& key, bool do_invalidate);
+  std::pair<uint16_t, std::vector<RID>> findRef(const std::string& key, bool do_invalidate, Op op);
   void compact();
+  void getRightSidePageID();
 
   void transferAndCompactTo(LeafIndexPage& dst,
                             const std::string& separate_key);
+
+  uint16_t getRightSiblingPageId() {
+    return this->page_.rightMostChildPageId();
+  }
+  void setRightSiblingPageId(uint16_t page_id) {
+    this->page_.setRightMostChildPageId(page_id);
+  }
 
  private:
   Page& page_;
@@ -52,6 +62,29 @@ class InternalIndexPage {
   void compact();
   void transferAndCompactTo(InternalIndexPage& dst,
                             const std::string& separate_key);
+  uint16_t leftMostChildPageId() const {
+    std::optional<IntermediateCell> leftmost;
+
+    for (int idx = 0; idx < page_.getSlotCount(); ++idx) {
+      char* cell_data = page_.data() + page_.getCellOffsetOnXthPointer(idx);
+      if (!Cell::isValid(cell_data)) {
+        continue;
+      }
+
+      IntermediateCell cell = cellAt(idx);
+      if (!leftmost.has_value() ||
+          index_key::compare(cell.key(), leftmost->key()) < 0) {
+        leftmost = cell;
+      }
+    }
+
+    if (!leftmost.has_value()) {
+      throw std::logic_error(
+          "InternalIndexPage::leftMostChildPageId: internal page has no valid separator cell");
+    }
+
+    return leftmost->page_id();
+  }
 
  private:
   Page& page_;

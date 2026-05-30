@@ -9,6 +9,7 @@
 #include "logging.h"
 #include "storage/index/btreecursor.h"
 #include "storage/index/index_key.h"
+#include "storage/index/index_page.h"
 #include "storage/page/page.h"
 #include "storage/record/record_cell.h"
 #include "storage/record/record_serializer.h"
@@ -96,7 +97,8 @@ void Table::createIndex(const std::vector<std::string>& column_names) {
 
   try {
     std::array<char, Page::PAGE_SIZE_BYTE> index_root_buffer{};
-    Page::initializeNew(index_root_buffer.data(), PageKind::LeafIndex, 0, 0);
+    Page::initializeNew(index_root_buffer.data(), PageKind::LeafIndex,
+                        LeafIndexPage::NO_RIGHT_SIBLING, 0);
     index_file_->writePageFromBuffer(0, index_root_buffer.data());
 
     TableMetadataStore::write(
