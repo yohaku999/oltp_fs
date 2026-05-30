@@ -10,6 +10,8 @@
 #include <utility>
 #include <vector>
 
+#include "storage/index/intermediate_cell.h"
+#include "storage/index/leaf_cell.h"
 #include "logging.h"
 #include "storage/record/record_cell.h"
 
@@ -58,6 +60,11 @@ Page::Page(char* page_buffer, uint16_t page_id)
  */
 std::optional<int> Page::insertCell(
     const std::vector<std::byte>& serialized_cell) {
+  return insertCell(serialized_cell, nullptr);
+}
+
+std::optional<int> Page::insertCell(
+    const std::vector<std::byte>& serialized_cell, const Cell* cell) {
   dbfs_log::storage().debug("Attempting to insert serialized cell into page ID {}", getPageID());
 
   const size_t cell_content_start_offset = getSlotDirectoryOffset();
@@ -83,13 +90,46 @@ std::optional<int> Page::insertCell(
 
   std::memcpy(cell_data_start, serialized_cell.data(), serialized_cell.size());
 
-  // update cell pointer.
-  // cell pointers should be sored by key in ascending order? For now, we just
-  // insert the new cell pointer to the end of cell pointers, so the cell
-  // pointers are not sorted by key, but we can implement the sorting in the
-  // future if needed.
-  char* slot_pointer = page_buffer_ + existing_slot_end_offset;
-  std::memcpy(slot_pointer, &new_cell_start_offset, sizeof(uint16_t));
+  // For internal index page, we need to keep the cell pointers sorted by key in ascending order,
+  // so we need to find the correct position to insert the new cell pointer and shift the existing cell pointers if necessary.
+  char* insert_slot_pointer = page_buffer_ + existing_slot_end_offset;
+  int inserted_slot_id = getSlotCount();
+  if(cell != nullptr &&
+     (cell->kind() == CellKind::Intermediate || cell->kind() == CellKind::Leaf)) {
+    
+    int slot_count = getSlotCount();
+    int insert_position = 0;
+    while (insert_position < slot_count) {
+      char* existing_cell_data_start =
+          page_buffer_ + getCellOffsetOnXthPointer(insert_position);
+
+      // skip the invalid cell, since we're never going to use them.
+      if (!Cell::isValid(existing_cell_data_start)) {
+        insert_position++;
+        continue;
+      }
+      std::string existing_cell_key;
+      if (cell->kind() == CellKind::Intermediate) {
+        existing_cell_key = IntermediateCell::getKey(existing_cell_data_start);
+      } else {
+        existing_cell_key = LeafCell::getKey(existing_cell_data_start);
+      }
+      if (cell->key() < existing_cell_key) {
+        break;
+      }
+      insert_position++;
+    }
+    if (insert_position < slot_count) {
+      // shift the existing cell pointers to the right to make space for the new cell pointer.
+      char* src = page_buffer_ + Page::HEADDER_SIZE_BYTE + Page::CELL_POINTER_SIZE * insert_position;
+      char* dst = src + Page::CELL_POINTER_SIZE;
+      size_t num_bytes_to_move = (slot_count - insert_position) * Page::CELL_POINTER_SIZE;
+      std::memmove(dst, src, num_bytes_to_move);
+    }
+    insert_slot_pointer = page_buffer_ + Page::HEADDER_SIZE_BYTE + Page::CELL_POINTER_SIZE * insert_position;
+    inserted_slot_id = insert_position;
+  }
+  std::memcpy(insert_slot_pointer, &new_cell_start_offset, sizeof(uint16_t));
 
   // update headder.
   updateSlotDirectoryOffset(new_cell_start_offset);
@@ -101,14 +141,14 @@ std::optional<int> Page::insertCell(
       "Inserted a new cell into page. New slot count: {}, new slot directory "
       "offset: {}",
       getSlotCount(), getSlotDirectoryOffset());
-  return getSlotCount() - 1;
+  return inserted_slot_id;
 }
 
 std::optional<int> Page::insertCell(const Cell& cell) {
   dbfs_log::storage().debug("Attempting to insert {} cell into page ID {}",
             static_cast<int>(cell.kind()), getPageID());
   std::vector<std::byte> serialized_data = cell.serialize();
-  return insertCell(serialized_data);
+  return insertCell(serialized_data, &cell);
 }
 
 // private methods

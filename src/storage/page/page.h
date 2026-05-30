@@ -43,6 +43,8 @@ class Page {
   uint16_t rightMostChildPageId() const;
   void setRightMostChildPageId(uint16_t page_id);
   void updatePageLSN(std::uint64_t lsn);
+  std::optional<int> insertCell(const std::vector<std::byte>& serialized_cell,
+                                const Cell* cell);
   bool is_dirty_ = false;
   int page_id_ = -1;
   int parent_page_id_ = HAS_NO_PARENT;

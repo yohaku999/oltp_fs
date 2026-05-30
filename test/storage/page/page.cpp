@@ -38,7 +38,8 @@ TEST(PageTest, InsertLeafPageAndFind) {
     int key;
     uint16_t heap_page_id;
     uint16_t slot_id;
-  } entries[] = {{11111, 999, 15}, {22222, 500, 2}, {33333, 123, 7}};
+  } entries[] = {{22222, 500, 2}, {11111, 999, 15}, {33333, 123, 7}};
+  int expected_slot_ids[] = {0, 0, 2};
 
   for (int i = 0; i < static_cast<int>(std::size(entries)); ++i) {
     const Entry& entry = entries[i];
@@ -47,7 +48,7 @@ TEST(PageTest, InsertLeafPageAndFind) {
     ASSERT_TRUE(slot_id_opt.has_value());
     EXPECT_TRUE(page->isDirty());
     int slot_id = slot_id_opt.value();
-    EXPECT_EQ(i, slot_id);
+    EXPECT_EQ(expected_slot_ids[i], slot_id);
 
     LeafIndexPage leaf(*page);
     auto ref_opt = leaf.findRef(encodeIntKey(entry.key), false);
@@ -55,6 +56,11 @@ TEST(PageTest, InsertLeafPageAndFind) {
     EXPECT_EQ(entry.heap_page_id, ref_opt->heap_page_id);
     EXPECT_EQ(entry.slot_id, ref_opt->slot_id);
   }
+
+  LeafIndexPage leaf(*page);
+  EXPECT_EQ(encodeIntKey(11111), leaf.cellAt(0).key());
+  EXPECT_EQ(encodeIntKey(22222), leaf.cellAt(1).key());
+  EXPECT_EQ(encodeIntKey(33333), leaf.cellAt(2).key());
 }
 
 TEST(PageTest, TransferCellsToCompactsSourcePage) {
@@ -174,6 +180,10 @@ TEST(PageTest, InsertIntermediatePageAndFind) {
   }
 
   InternalIndexPage internal(*page);
+
+  EXPECT_EQ(encodeIntKey(10000), internal.cellAt(0).key());
+  EXPECT_EQ(encodeIntKey(20000), internal.cellAt(1).key());
+  EXPECT_EQ(encodeIntKey(30000), internal.cellAt(2).key());
 
   for (const Entry& entry : entries) {
     uint16_t child_page = internal.findChildPage(encodeIntKey(entry.key));
