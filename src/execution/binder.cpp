@@ -38,7 +38,7 @@ std::optional<BoundColumnRef> tryBindColumnRef(
         table.schema().getColumnIndex(column_ref.column_name);
     if (column_index >= 0) {
       const BoundColumnRef bound_column{
-          0, joined_column_offset + static_cast<std::size_t>(column_index)};
+          0, joined_column_offset + static_cast<std::size_t>(column_index), table.schema().columns().at(column_index).getType()};
 
       if (has_table_name) {
         return bound_column;
@@ -124,7 +124,7 @@ std::vector<BoundSelectItem> bindSelectItems(
         for (std::size_t column_index = 0; column_index < column_count;
              ++column_index) {
           bound_select_items.push_back(
-              BoundColumnRef{0, joined_column_offset + column_index});
+              BoundColumnRef{0, joined_column_offset + column_index, table.schema().columns().at(column_index).getType()});
         }
         joined_column_offset += column_count;
       }

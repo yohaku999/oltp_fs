@@ -25,13 +25,20 @@ bool LeafIndexPage::hasKey(const std::string& key) const {
   return false;
 }
 
-std::pair<uint16_t, std::vector<RID>> LeafIndexPage::findRef(const std::string& key,
-                                          bool do_invalidate, Op op) {
+/**
+ * Find the RIDs inside right_boundary filtered by index_predicates.
+ * Invalidates the corresponding slots if do_invalidate is true.
+ * @param index_predicates are expected to only contain predicates on index key columns.
+ * @return a pair of (next_page_id, matching_rids). next_page_id is the right sibling page ID if the right_boundary is not found in the current page and we need to continue searching; otherwise, it is NO_RIGHT_SIBLING indicating we can stop searching. matching_rids are the RIDs matching the right_boundary and index_predicates in the current page.
+ * 
+ */
+std::pair<uint16_t, std::vector<RID>> LeafIndexPage::findRef(BTreeCursor::Boundary right_boundary, bool do_invalidate, std::vector<BoundComparisonPredicate> index_predicates) {
   /**
    * PERFORMANCE:Same consideration as Page::findLeafRef; kept verbatim.
    */
+  
   std::vector<RID> matching_rids;
-  bool need_to_scan_next_page = op != Op::Eq;
+  bool need_to_scan_next_page = true;
   for (int idx = 0; idx < page_.getSlotCount(); ++idx) {
     char* cell_data = page_.data() + page_.getCellOffsetOnXthPointer(idx);
     if (!Cell::isValid(cell_data)) {
@@ -39,38 +46,22 @@ std::pair<uint16_t, std::vector<RID>> LeafIndexPage::findRef(const std::string& 
       continue;
     }
     LeafCell cell = cellAt(idx);
-    const int compare_result = index_key::compare(cell.key(), key);
-    if (index_key::matches(cell.key(), key, op)) {
+    if (right_boundary.composite_key.empty() ||
+        index_key::matchesPrefix(cell.key(), right_boundary, false)) {
+      TypedRow typed_row = index_key::decodeToTypedRow(cell.key());
+      if(!matchesPredicates(typed_row, index_predicates)){
+        continue;
+      }
       if (do_invalidate) {
-        dbfs_log::index().debug("LeafIndexPage::findRef invalidating slot {} for key {}", idx,
-                  index_key::formatForDebug(key));
         page_.invalidateSlot(idx);
       }
       matching_rids.push_back(RID{cell.heap_page_id(), cell.slot_id()});
+    }else{
+      need_to_scan_next_page = false;
     }
-    if(op == Op::Lt || op == Op::Le) {
-      // Since the cells are sorted by key, we can stop once the upper bound is reached.
-      if ((op == Op::Lt && compare_result >= 0) ||
-          (op == Op::Le && compare_result > 0)) {
-        need_to_scan_next_page = false;
-        break;
-      }
-    } else if (op == Op::Eq) {
-      if (compare_result > 0) {
-        need_to_scan_next_page = false;
-        break;
-      }
-    }
-  }
-  if (matching_rids.empty()) {
-    dbfs_log::index().debug("LeafIndexPage::findRef key {} not found in this page.",
-              index_key::formatForDebug(key));
-  }
-  
-  
+
+  }  
   if (need_to_scan_next_page) {
-    dbfs_log::index().debug("LeafIndexPage::findRef scanning next page for key {}.", index_key::formatForDebug(key));
-    // or should i just return page ID here?
     return std::make_pair(this->getRightSiblingPageId(), matching_rids);  
   }
   else{
@@ -179,7 +170,10 @@ uint16_t InternalIndexPage::rightMostChildPageId() const {
   return page_.rightMostChildPageId();
 }
 
+// このページに対し、キーが含まれているはずの子ページを返す。
+// ここでは、複数キーを持つのではなく、比較可能なキー？string?の形で引数として持って、上の段階で複数キーから比較可能なキーをつくる。
 uint16_t InternalIndexPage::findChildPage(const std::string& key) {
+  // ここソートしているけど、もう不要なのでは？
   std::vector<IntermediateCell> cells;
   cells.reserve(page_.getSlotCount());
   for (int idx = 0; idx < page_.getSlotCount(); ++idx) {
@@ -194,7 +188,9 @@ uint16_t InternalIndexPage::findChildPage(const std::string& key) {
             [](const IntermediateCell& a, const IntermediateCell& b) {
               return index_key::compare(a.key(), b.key()) < 0;
             });
+  // cellのchildには、cellのkey以下かつ、左隣のkeyより大きいキーが入っている. 
 
+  // keyより大きい最初のセルを探す。見つからなければ右端の子ページに行く。
   for (const IntermediateCell& cell : cells) {
     if (index_key::compare(cell.key(), key) >= 0) {
       return cell.page_id();

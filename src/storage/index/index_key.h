@@ -1,15 +1,19 @@
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <stdexcept>
+
 #include <string>
 #include <string_view>
 #include <vector>
+#include <unordered_set>
 
 #include "schema/schema.h"
 #include "tuple/typed_row.h"
 #include "execution/comparison_predicate.h"
+#include "storage/index/btreecursor.h"
 
 namespace index_key {
 
@@ -132,6 +136,47 @@ inline bool matches(std::string_view lhs, std::string_view rhs, Op op) {
   throw std::logic_error("Unsupported comparison operator.");
 }
 
+inline bool startsWith(std::string_view key, std::string_view prefix) {
+  return key.size() >= prefix.size() &&
+         key.substr(0, prefix.size()) == prefix;
+}
+
+inline int compareWithPrefix(std::string_view key, std::string_view prefix) {
+  const std::size_t compare_size = std::min(key.size(), prefix.size());
+  const int result = key.substr(0, compare_size).compare(
+      prefix.substr(0, compare_size));
+  if (result < 0) {
+    return -1;
+  }
+  if (result > 0) {
+    return 1;
+  }
+  if (key.size() < prefix.size()) {
+    return -1;
+  }
+  return 0;
+}
+
+inline bool matchesPrefix(std::string_view key, BTreeCursor::Boundary boundary, bool is_boundary_left) {
+  const int result = compareWithPrefix(key, boundary.composite_key);
+  if(is_boundary_left) {
+    // For left boundary, we want keys that are greater than (or equal to, if inclusive) the boundary.
+    if (boundary.is_inclusive) {
+      return result >= 0;
+    } else {
+      return result > 0;
+    }
+  } else {
+    // For right boundary, we want keys that are less than (or equal to, if inclusive) the boundary.
+    if (boundary.is_inclusive) {
+      return result <= 0;
+    } else {
+      return result < 0;
+    }
+  }
+  throw std::logic_error("Unsupported comparison operator.");
+}
+
 inline int compare(std::string_view lhs, std::string_view rhs) {
   const int result = lhs.compare(rhs);
   if (result < 0) {
@@ -154,4 +199,66 @@ inline std::string formatForDebug(std::string_view key) {
   return formatted;
 }
 
+inline TypedRow decodeToTypedRow(std::string_view key) {
+  TypedRow row;
+  std::size_t pos = 0;
+  while (pos < key.size()) {
+    char type = key[pos++];
+    switch (type) {
+      case 'I': {
+        if (pos + sizeof(std::uint32_t) > key.size()) {
+          throw std::runtime_error("Invalid index key encoding.");
+        }
+        std::uint32_t sortable = 0;
+        for (int shift = 24; shift >= 0; shift -= 8) {
+          sortable |= static_cast<std::uint32_t>(
+              static_cast<unsigned char>(key[pos++])) << shift;
+        }
+        int value = static_cast<int>(sortable ^ 0x80000000u);
+        row.values.push_back(value);
+        break;
+      }
+      case 'D': {
+        if (pos + sizeof(std::uint64_t) > key.size()) {
+          throw std::runtime_error("Invalid index key encoding.");
+        }
+        std::uint64_t sortable = 0;
+        for (int shift = 56; shift >= 0; shift -= 8) {
+          sortable |= static_cast<std::uint64_t>(
+              static_cast<unsigned char>(key[pos++])) << shift;
+        }
+        std::uint64_t bits =
+            (sortable & (1ull << 63)) != 0 ? ~sortable : (sortable ^ (1ull << 63));
+        double value;
+        std::memcpy(&value, &bits, sizeof(value));
+        row.values.push_back(value);
+        break;
+      }
+      case 'S': {
+        std::string value;
+        while (pos < key.size()) {
+          char byte = key[pos++];
+          if (byte == '\0') {
+            if (pos < key.size() && key[pos] == '\0') {
+              pos++;
+              break;
+            }
+            if (pos < key.size() && static_cast<unsigned char>(key[pos]) == 0xFF) {
+              pos++;
+              value.push_back('\0');
+              continue;
+            }
+            throw std::runtime_error("Invalid index key encoding.");
+          }
+          value.push_back(byte);
+        }
+        row.values.push_back(std::move(value));
+        break;
+      }
+      default:
+        throw std::runtime_error("Invalid index key encoding: unknown type prefix.");
+    }
+  }
+  return row;
+}
 }  // namespace index_key

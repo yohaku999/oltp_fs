@@ -21,11 +21,14 @@ class IntermediateCell;
  * provides page caching.
  */
 class BTreeCursor {
+  
  public:
+  struct Boundary {
+    std::string composite_key;
+    bool is_inclusive;
+  };
   static std::vector<RID> findRIDs(BufferPool& pool, File& indexFile,
-                                   const std::string& key,
-                                   bool do_invalidate = false,
-                                   Op op = Op::Eq);
+                                       bool do_invalidate, const std::vector<std::vector<BoundComparisonPredicate>>& ordered_predicates, const std::vector<std::size_t>& key_order_indexes);
   static int findLeafPageID(BufferPool& pool, File& indexFile,
                             const std::string& key);
   static IntermediateCell splitPage(BufferPool& pool, File& indexFile, Page* old_page, Page* parent_page);

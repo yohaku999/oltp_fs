@@ -51,6 +51,36 @@ class BTreeCursorTest : public ::testing::Test {
 
 namespace {
 
+std::string encodeIntKey(int value) {
+  return index_key::encodeFieldValue(FieldValue{static_cast<Column::IntegerType>(value)},
+                                     Column::Type::Integer);
+}
+
+std::string encodeVarcharKey(const std::string& value) {
+  return index_key::encodeFieldValue(FieldValue{value}, Column::Type::Varchar);
+}
+
+BoundComparisonPredicate intPredicate(std::size_t column_index, Op op,
+                                      int value) {
+  return BoundComparisonPredicate{
+      op,
+      BoundColumnRef{0, column_index, Column::Type::Integer},
+      FieldValue{static_cast<Column::IntegerType>(value)}};
+}
+
+BoundComparisonPredicate varcharPredicate(std::size_t column_index, Op op,
+                                          const std::string& value) {
+  return BoundComparisonPredicate{
+      op,
+      BoundColumnRef{0, column_index, Column::Type::Varchar},
+      FieldValue{value}};
+}
+
+std::vector<RID> findIntRIDs(BufferPool& pool, File& index_file, int key) {
+  return BTreeCursor::findRIDs(pool, index_file, false,
+                              {{intPredicate(0, Op::Eq, key)}}, {0});
+}
+
 std::string encodeCustomerPrimaryKey(int warehouse_id, int district_id,
                                      int customer_id) {
   std::string key;
@@ -61,6 +91,28 @@ std::string encodeCustomerPrimaryKey(int warehouse_id, int district_id,
   key += index_key::encodeInteger(district_id);
   key.push_back('I');
   key += index_key::encodeInteger(customer_id);
+  return key;
+}
+
+std::string encodeOrderLinePrimaryKeyPrefix(int warehouse_id, int district_id,
+                                            int order_id) {
+  std::string key;
+  key.reserve(15);
+  key.push_back('I');
+  key += index_key::encodeInteger(warehouse_id);
+  key.push_back('I');
+  key += index_key::encodeInteger(district_id);
+  key.push_back('I');
+  key += index_key::encodeInteger(order_id);
+  return key;
+}
+
+std::string encodeOrderLinePrimaryKey(int warehouse_id, int district_id,
+                                      int order_id, int line_number) {
+  std::string key = encodeOrderLinePrimaryKeyPrefix(warehouse_id, district_id,
+                                                    order_id);
+  key.push_back('I');
+  key += index_key::encodeInteger(line_number);
   return key;
 }
 
@@ -86,13 +138,11 @@ TEST_F(BTreeCursorTest, InsertIntoIndexAndFindRecordLocation) {
 
   for (int key : keys) {
     BTreeCursor::insertIntoIndex(*pool_, *index_file_,
-                                 index_key::encodeInteger(key),
-                                 heap_page_id, slot_id);
+                                 encodeIntKey(key), heap_page_id, slot_id);
   }
 
   for (int key : keys) {
-    auto rids =
-        BTreeCursor::findRIDs(*pool_, *index_file_, index_key::encodeInteger(key));
+    auto rids = findIntRIDs(*pool_, *index_file_, key);
     ASSERT_FALSE(rids.empty());
     EXPECT_EQ(rids.front().heap_page_id, heap_page_id);
     EXPECT_EQ(rids.front().slot_id, slot_id);
@@ -108,8 +158,7 @@ TEST_F(BTreeCursorTest, InsertManyKeysTriggersSplitAndIsSearchable) {
   const int num_keys = 500;
   for (int key = 0; key < num_keys; ++key) {
     BTreeCursor::insertIntoIndex(*pool_, *index_file_,
-                                 index_key::encodeInteger(key),
-                                 heap_page_id, slot_id);
+                                 encodeIntKey(key), heap_page_id, slot_id);
   }
 
   const int max_page_after = index_file_->getMaxPageID();
@@ -117,8 +166,7 @@ TEST_F(BTreeCursorTest, InsertManyKeysTriggersSplitAndIsSearchable) {
       << "index did not allocate any new pages";
 
   for (int key = 0; key < num_keys; ++key) {
-    auto rids =
-        BTreeCursor::findRIDs(*pool_, *index_file_, index_key::encodeInteger(key));
+    auto rids = findIntRIDs(*pool_, *index_file_, key);
     ASSERT_FALSE(rids.empty()) << "missing index entry for key=" << key;
     EXPECT_EQ(rids.front().heap_page_id, heap_page_id);
     EXPECT_EQ(rids.front().slot_id, slot_id);
@@ -127,10 +175,8 @@ TEST_F(BTreeCursorTest, InsertManyKeysTriggersSplitAndIsSearchable) {
 
 TEST_F(BTreeCursorTest, FindRIDSupportsRangeOperatorsWithinLeaf) {
   for (int key = 1; key <= 5; ++key) {
-    BTreeCursor::insertIntoIndex(*pool_, *index_file_,
-                                 index_key::encodeInteger(key),
-                                 static_cast<uint16_t>(key),
-                                 1);
+    BTreeCursor::insertIntoIndex(*pool_, *index_file_, encodeIntKey(key),
+                                 static_cast<uint16_t>(key), 1);
   }
 
   auto heap_page_ids = [](const std::vector<RID>& rids) {
@@ -144,20 +190,46 @@ TEST_F(BTreeCursorTest, FindRIDSupportsRangeOperatorsWithinLeaf) {
 
   EXPECT_EQ((std::vector<uint16_t>{3, 4, 5}),
             heap_page_ids(BTreeCursor::findRIDs(
-                *pool_, *index_file_, index_key::encodeInteger(2), false,
-                Op::Gt)));
+                *pool_, *index_file_, false,
+                {{intPredicate(0, Op::Gt, 2)}}, {0})));
   EXPECT_EQ((std::vector<uint16_t>{3, 4, 5}),
             heap_page_ids(BTreeCursor::findRIDs(
-                *pool_, *index_file_, index_key::encodeInteger(3), false,
-                Op::Ge)));
+                *pool_, *index_file_, false,
+                {{intPredicate(0, Op::Ge, 3)}}, {0})));
   EXPECT_EQ((std::vector<uint16_t>{1, 2}),
             heap_page_ids(BTreeCursor::findRIDs(
-                *pool_, *index_file_, index_key::encodeInteger(3), false,
-                Op::Lt)));
+                *pool_, *index_file_, false,
+                {{intPredicate(0, Op::Lt, 3)}}, {0})));
   EXPECT_EQ((std::vector<uint16_t>{1, 2}),
             heap_page_ids(BTreeCursor::findRIDs(
-                *pool_, *index_file_, index_key::encodeInteger(2), false,
-                Op::Le)));
+                *pool_, *index_file_, false,
+                {{intPredicate(0, Op::Le, 2)}}, {0})));
+}
+
+TEST_F(BTreeCursorTest, FindRIDSupportsCompositePrefixEquality) {
+  BTreeCursor::insertIntoIndex(*pool_, *index_file_,
+                               encodeOrderLinePrimaryKey(1, 7, 3000, 15),
+                               10, 1);
+  BTreeCursor::insertIntoIndex(*pool_, *index_file_,
+                               encodeOrderLinePrimaryKey(1, 7, 3001, 1),
+                               11, 1);
+  BTreeCursor::insertIntoIndex(*pool_, *index_file_,
+                               encodeOrderLinePrimaryKey(1, 7, 3001, 2),
+                               12, 1);
+  BTreeCursor::insertIntoIndex(*pool_, *index_file_,
+                               encodeOrderLinePrimaryKey(1, 7, 3002, 1),
+                               13, 1);
+
+  std::vector<RID> rids = BTreeCursor::findRIDs(
+      *pool_, *index_file_, false,
+      {{intPredicate(0, Op::Eq, 1)},
+       {intPredicate(1, Op::Eq, 7)},
+       {intPredicate(2, Op::Eq, 3001)}},
+      {0, 1, 2, 3});
+
+  ASSERT_EQ(rids.size(), 2u);
+  EXPECT_EQ(rids[0].heap_page_id, 11);
+  EXPECT_EQ(rids[1].heap_page_id, 12);
 }
 
 TEST_F(BTreeCursorTest, InsertCompactsFullyInvalidLeafBeforeSplitting) {
@@ -165,7 +237,8 @@ TEST_F(BTreeCursorTest, InsertCompactsFullyInvalidLeafBeforeSplitting) {
   int inserted_stale_keys = 0;
   while (true) {
     const std::string key =
-        "stale_key_" + std::string(96, 'x') + std::to_string(inserted_stale_keys);
+        encodeVarcharKey("stale_key_" + std::string(96, 'x') +
+                         std::to_string(inserted_stale_keys));
     LeafCell cell(key, 1, static_cast<uint16_t>(inserted_stale_keys));
     std::optional<int> slot_id = root_page->insertCell(cell);
     if (!slot_id.has_value()) {
@@ -178,11 +251,14 @@ TEST_F(BTreeCursorTest, InsertCompactsFullyInvalidLeafBeforeSplitting) {
   pool_->unpinPage(root_page, *index_file_);
   ASSERT_GT(inserted_stale_keys, 0);
 
-  const std::string live_key = "live_key_" + std::string(96, 'y');
+  const std::string live_value = "live_key_" + std::string(96, 'y');
+  const std::string live_key = encodeVarcharKey(live_value);
   BTreeCursor::insertIntoIndex(*pool_, *index_file_, live_key, 7, 9);
 
-  std::vector<RID> rids =
-      BTreeCursor::findRIDs(*pool_, *index_file_, live_key);
+  std::vector<RID> rids = BTreeCursor::findRIDs(
+      *pool_, *index_file_, false,
+      {{varcharPredicate(0, Op::Eq, live_value)}},
+      {0});
   ASSERT_FALSE(rids.empty());
   EXPECT_EQ(rids.front().heap_page_id, 7);
   EXPECT_EQ(rids.front().slot_id, 9);
@@ -200,8 +276,12 @@ TEST_F(BTreeCursorTest, InsertCompositeKeysAcrossInternalSplitsRemainsSearchable
   }
 
   for (int customer_id : {1, 2, 127, 4096, 16384, 2297, 30000}) {
-    auto rids = BTreeCursor::findRIDs(*pool_, *index_file_,
-                                    encodeCustomerPrimaryKey(1, 7, customer_id));
+    auto rids = BTreeCursor::findRIDs(
+        *pool_, *index_file_, false,
+        {{intPredicate(0, Op::Eq, 1)},
+         {intPredicate(1, Op::Eq, 7)},
+         {intPredicate(2, Op::Eq, customer_id)}},
+        {0, 1, 2});
     ASSERT_FALSE(rids.empty()) << "missing composite index entry for customer_id="
                                  << customer_id;
     EXPECT_EQ(rids.front().heap_page_id, heap_page_id);

@@ -10,7 +10,6 @@
 #include "execution/operators/filter_operator.h"
 #include "execution/operators/aggregate_operator.h"
 #include "execution/binder.h"
-#include "execution/index_lookup_planner.h"
 #include "execution/operators/heap_fetch_operator.h"
 #include "execution/operators/index_scan_operator.h"
 #include "execution/operators/limit_operator.h"
@@ -113,13 +112,24 @@ std::vector<Item> collectItems(Source& source) {
 std::vector<RID> collectRidsNarrowedByPredicates(
     BufferPool& pool, Table& table,
     const std::vector<UnboundComparisonPredicate>& predicates) {
-  IndexLookupPlan plan = IndexLookupPlanner::plan(table, predicates);
-  if (!plan.canUseIndex()) {
+  const std::vector<BoundComparisonPredicate> bound_predicates =
+      binder::bindPredicatesResolvableByTable(predicates, table);
+  // check if prerequesite for index scan is met.
+  std::vector<std::vector<BoundComparisonPredicate>> ordered_predicate;
+  if (!table.indexedColumnIndexes().empty()) {
+    ordered_predicate = align_predicates_with_key_order(
+        bound_predicates, table.indexedColumnIndexes());
+  }
+  if (ordered_predicate.empty() || ordered_predicate.front().empty()) {
+    dbfs_log::execution().debug(
+        "Building sequential scan operator for table {} because index scan "
+        "prerequisites are not met.",
+        table.name());
     return heap_file_access::collectRids(pool, table.heapFile());
   }
 
-  IndexScanOperator scan(pool, table.requireIndexFile(),
-                         std::move(plan.encoded_keys), Op::Eq);
+  IndexScanOperator scan(pool, table.requireIndexFile(), ordered_predicate,
+                         table.indexedColumnIndexes());
   return collectItems<RID>(scan);
 }
 
@@ -146,11 +156,25 @@ std::size_t removeMatchingRows(BufferPool& pool, Table& table,
       continue;
     }
 
-    // delete corresponging key from index file.
+    // delete corresponding key from index file.
     const auto index_file = table.indexFile();
     if (index_file.has_value()) {
-      const std::string key = table.extractIndexKey(row);
-      BTreeCursor::findRIDs(pool, index_file->get(), key, true);
+      // create index key predicates from row, since index search result can have redundant RIDs by its nature.
+      std::vector<BoundComparisonPredicate> index_key_predicates;
+      for (const auto& indexed_column_index : table.indexedColumnIndexes()) {
+        const auto& column = table.schema().columns().at(indexed_column_index);
+        const auto& value = row.values.at(indexed_column_index);
+        index_key_predicates.push_back(BoundComparisonPredicate{
+            Op::Eq,
+            BoundColumnRef{0, indexed_column_index, column.getType()},
+            value});
+      }
+      const std::vector<std::vector<BoundComparisonPredicate>> ordered_predicates =
+          align_predicates_with_key_order(index_key_predicates,
+                                          table.indexedColumnIndexes());
+      BTreeCursor::findRIDs(pool, index_file->get(), true,
+                           ordered_predicates,
+                           table.indexedColumnIndexes());
     }
 
     wal.write(WALRecord::RecordType::DELETE, rid.heap_page_id,
@@ -171,8 +195,22 @@ void insertRow(BufferPool& pool, Table& table, const TypedRow& row, WAL& wal) {
     dbfs_log::execution().debug("Inserting record with key {} into table {}.",
          index_key::formatForDebug(key.value()),
          table.name());
+    std::vector<BoundComparisonPredicate> predicates;
+    for (const auto& indexed_column_index : table.indexedColumnIndexes()) {
+      const auto& column = table.schema().columns().at(indexed_column_index);
+      const auto& value = row.values.at(indexed_column_index);
+      predicates.push_back(BoundComparisonPredicate{
+        Op::Eq,
+        BoundColumnRef{0, indexed_column_index, column.getType()},
+        value
+      });
+    }
+    const std::vector<std::vector<BoundComparisonPredicate>> ordered_predicates =
+        align_predicates_with_key_order(predicates,
+                                        table.indexedColumnIndexes());
     std::vector<RID> existing_rids =
-        BTreeCursor::findRIDs(pool, index_file->get(), key.value());
+        BTreeCursor::findRIDs(pool, index_file->get(), false, ordered_predicates,
+                             table.indexedColumnIndexes());
     if (!existing_rids.empty()) {
       throw std::runtime_error(
           "Duplicate key is not allowed for indexed table: " + table.name());
@@ -239,27 +277,26 @@ std::size_t updateMatchingRows(BufferPool& pool, Table& table,
 std::unique_ptr<TypedRowOperator> buildReadSource(
     BufferPool& pool, Table& table,
     const std::vector<UnboundComparisonPredicate>& predicates) {
-  // IndexLookupPlan plan = IndexLookupPlanner::plan(table, predicates);
   const std::vector<BoundComparisonPredicate> bound_predicates =
       binder::bindPredicatesResolvableByTable(predicates, table);
-  // ここでindexが使えるかを確認する必要がある。
-  // キーの整合性の確認のみをすればいい。
-  // indexのキーの順番でそのカラムのいくつまでが、predicatesにあるかを確認する。それぞれのカラムの評価を抜き出す。
-  // その評価列をindex scan operatorに私、その順番でnarrow downしていく。
-  // あれ？でも今ってキーの大小をstringで比較しているので、キーを構成するカラムからstringを作成して、それを渡せばいい？
-  // でも、各キーで条件は違うよね。これより大きい小さいみたいな。どうすればいいんだっけ？
-  // if (!plan.canUseIndex()) {
-  //   return std::make_unique<SeqScanOperator>(pool, table.heapFile(),
-  //                                            table.schema(), bound_predicates);
-  // }
-
-  // 今は一つのキーに対して複数の比較方法が可能になった。
-  // 次は複数キーのテーブルに対して、複合キーでの比較、その次に一部のキーでの比較を可能にしていく。
-  // index scannerには、opとkeyのペアを複数渡せるようにする必要がある。
-  // planner必要か？
-  // requireしているけど、indexなかったらindexscanできんやん。
+  // check if prerequesite for index scan is met.
+  std::vector<std::vector<BoundComparisonPredicate>> ordered_predicate;
+  if (!table.indexedColumnIndexes().empty()) {
+    ordered_predicate = align_predicates_with_key_order(
+        bound_predicates, table.indexedColumnIndexes());
+  }
+  if (ordered_predicate.empty() || ordered_predicate.front().empty()) {
+    dbfs_log::execution().debug(
+        "Building sequential scan operator for table {} because index scan "
+        "prerequisites are not met.",
+        table.name());
+    return std::make_unique<SeqScanOperator>(pool, table.heapFile(),
+                                             table.schema(), bound_predicates);
+  }
+  
   auto scan = std::make_unique<IndexScanOperator>(
-      pool, table.requireIndexFile(), std::move(plan.encoded_keys), Op::Eq);
+      pool, table.requireIndexFile(), ordered_predicate,
+      table.indexedColumnIndexes());
   return std::make_unique<HeapFetchOperator>(std::move(scan), pool,
                                              table.heapFile(), table.schema(), bound_predicates);
 }

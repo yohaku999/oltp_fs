@@ -27,7 +27,7 @@ class LeafIndexPage {
 
   LeafCell cellAt(int slot_id) const;
   bool hasKey(const std::string& key) const;
-  std::pair<uint16_t, std::vector<RID>> findRef(const std::string& key, bool do_invalidate, Op op);
+  std::pair<uint16_t, std::vector<RID>> findRef(BTreeCursor::Boundary right_boundary, bool do_invalidate, std::vector<BoundComparisonPredicate> predicates);
   void compact();
   void getRightSidePageID();
 

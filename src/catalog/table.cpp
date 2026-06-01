@@ -195,7 +195,8 @@ std::string Table::extractIndexKey(const TypedRow& row) const {
 
 /**
  * Attempts to build an exact match index key for the given column values.
- * Require all of the indexed columns to be present in the input, but allow the input to contain additional columns that are not part of the index.
+ * Require all of the indexed columns to be present in the input,
+ * but allow the input to contain additional columns that are not part of the index.
  * Returns nullopt if any of the indexed columns are not present in the input.
  */
 std::optional<std::string> Table::tryBuildExactMatchIndexKey(

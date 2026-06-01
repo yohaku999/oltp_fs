@@ -8,6 +8,7 @@
 #include <ostream>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include "storage/runtime/bufferpool.h"
 #include "storage/page/cell.h"
@@ -144,47 +145,113 @@ int BTreeCursor::findLeafPageID(BufferPool& pool, File& indexFile,
  * この関数を複数キー、複数条件に対応させる。また、一部のキーに対しても対応させる。
  * なぜ、index上でキーのdescなどが重要なのか？
  */
+
+// TODO:引数にフィリタリングも追加
 std::vector<RID> BTreeCursor::findRIDs(BufferPool& pool, File& indexFile,
-                                       const std::string& key,
-                                       bool do_invalidate,
-                                       Op op) {
-  dbfs_log::index().debug("Finding RID for key {} in index file {}.",
-            index_key::formatForDebug(key), indexFile.getFilePath());
+                                       bool do_invalidate, const std::vector<std::vector<BoundComparisonPredicate>>& ordered_predicates, const std::vector<std::size_t>& key_order_indexes) {
+  // 走査を開始するleafnodeを見つける。
+  // 走査は必ず左から右に行う。
+  // 1st_key < xの場合、走査開始は最も左のleafnode, 1st_key >= xの場合、走査開始はxを含むleafnode、場合によっては1st_key < yによって走査終了となる。
+  
+  // 2nd key以降は、1st_keyがeqでない限り、ページ内部を地道に舐めるために使用される。
+  // 1st_keyがeqであれば、2nd_keyは走査開始のleafnodeを特定するために使用される。
+
+  // めんどくさいなこのロジック。もっと簡単に考えられないか？抽象のレイヤを分けられないか？
   // NOTE: we decided not to invalidate intermediate nodes during traversal for
   // now. we will come back to this when we start to support concurrency.
-  std::vector<RID> matching_rids;
-  int page_id;
-  if (op == Op::Gt || op == Op::Ge || op == Op::Eq) {
-    // 右に走査する
-    page_id = findLeafPageID(pool, indexFile, key);
-  } else {
-    // get the left most leaf page and start searching from there.
-    page_id = indexFile.getRootPageID();
-    while (true) {
-      Page* page = pool.pinPage(page_id, indexFile);
-      if (page->isLeaf()) {
-        pool.unpinPage(page, indexFile);
-        break;
-      }
 
-      InternalIndexPage internal(*page);
-      page_id = internal.leftMostChildPageId();
-      pool.unpinPage(page, indexFile);
+  // no left buondary : Boundary("", true)
+  // find traversal start point based on left boundary. if left boundary is empty, start from the left most leaf page. 
+  // otherwise, start from the leaf page that may contain the left boundary key.
+  
+  // define traversal boundary based on ordered predicates.
+  Boundary left_boundary{"", true};
+  Boundary right_boundary{"", true};
+  for (size_t i = 0; i < ordered_predicates.size(); ++i) {
+    const auto& predicates_for_key = ordered_predicates[i];
+    if (predicates_for_key.empty() && i == 0) {
+       throw std::logic_error("The leading key must have at least one predicate for index lookup.");
+    }
+    if (predicates_for_key.empty() && i != 0) {
+      // if non-leading key has no predicate, we will not be able to use it for boundary for latter keys and define boundary here.
+      break;
+    }
+    const auto& eq_pred_it = std::find_if(predicates_for_key.begin(), predicates_for_key.end(), [](const BoundComparisonPredicate& predicate) { return predicate.op == Op::Eq; });
+    if (eq_pred_it != predicates_for_key.end()) {
+      // if predicate is eq, it can be both left and right boundary.
+      const auto& eq_pred = *eq_pred_it;
+      const auto& value = std::get<FieldValue>(std::get_if<BoundColumnRef>(&eq_pred.left) ? eq_pred.right : eq_pred.left);
+      const auto& column_type = std::get<BoundColumnRef>(std::get_if<BoundColumnRef>(&eq_pred.left) ? eq_pred.left : eq_pred.right).type;
+      // ここにカラムタイプ情報が必要。
+      left_boundary.composite_key += index_key::encodeFieldValue(value, column_type);
+      right_boundary.composite_key += index_key::encodeFieldValue(value, column_type);
+      continue;
+    }
+    const auto& gt_pred_it = std::find_if(predicates_for_key.begin(), predicates_for_key.end(), [](const BoundComparisonPredicate& predicate) { return predicate.op == Op::Gt; });
+    if (gt_pred_it != predicates_for_key.end()) {
+      // if predicate is gt, it can only be left boundary.
+      const auto& gt_pred = *gt_pred_it;
+      const auto& value = std::get<FieldValue>(std::get_if<BoundColumnRef>(&gt_pred.left) ? gt_pred.right : gt_pred.left);
+      const auto& column_type = std::get<BoundColumnRef>(std::get_if<BoundColumnRef>(&gt_pred.left) ? gt_pred.left : gt_pred.right).type;
+      left_boundary.composite_key += index_key::encodeFieldValue(value, column_type);
+      left_boundary.is_inclusive = false;
+      continue;
+    }
+    const auto& ge_pred_it = std::find_if(predicates_for_key.begin(), predicates_for_key.end(), [](const BoundComparisonPredicate& predicate) { return predicate.op == Op::Ge; });
+    if (ge_pred_it != predicates_for_key.end()) {
+      // if predicate is ge, it can only be left boundary.
+      const auto& ge_pred = *ge_pred_it;
+      const auto& value = std::get<FieldValue>(std::get_if<BoundColumnRef>(&ge_pred.left) ? ge_pred.right : ge_pred.left);
+      const auto& column_type = std::get<BoundColumnRef>(std::get_if<BoundColumnRef>(&ge_pred.left) ? ge_pred.left : ge_pred.right).type;
+      left_boundary.composite_key += index_key::encodeFieldValue(value, column_type);
+      continue;
+    }
+    const auto& lt_pred_it = std::find_if(predicates_for_key.begin(), predicates_for_key.end(), [](const BoundComparisonPredicate& predicate) { return predicate.op == Op::Lt; });
+    if (lt_pred_it != predicates_for_key.end()) {
+      // if predicate is lt, it can only be right boundary.
+      const auto& lt_pred = *lt_pred_it;
+      const auto& value = std::get<FieldValue>(std::get_if<BoundColumnRef>(&lt_pred.left) ? lt_pred.right : lt_pred.left);
+      const auto& column_type = std::get<BoundColumnRef>(std::get_if<BoundColumnRef>(&lt_pred.left) ? lt_pred.left : lt_pred.right).type;
+      right_boundary.composite_key += index_key::encodeFieldValue(value, column_type);
+      right_boundary.is_inclusive = false;
+      continue;
+    }
+    const auto& le_pred_it = std::find_if(predicates_for_key.begin(), predicates_for_key.end(), [](const BoundComparisonPredicate& predicate) { return predicate.op == Op::Le; });
+    if (le_pred_it != predicates_for_key.end()) {
+      // if predicate is le, it can only be right boundary.
+      const auto& le_pred = *le_pred_it;
+      const auto& value = std::get<FieldValue>(std::get_if<BoundColumnRef>(&le_pred.left) ? le_pred.right : le_pred.left);
+      const auto& column_type = std::get<BoundColumnRef>(std::get_if<BoundColumnRef>(&le_pred.left) ? le_pred.left : le_pred.right).type;
+      right_boundary.composite_key += index_key::encodeFieldValue(value, column_type);
+      continue;
     }
   }
+
+  
+  // find traversal start point based on left boundary.
+  int page_id;
+  if(left_boundary.composite_key.empty()) {
+    page_id = findLeafPageID(pool, indexFile, "");
+  }else{
+    page_id = findLeafPageID(pool, indexFile, left_boundary.composite_key);
+  }
+
+  // flatten
+  std::vector<BoundComparisonPredicate> flattened_predicates;
+  for(const auto& predicates_for_key : ordered_predicates){
+    flattened_predicates.insert(flattened_predicates.end(), predicates_for_key.begin(), predicates_for_key.end());
+  }
+  // leaf page traversal
+  std::vector<RID> matching_rids;
   while (page_id != LeafIndexPage::NO_RIGHT_SIBLING) {
     Page* leaf_page = pool.pinPage(page_id, indexFile);
     LeafIndexPage leaf(*leaf_page);
-    auto [next_page, rids] = leaf.findRef(key, do_invalidate, op);
+    auto [next_page, rids] = leaf.findRef(right_boundary, do_invalidate, flattened_predicates);
     pool.unpinPage(leaf_page, indexFile);
     matching_rids.insert(matching_rids.end(), rids.begin(), rids.end());
     page_id = next_page;
   }
   
-  if (matching_rids.empty()) {
-    dbfs_log::index().debug("Key {} not found in index file {}.",
-          index_key::formatForDebug(key), indexFile.getFilePath());
-  }
   return matching_rids;
 }
 

@@ -14,7 +14,8 @@ class File;
 class IndexScanOperator : public RidOperator {
  public:
   IndexScanOperator(BufferPool& pool, File& index_file,
-                    std::vector<std::string> encoded_keys, Op op);
+                    std::vector<std::vector<BoundComparisonPredicate>> ordered_predicates,
+                    std::vector<std::size_t> key_order_indexes);
 
   void open() override;
   std::optional<RID> next() override;
@@ -23,10 +24,10 @@ class IndexScanOperator : public RidOperator {
  private:
   BufferPool& pool_;
   File& indexFile_;
-  std::vector<std::string> encoded_keys_;
-  Op op_;
+  std::vector<std::vector<BoundComparisonPredicate>> ordered_predicates_;
+  std::vector<std::size_t> key_order_indexes_;
   OperatorExecutionLogger logger_{"IndexScanOperator"};
-  std::size_t pos_ = 0;
+  bool lookup_done_ = false;
   std::vector<RID> current_rids_;
   std::size_t rid_pos_ = 0;
 };

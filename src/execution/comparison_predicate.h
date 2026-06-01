@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "tuple/field_value.h"
+#include "schema/column.h"
 
 struct TypedRow;
 
@@ -34,6 +35,7 @@ struct UnboundComparisonPredicate {
 struct BoundColumnRef {
   std::size_t source_index;
   std::size_t column_index;
+  Column::Type type;
 };
 
 using BoundOperand = std::variant<BoundColumnRef, FieldValue>;
@@ -49,6 +51,11 @@ struct BoundComparisonPredicate {
 
 FieldValue resolveBoundOperand(const BoundOperand& operand,
                               const TypedRow& row);
+
+std::vector<std::vector<BoundComparisonPredicate>>
+align_predicates_with_key_order(
+    const std::vector<BoundComparisonPredicate>& predicates,
+    const std::vector<std::size_t>& key_order_indexes);
 
 /**
  * matchesPredicates checks if a given row satisfies all the provided comparison predicates.

@@ -7,6 +7,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "storage/page/cell.h"
 #include "storage/index/index_key.h"
@@ -24,7 +25,20 @@ RecordSerializer serializeSingleVarcharRecord(const std::string& value) {
 }
 
 std::string encodeIntKey(int value) {
-  return index_key::encodeInteger(value);
+  return index_key::encodeFieldValue(FieldValue{static_cast<Column::IntegerType>(value)},
+                                     Column::Type::Integer);
+}
+
+BTreeCursor::Boundary inclusiveBoundary(const std::string& key) {
+  return BTreeCursor::Boundary{key, true};
+}
+
+std::vector<BoundComparisonPredicate> eqIntPredicate(int value) {
+  return std::vector<BoundComparisonPredicate>{
+      BoundComparisonPredicate{
+          Op::Eq,
+          BoundColumnRef{0, 0, Column::Type::Integer},
+          FieldValue{static_cast<Column::IntegerType>(value)}}};
 }
 
 }  // namespace
@@ -52,7 +66,9 @@ TEST(PageTest, InsertLeafPageAndFind) {
     EXPECT_EQ(expected_slot_ids[i], slot_id);
 
     LeafIndexPage leaf(*page);
-    auto [next_page, refs] = leaf.findRef(encodeIntKey(entry.key), false, Op::Eq);
+    auto [next_page, refs] = leaf.findRef(
+        inclusiveBoundary(encodeIntKey(entry.key)), false,
+        eqIntPredicate(entry.key));
     EXPECT_EQ(LeafIndexPage::NO_RIGHT_SIBLING, next_page);
     ASSERT_FALSE(refs.empty());
     EXPECT_EQ(entry.heap_page_id, refs.front().heap_page_id);
@@ -279,7 +295,8 @@ TEST(PageTest, InvalidateSlotMarksPreviouslyCleanPageDirty) {
   EXPECT_TRUE(page->isDirty());
 
   LeafIndexPage leaf(*page);
-  auto [next_page, refs] = leaf.findRef(encodeIntKey(123), false, Op::Eq);
+  auto [next_page, refs] = leaf.findRef(
+      inclusiveBoundary(encodeIntKey(123)), false, eqIntPredicate(123));
   EXPECT_EQ(LeafIndexPage::NO_RIGHT_SIBLING, next_page);
   EXPECT_TRUE(refs.empty());
 }
@@ -295,7 +312,8 @@ TEST(PageTest, LeafSearchSkipsInvalidEntries) {
 
   LeafIndexPage leaf(*page);
   EXPECT_FALSE(leaf.hasKey(encodeIntKey(123)));
-  auto [next_page, refs] = leaf.findRef(encodeIntKey(123), false, Op::Eq);
+  auto [next_page, refs] = leaf.findRef(
+      inclusiveBoundary(encodeIntKey(123)), false, eqIntPredicate(123));
   EXPECT_EQ(LeafIndexPage::NO_RIGHT_SIBLING, next_page);
   EXPECT_TRUE(refs.empty());
 }
@@ -317,7 +335,8 @@ TEST(PageTest, LeafInsertInvalidateReuseSlot) {
   ASSERT_TRUE(second_slot.has_value());
   EXPECT_TRUE(leaf.hasKey(encodeIntKey(1)));
 
-  auto [next_page, refs] = leaf.findRef(encodeIntKey(1), false, Op::Eq);
+  auto [next_page, refs] = leaf.findRef(
+      inclusiveBoundary(encodeIntKey(1)), false, eqIntPredicate(1));
   EXPECT_EQ(LeafIndexPage::NO_RIGHT_SIBLING, next_page);
   ASSERT_FALSE(refs.empty());
   EXPECT_EQ(refs.front().heap_page_id, 1);
