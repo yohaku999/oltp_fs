@@ -6,6 +6,7 @@
 
 #include "index_key.h"
 #include "logging.h"
+#include "storage/index/btreecursor.h"
 
 LeafCell LeafIndexPage::cellAt(int slot_id) const {
   return LeafCell::decodeCell(page_.getSlotCellStart(slot_id));
@@ -26,46 +27,44 @@ bool LeafIndexPage::hasKey(const std::string& key) const {
 }
 
 /**
- * Find the RIDs inside right_boundary filtered by index_predicates.
+ * Find the index entries inside right_boundary.
  * Invalidates the corresponding slots if do_invalidate is true.
- * @param index_predicates are expected to only contain predicates on index key columns.
- * @return a pair of (next_page_id, matching_rids). next_page_id is the right sibling page ID if the right_boundary is not found in the current page and we need to continue searching; otherwise, it is NO_RIGHT_SIBLING indicating we can stop searching. matching_rids are the RIDs matching the right_boundary and index_predicates in the current page.
+ * @return a pair of (next_page_id, matching_entries). next_page_id is the
+ * right sibling page ID if the right_boundary is not found in the current page
+ * and we need to continue searching; otherwise, it is NO_RIGHT_SIBLING
+ * indicating we can stop searching.
  * 
  */
-std::pair<uint16_t, std::vector<RID>> LeafIndexPage::findRef(BTreeCursor::Boundary right_boundary, bool do_invalidate, std::vector<BoundComparisonPredicate> index_predicates) {
-  /**
-   * PERFORMANCE:Same consideration as Page::findLeafRef; kept verbatim.
-   */
+std::pair<uint16_t, std::vector<IndexEntry>> LeafIndexPage::findEntries(
+    BTreeCursor::Boundary left_boundary, BTreeCursor::Boundary right_boundary,
+    bool do_invalidate) {
   
-  std::vector<RID> matching_rids;
+  std::vector<IndexEntry> matching_entries;
   bool need_to_scan_next_page = true;
   for (int idx = 0; idx < page_.getSlotCount(); ++idx) {
     char* cell_data = page_.data() + page_.getCellOffsetOnXthPointer(idx);
     if (!Cell::isValid(cell_data)) {
-      dbfs_log::index().debug("LeafIndexPage::findRef skipping invalid slot {}", idx);
+      dbfs_log::index().debug("LeafIndexPage::findEntries skipping invalid slot {}", idx);
       continue;
     }
     LeafCell cell = cellAt(idx);
-    if (right_boundary.composite_key.empty() ||
-        index_key::matchesPrefix(cell.key(), right_boundary, false)) {
-      TypedRow typed_row = index_key::decodeToTypedRow(cell.key());
-      if(!matchesPredicates(typed_row, index_predicates)){
-        continue;
-      }
+    if (BTreeCursor::isInsideBoundary(cell.key(), left_boundary, true) &&
+        BTreeCursor::isInsideBoundary(cell.key(), right_boundary, false)) {
       if (do_invalidate) {
         page_.invalidateSlot(idx);
       }
-      matching_rids.push_back(RID{cell.heap_page_id(), cell.slot_id()});
-    }else{
+      matching_entries.push_back(
+          IndexEntry{cell.key(), RID{cell.heap_page_id(), cell.slot_id()}});
+    } else if (!BTreeCursor::isInsideBoundary(cell.key(), right_boundary, false)) {
       need_to_scan_next_page = false;
     }
 
   }  
   if (need_to_scan_next_page) {
-    return std::make_pair(this->getRightSiblingPageId(), matching_rids);  
+    return std::make_pair(this->getRightSiblingPageId(), matching_entries);  
   }
   else{
-    return std::make_pair(LeafIndexPage::NO_RIGHT_SIBLING, matching_rids);
+    return std::make_pair(LeafIndexPage::NO_RIGHT_SIBLING, matching_entries);
   }
   
 }
@@ -170,10 +169,14 @@ uint16_t InternalIndexPage::rightMostChildPageId() const {
   return page_.rightMostChildPageId();
 }
 
-// このページに対し、キーが含まれているはずの子ページを返す。
-// ここでは、複数キーを持つのではなく、比較可能なキー？string?の形で引数として持って、上の段階で複数キーから比較可能なキーをつくる。
+/**
+ * returns the child page ID to follow for a given key
+ * The child page ID is determined based on the separator keys in the internal index page.
+ * The function iterates through the valid separator cells in the page and compares their keys with the given key.
+ * It returns the page ID of the first separator cell whose key is greater than or equal to the given key.
+ * If no such separator cell is found, it returns the rightmost child page ID.
+ */
 uint16_t InternalIndexPage::findChildPage(const std::string& key) {
-  // ここソートしているけど、もう不要なのでは？
   std::vector<IntermediateCell> cells;
   cells.reserve(page_.getSlotCount());
   for (int idx = 0; idx < page_.getSlotCount(); ++idx) {
@@ -188,9 +191,7 @@ uint16_t InternalIndexPage::findChildPage(const std::string& key) {
             [](const IntermediateCell& a, const IntermediateCell& b) {
               return index_key::compare(a.key(), b.key()) < 0;
             });
-  // cellのchildには、cellのkey以下かつ、左隣のkeyより大きいキーが入っている. 
 
-  // keyより大きい最初のセルを探す。見つからなければ右端の子ページに行く。
   for (const IntermediateCell& cell : cells) {
     if (index_key::compare(cell.key(), key) >= 0) {
       return cell.page_id();

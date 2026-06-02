@@ -9,6 +9,7 @@
 #include "leaf_cell.h"
 #include "storage/page/page.h"
 #include "rid.h"
+#include "storage/index/btreecursor.h"
 
 // LeafIndexPage assume the underlying Page buffer/layout is
 // already initialized and do not own the storage.
@@ -27,7 +28,9 @@ class LeafIndexPage {
 
   LeafCell cellAt(int slot_id) const;
   bool hasKey(const std::string& key) const;
-  std::pair<uint16_t, std::vector<RID>> findRef(BTreeCursor::Boundary right_boundary, bool do_invalidate, std::vector<BoundComparisonPredicate> predicates);
+  std::pair<uint16_t, std::vector<IndexEntry>> findEntries(
+      BTreeCursor::Boundary left_boundary, BTreeCursor::Boundary right_boundary,
+      bool do_invalidate);
   void compact();
   void getRightSidePageID();
 

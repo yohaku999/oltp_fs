@@ -25,7 +25,7 @@ class FilterOperator : public TypedRowOperator {
   std::optional<TypedRow> next() override {
     while (std::optional<TypedRow> row = child_->next()) {
       logger_.recordInput();
-      if (matchesPredicates(row.value(), predicates_)) {
+      if (passesPredicates(row.value(), predicates_)) {
         logger_.recordOutput();
         return row;
       }

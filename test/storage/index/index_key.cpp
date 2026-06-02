@@ -1,9 +1,10 @@
-#include "storage/index/index_key.h"
+#include <string>
+#include <vector>
 
 #include <gtest/gtest.h>
 
-#include <string>
-#include <vector>
+#include "storage/index/index_key.h"
+#include "storage/index/btreecursor.h"
 
 namespace {
 
@@ -74,38 +75,6 @@ TEST(IndexKeyTest, CompositeRowEncodingFollowsColumnOrder) {
   EXPECT_LT(index_key::compare(rhs_key, third_key), 0);
 }
 
-TEST(IndexKeyTest, CompositePrefixComparesEqualToKeysWithMatchingLeadingFields) {
-  const Schema schema(std::vector<Column>{
-      Column("warehouse_id", Column::Type::Integer),
-      Column("district_id", Column::Type::Integer),
-      Column("order_id", Column::Type::Integer),
-      Column("line_number", Column::Type::Integer),
-  });
-
-  const TypedRow prefix_row{{1, 7, 3001, 0}};
-  const TypedRow matching_first{{1, 7, 3001, 1}};
-  const TypedRow matching_second{{1, 7, 3001, 15}};
-  const TypedRow previous{{1, 7, 3000, 15}};
-  const TypedRow next{{1, 7, 3002, 1}};
-
-  const std::string prefix =
-      index_key::encodeRow(schema, prefix_row, {0, 1, 2});
-  const std::string matching_first_key =
-      index_key::encodeRow(schema, matching_first, {0, 1, 2, 3});
-  const std::string matching_second_key =
-      index_key::encodeRow(schema, matching_second, {0, 1, 2, 3});
-  const std::string previous_key =
-      index_key::encodeRow(schema, previous, {0, 1, 2, 3});
-  const std::string next_key =
-      index_key::encodeRow(schema, next, {0, 1, 2, 3});
-
-  EXPECT_TRUE(index_key::startsWith(matching_first_key, prefix));
-  EXPECT_EQ(index_key::compareWithPrefix(matching_first_key, prefix), 0);
-  EXPECT_EQ(index_key::compareWithPrefix(matching_second_key, prefix), 0);
-  EXPECT_LT(index_key::compareWithPrefix(previous_key, prefix), 0);
-  EXPECT_GT(index_key::compareWithPrefix(next_key, prefix), 0);
-}
-
 TEST(IndexKeyTest, PrefixMatchesSupportRangeOperators) {
   const std::string prefix =
       std::string("I") + index_key::encodeInteger(1) +
@@ -123,12 +92,12 @@ TEST(IndexKeyTest, PrefixMatchesSupportRangeOperators) {
   const BTreeCursor::Boundary inclusive{prefix, true};
   const BTreeCursor::Boundary exclusive{prefix, false};
 
-  EXPECT_TRUE(index_key::matchesPrefix(matching, inclusive, true));
-  EXPECT_TRUE(index_key::matchesPrefix(matching, inclusive, false));
-  EXPECT_FALSE(index_key::matchesPrefix(matching, exclusive, true));
-  EXPECT_FALSE(index_key::matchesPrefix(matching, exclusive, false));
-  EXPECT_TRUE(index_key::matchesPrefix(previous, exclusive, false));
-  EXPECT_TRUE(index_key::matchesPrefix(next, exclusive, true));
+  EXPECT_TRUE(BTreeCursor::isInsideBoundary(matching, inclusive, true));
+  EXPECT_TRUE(BTreeCursor::isInsideBoundary(matching, inclusive, false));
+  EXPECT_FALSE(BTreeCursor::isInsideBoundary(matching, exclusive, true));
+  EXPECT_FALSE(BTreeCursor::isInsideBoundary(matching, exclusive, false));
+  EXPECT_TRUE(BTreeCursor::isInsideBoundary(previous, exclusive, false));
+  EXPECT_TRUE(BTreeCursor::isInsideBoundary(next, exclusive, true));
 }
 
 TEST(IndexKeyTest, FieldEncodingRejectsNullValues) {

@@ -52,13 +52,8 @@ struct BoundComparisonPredicate {
 FieldValue resolveBoundOperand(const BoundOperand& operand,
                               const TypedRow& row);
 
-std::vector<std::vector<BoundComparisonPredicate>>
-align_predicates_with_key_order(
-    const std::vector<BoundComparisonPredicate>& predicates,
-    const std::vector<std::size_t>& key_order_indexes);
-
 /**
- * matchesPredicates checks if a given row satisfies all the provided comparison predicates.
+ * passesPredicates checks if a given row satisfies all the provided comparison predicates.
  */
-bool matchesPredicates(const TypedRow& row,
+bool passesPredicates(const TypedRow& row,
                        const std::vector<BoundComparisonPredicate>& predicates);

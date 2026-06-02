@@ -2,12 +2,14 @@
 
 #include <spdlog/spdlog.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <ostream>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "storage/runtime/bufferpool.h"
@@ -16,9 +18,34 @@
 #include "logging.h"
 #include "storage/page/page.h"
 #include "storage/index/index_page.h"
-#include "storage/record/record_cell.h"
 
 namespace {
+
+void rewireLeafSiblingPredecessor(BufferPool& pool, File& index_file,
+                                  int old_page_id, int new_page_id) {
+  for (uint16_t page_id = 0; page_id <= index_file.getMaxPageID(); ++page_id) {
+    if (!index_file.isPageIDUsed(page_id) || page_id == old_page_id ||
+        page_id == new_page_id) {
+      continue;
+    }
+
+    Page* page = pool.pinPage(page_id, index_file);
+    if (!page->isLeaf()) {
+      pool.unpinPage(page, index_file);
+      continue;
+    }
+
+    LeafIndexPage leaf(*page);
+    if (leaf.getRightSiblingPageId() ==
+        static_cast<uint16_t>(old_page_id)) {
+      leaf.setRightSiblingPageId(static_cast<uint16_t>(new_page_id));
+      pool.unpinPage(page, index_file);
+      return;
+    }
+
+    pool.unpinPage(page, index_file);
+  }
+}
 
 void dumpIndexPage(const Page& page, std::ostream& os) {
   os << "=== Page " << page.getPageID() << " ("
@@ -139,95 +166,21 @@ int BTreeCursor::findLeafPageID(BufferPool& pool, File& indexFile,
 }
 
 /**
- * indexFileで定義される単一のindexキーに対して、"key"の値をopに基づいて比較し、一致しているRIDを返す。
- * 一致はeq、gt、ge、lt、leのそれぞれに対応している。
- * 
- * この関数を複数キー、複数条件に対応させる。また、一部のキーに対しても対応させる。
- * なぜ、index上でキーのdescなどが重要なのか？
+ * Traverses the B-tree to find all index entries inside the given boundaries.
+ * @param pool Buffer pool used to pin and unpin index pages during traversal.
+ * @param indexFile Index file whose root page seeds the traversal.
+ * @param do_invalidate If true, invalidates the slots of the found RIDs in the leaf pages.
+ * @return A vector of index entries inside the given boundaries.
  */
+std::vector<IndexEntry> BTreeCursor::findEntries(
+    BufferPool& pool, File& indexFile,
+    std::pair<BTreeCursor::Boundary, BTreeCursor::Boundary> boundaries,
+    bool do_invalidate) {
+  const auto& [left_boundary, right_boundary] = boundaries;
 
-// TODO:引数にフィリタリングも追加
-std::vector<RID> BTreeCursor::findRIDs(BufferPool& pool, File& indexFile,
-                                       bool do_invalidate, const std::vector<std::vector<BoundComparisonPredicate>>& ordered_predicates, const std::vector<std::size_t>& key_order_indexes) {
-  // 走査を開始するleafnodeを見つける。
-  // 走査は必ず左から右に行う。
-  // 1st_key < xの場合、走査開始は最も左のleafnode, 1st_key >= xの場合、走査開始はxを含むleafnode、場合によっては1st_key < yによって走査終了となる。
-  
-  // 2nd key以降は、1st_keyがeqでない限り、ページ内部を地道に舐めるために使用される。
-  // 1st_keyがeqであれば、2nd_keyは走査開始のleafnodeを特定するために使用される。
-
-  // めんどくさいなこのロジック。もっと簡単に考えられないか？抽象のレイヤを分けられないか？
   // NOTE: we decided not to invalidate intermediate nodes during traversal for
   // now. we will come back to this when we start to support concurrency.
-
-  // no left buondary : Boundary("", true)
-  // find traversal start point based on left boundary. if left boundary is empty, start from the left most leaf page. 
-  // otherwise, start from the leaf page that may contain the left boundary key.
-  
-  // define traversal boundary based on ordered predicates.
-  Boundary left_boundary{"", true};
-  Boundary right_boundary{"", true};
-  for (size_t i = 0; i < ordered_predicates.size(); ++i) {
-    const auto& predicates_for_key = ordered_predicates[i];
-    if (predicates_for_key.empty() && i == 0) {
-       throw std::logic_error("The leading key must have at least one predicate for index lookup.");
-    }
-    if (predicates_for_key.empty() && i != 0) {
-      // if non-leading key has no predicate, we will not be able to use it for boundary for latter keys and define boundary here.
-      break;
-    }
-    const auto& eq_pred_it = std::find_if(predicates_for_key.begin(), predicates_for_key.end(), [](const BoundComparisonPredicate& predicate) { return predicate.op == Op::Eq; });
-    if (eq_pred_it != predicates_for_key.end()) {
-      // if predicate is eq, it can be both left and right boundary.
-      const auto& eq_pred = *eq_pred_it;
-      const auto& value = std::get<FieldValue>(std::get_if<BoundColumnRef>(&eq_pred.left) ? eq_pred.right : eq_pred.left);
-      const auto& column_type = std::get<BoundColumnRef>(std::get_if<BoundColumnRef>(&eq_pred.left) ? eq_pred.left : eq_pred.right).type;
-      // ここにカラムタイプ情報が必要。
-      left_boundary.composite_key += index_key::encodeFieldValue(value, column_type);
-      right_boundary.composite_key += index_key::encodeFieldValue(value, column_type);
-      continue;
-    }
-    const auto& gt_pred_it = std::find_if(predicates_for_key.begin(), predicates_for_key.end(), [](const BoundComparisonPredicate& predicate) { return predicate.op == Op::Gt; });
-    if (gt_pred_it != predicates_for_key.end()) {
-      // if predicate is gt, it can only be left boundary.
-      const auto& gt_pred = *gt_pred_it;
-      const auto& value = std::get<FieldValue>(std::get_if<BoundColumnRef>(&gt_pred.left) ? gt_pred.right : gt_pred.left);
-      const auto& column_type = std::get<BoundColumnRef>(std::get_if<BoundColumnRef>(&gt_pred.left) ? gt_pred.left : gt_pred.right).type;
-      left_boundary.composite_key += index_key::encodeFieldValue(value, column_type);
-      left_boundary.is_inclusive = false;
-      continue;
-    }
-    const auto& ge_pred_it = std::find_if(predicates_for_key.begin(), predicates_for_key.end(), [](const BoundComparisonPredicate& predicate) { return predicate.op == Op::Ge; });
-    if (ge_pred_it != predicates_for_key.end()) {
-      // if predicate is ge, it can only be left boundary.
-      const auto& ge_pred = *ge_pred_it;
-      const auto& value = std::get<FieldValue>(std::get_if<BoundColumnRef>(&ge_pred.left) ? ge_pred.right : ge_pred.left);
-      const auto& column_type = std::get<BoundColumnRef>(std::get_if<BoundColumnRef>(&ge_pred.left) ? ge_pred.left : ge_pred.right).type;
-      left_boundary.composite_key += index_key::encodeFieldValue(value, column_type);
-      continue;
-    }
-    const auto& lt_pred_it = std::find_if(predicates_for_key.begin(), predicates_for_key.end(), [](const BoundComparisonPredicate& predicate) { return predicate.op == Op::Lt; });
-    if (lt_pred_it != predicates_for_key.end()) {
-      // if predicate is lt, it can only be right boundary.
-      const auto& lt_pred = *lt_pred_it;
-      const auto& value = std::get<FieldValue>(std::get_if<BoundColumnRef>(&lt_pred.left) ? lt_pred.right : lt_pred.left);
-      const auto& column_type = std::get<BoundColumnRef>(std::get_if<BoundColumnRef>(&lt_pred.left) ? lt_pred.left : lt_pred.right).type;
-      right_boundary.composite_key += index_key::encodeFieldValue(value, column_type);
-      right_boundary.is_inclusive = false;
-      continue;
-    }
-    const auto& le_pred_it = std::find_if(predicates_for_key.begin(), predicates_for_key.end(), [](const BoundComparisonPredicate& predicate) { return predicate.op == Op::Le; });
-    if (le_pred_it != predicates_for_key.end()) {
-      // if predicate is le, it can only be right boundary.
-      const auto& le_pred = *le_pred_it;
-      const auto& value = std::get<FieldValue>(std::get_if<BoundColumnRef>(&le_pred.left) ? le_pred.right : le_pred.left);
-      const auto& column_type = std::get<BoundColumnRef>(std::get_if<BoundColumnRef>(&le_pred.left) ? le_pred.left : le_pred.right).type;
-      right_boundary.composite_key += index_key::encodeFieldValue(value, column_type);
-      continue;
-    }
-  }
-
-  
+    
   // find traversal start point based on left boundary.
   int page_id;
   if(left_boundary.composite_key.empty()) {
@@ -236,23 +189,20 @@ std::vector<RID> BTreeCursor::findRIDs(BufferPool& pool, File& indexFile,
     page_id = findLeafPageID(pool, indexFile, left_boundary.composite_key);
   }
 
-  // flatten
-  std::vector<BoundComparisonPredicate> flattened_predicates;
-  for(const auto& predicates_for_key : ordered_predicates){
-    flattened_predicates.insert(flattened_predicates.end(), predicates_for_key.begin(), predicates_for_key.end());
-  }
   // leaf page traversal
-  std::vector<RID> matching_rids;
+  std::vector<IndexEntry> matching_entries;
   while (page_id != LeafIndexPage::NO_RIGHT_SIBLING) {
     Page* leaf_page = pool.pinPage(page_id, indexFile);
     LeafIndexPage leaf(*leaf_page);
-    auto [next_page, rids] = leaf.findRef(right_boundary, do_invalidate, flattened_predicates);
+    auto [next_page, entries] =
+        leaf.findEntries(left_boundary, right_boundary, do_invalidate);
     pool.unpinPage(leaf_page, indexFile);
-    matching_rids.insert(matching_rids.end(), rids.begin(), rids.end());
+    matching_entries.insert(matching_entries.end(), entries.begin(),
+                            entries.end());
     page_id = next_page;
   }
   
-  return matching_rids;
+  return matching_entries;
 }
 
 void BTreeCursor::insertIntoIndex(BufferPool& pool, File& indexFile,
@@ -353,6 +303,8 @@ IntermediateCell BTreeCursor::splitLeafPage(BufferPool& pool, File& index_file,
   Page* new_page = pool.pinPage(new_page_id, index_file);
   LeafIndexPage new_leaf(*new_page);
   new_leaf.setRightSiblingPageId(old_page.getPageID());
+  rewireLeafSiblingPredecessor(pool, index_file, old_page.getPageID(),
+                               new_page_id);
   
 
   LeafIndexPage old_leaf(old_page);
@@ -403,4 +355,35 @@ void BTreeCursor::dumpTree(BufferPool& pool, File& indexFile,
     dumpIndexPage(*page, os);
     pool.unpinPage(page, indexFile);
   }
+}
+
+/** check if key is inside the boundary */
+bool BTreeCursor::isInsideBoundary(std::string_view key, BTreeCursor::Boundary boundary, bool is_boundary_left) {
+  const std::string_view boundary_key = boundary.composite_key;
+  const std::size_t compare_size = std::min(key.size(), boundary_key.size());
+  int result = key.substr(0, compare_size).compare(
+      boundary_key.substr(0, compare_size));
+  if (result < 0) {
+    result = -1;
+  } else if (result > 0) {
+    result = 1;
+  } else if (key.size() < boundary_key.size()) {
+    result = -1;
+  }
+  if(is_boundary_left) {
+    // For left boundary, we want keys that are greater than (or equal to, if inclusive) the boundary.
+    if (boundary.is_inclusive) {
+      return result >= 0;
+    } else {
+      return result > 0;
+    }
+  } else {
+    // For right boundary, we want keys that are less than (or equal to, if inclusive) the boundary.
+    if (boundary.is_inclusive) {
+      return result <= 0;
+    } else {
+      return result < 0;
+    }
+  }
+  throw std::logic_error("Unsupported comparison operator.");
 }

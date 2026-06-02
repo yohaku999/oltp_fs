@@ -42,7 +42,7 @@ std::optional<TypedRow> HeapFetchOperator::next() {
     pool_.unpinPage(page, heap_file_);
 
     // Apply filtering: skip row if predicates don't match
-    if (!matchesPredicates(row, predicates_)) {
+    if (!passesPredicates(row, predicates_)) {
       continue;
     }
 

@@ -1,9 +1,11 @@
 #include "executor.h"
 
+#include <algorithm>
 #include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "../logging.h"
@@ -39,6 +41,105 @@
 #include "catalog/table.h"
 
 namespace {
+
+struct PredicateValueAndType {
+  const FieldValue& value;
+  Column::Type column_type;
+};
+
+PredicateValueAndType extractValueAndType(
+    const BoundComparisonPredicate& predicate) {
+  const BoundColumnRef* left_column = std::get_if<BoundColumnRef>(&predicate.left);
+  const BoundColumnRef* right_column =
+      std::get_if<BoundColumnRef>(&predicate.right);
+  const FieldValue* left_value = std::get_if<FieldValue>(&predicate.left);
+  const FieldValue* right_value = std::get_if<FieldValue>(&predicate.right);
+
+  if (left_column != nullptr && right_value != nullptr) {
+    return {*right_value, left_column->type};
+  }
+  if (right_column != nullptr && left_value != nullptr) {
+    return {*left_value, right_column->type};
+  }
+
+  throw std::logic_error(
+      "Index lookup predicates must compare a column with a value.");
+}
+
+std::vector<BoundComparisonPredicate>::const_iterator findPredicateByOp(
+    const std::vector<BoundComparisonPredicate>& predicates, Op op) {
+  return std::find_if(
+      predicates.begin(), predicates.end(),
+      [op](const BoundComparisonPredicate& predicate) {
+        return predicate.op == op;
+      });
+}
+
+std::pair<BTreeCursor::Boundary, BTreeCursor::Boundary> buildTraversalBoundaries(
+    const std::vector<std::vector<BoundComparisonPredicate>>&
+        ordered_predicates) {
+  BTreeCursor::Boundary left_boundary{"", true};
+  BTreeCursor::Boundary right_boundary{"", true};
+
+  for (size_t i = 0; i < ordered_predicates.size(); ++i) {
+    const auto& predicates_for_key = ordered_predicates[i];
+    if (predicates_for_key.empty() && i == 0) {
+      throw std::logic_error(
+          "The leading key must have at least one predicate for index lookup.");
+    }
+    if (predicates_for_key.empty() && i != 0) {
+      // If a non-leading key has no predicate, later keys cannot narrow the
+      // traversal boundary.
+      break;
+    }
+
+    const auto eq_pred_it = findPredicateByOp(predicates_for_key, Op::Eq);
+    if (eq_pred_it != predicates_for_key.end()) {
+      const auto [value, column_type] = extractValueAndType(*eq_pred_it);
+      left_boundary.composite_key +=
+          index_key::encodeFieldValue(value, column_type);
+      right_boundary.composite_key +=
+          index_key::encodeFieldValue(value, column_type);
+      continue;
+    }
+
+    const auto gt_pred_it = findPredicateByOp(predicates_for_key, Op::Gt);
+    if (gt_pred_it != predicates_for_key.end()) {
+      const auto [value, column_type] = extractValueAndType(*gt_pred_it);
+      left_boundary.composite_key +=
+          index_key::encodeFieldValue(value, column_type);
+      left_boundary.is_inclusive = false;
+      continue;
+    }
+
+    const auto ge_pred_it = findPredicateByOp(predicates_for_key, Op::Ge);
+    if (ge_pred_it != predicates_for_key.end()) {
+      const auto [value, column_type] = extractValueAndType(*ge_pred_it);
+      left_boundary.composite_key +=
+          index_key::encodeFieldValue(value, column_type);
+      continue;
+    }
+
+    const auto lt_pred_it = findPredicateByOp(predicates_for_key, Op::Lt);
+    if (lt_pred_it != predicates_for_key.end()) {
+      const auto [value, column_type] = extractValueAndType(*lt_pred_it);
+      right_boundary.composite_key +=
+          index_key::encodeFieldValue(value, column_type);
+      right_boundary.is_inclusive = false;
+      continue;
+    }
+
+    const auto le_pred_it = findPredicateByOp(predicates_for_key, Op::Le);
+    if (le_pred_it != predicates_for_key.end()) {
+      const auto [value, column_type] = extractValueAndType(*le_pred_it);
+      right_boundary.composite_key +=
+          index_key::encodeFieldValue(value, column_type);
+      continue;
+    }
+  }
+
+  return {left_boundary, right_boundary};
+}
 
 FieldValue evaluateBoundUpdateValue(const BoundUpdateValue& value,
                                     const TypedRow& original_row,
@@ -107,6 +208,79 @@ std::vector<Item> collectItems(Source& source) {
 }
 
 /**
+ * Prepare predicates for index scan.
+ * Filter the given predicates to keep only those that can be used for index scan and group them by their corresponding index key order.
+ */
+std::vector<std::vector<BoundComparisonPredicate>> prepareIndexKeyPredicates(
+    const std::vector<BoundComparisonPredicate>& predicates,
+    const std::vector<std::size_t>& key_order_indexes) {
+  std::vector<std::vector<BoundComparisonPredicate>> ordered_predicates(
+      key_order_indexes.size());
+
+  for (const auto& predicate : predicates) {
+    // only key value predicates can be used for index scan.
+    const auto* left_column = std::get_if<BoundColumnRef>(&predicate.left);
+    const auto* right_column = std::get_if<BoundColumnRef>(&predicate.right);
+    const bool has_column_value_pair = (left_column != nullptr) !=
+                                       (right_column != nullptr);
+    if (!has_column_value_pair) {
+      continue;
+    }
+
+    const BoundColumnRef* column_ref =
+        left_column != nullptr ? left_column : right_column;
+    const auto it = std::find(key_order_indexes.begin(),
+                              key_order_indexes.end(),
+                              column_ref->column_index);
+    if (it == key_order_indexes.end()) {
+      continue;
+    }
+
+    const std::size_t key_index =
+        static_cast<std::size_t>(std::distance(key_order_indexes.begin(), it));
+    ordered_predicates[key_index].push_back(predicate);
+  }
+
+  return ordered_predicates;
+}
+
+struct IndexLookupPlan {
+  bool can_use_index;
+  std::vector<std::vector<BoundComparisonPredicate>> ordered_predicates;
+};
+
+IndexLookupPlan planIndexLookup(
+    const Table& table,
+    const std::vector<BoundComparisonPredicate>& predicates) {
+  if (table.indexedColumnIndexes().empty()) {
+    return {false, {}};
+  }
+
+  std::vector<std::vector<BoundComparisonPredicate>> ordered_predicates =
+      prepareIndexKeyPredicates(predicates, table.indexedColumnIndexes());
+  const bool can_use_index =
+      !ordered_predicates.empty() && !ordered_predicates.front().empty();
+
+  return {can_use_index, std::move(ordered_predicates)};
+}
+
+std::vector<BoundComparisonPredicate> buildIndexKeyEqualityPredicates(
+    const Table& table, const TypedRow& row) {
+  std::vector<BoundComparisonPredicate> predicates;
+  predicates.reserve(table.indexedColumnIndexes().size());
+
+  for (const std::size_t indexed_column_index : table.indexedColumnIndexes()) {
+    const auto& column = table.schema().columns().at(indexed_column_index);
+    predicates.push_back(BoundComparisonPredicate{
+        Op::Eq,
+        BoundColumnRef{0, indexed_column_index, column.getType()},
+        row.values.at(indexed_column_index)});
+  }
+
+  return predicates;
+}
+
+/**
  * Collect RIDs of records narrowed by the given predicates.
  */
 std::vector<RID> collectRidsNarrowedByPredicates(
@@ -114,13 +288,8 @@ std::vector<RID> collectRidsNarrowedByPredicates(
     const std::vector<UnboundComparisonPredicate>& predicates) {
   const std::vector<BoundComparisonPredicate> bound_predicates =
       binder::bindPredicatesResolvableByTable(predicates, table);
-  // check if prerequesite for index scan is met.
-  std::vector<std::vector<BoundComparisonPredicate>> ordered_predicate;
-  if (!table.indexedColumnIndexes().empty()) {
-    ordered_predicate = align_predicates_with_key_order(
-        bound_predicates, table.indexedColumnIndexes());
-  }
-  if (ordered_predicate.empty() || ordered_predicate.front().empty()) {
+  IndexLookupPlan index_plan = planIndexLookup(table, bound_predicates);
+  if (!index_plan.can_use_index) {
     dbfs_log::execution().debug(
         "Building sequential scan operator for table {} because index scan "
         "prerequisites are not met.",
@@ -128,8 +297,8 @@ std::vector<RID> collectRidsNarrowedByPredicates(
     return heap_file_access::collectRids(pool, table.heapFile());
   }
 
-  IndexScanOperator scan(pool, table.requireIndexFile(), ordered_predicate,
-                         table.indexedColumnIndexes());
+  IndexScanOperator scan(pool, table.requireIndexFile(), buildTraversalBoundaries(index_plan.ordered_predicates),
+                         std::move(index_plan.ordered_predicates));
   return collectItems<RID>(scan);
 }
 
@@ -151,7 +320,7 @@ std::size_t removeMatchingRows(BufferPool& pool, Table& table,
     }
 
     TypedRow row = RecordCellView(cell_start).getTypedRow(table.schema());
-    if (!matchesPredicates(row, bound_predicates)) {
+    if (!passesPredicates(row, bound_predicates)) {
       pool.unpinPage(page, table.heapFile());
       continue;
     }
@@ -160,21 +329,14 @@ std::size_t removeMatchingRows(BufferPool& pool, Table& table,
     const auto index_file = table.indexFile();
     if (index_file.has_value()) {
       // create index key predicates from row, since index search result can have redundant RIDs by its nature.
-      std::vector<BoundComparisonPredicate> index_key_predicates;
-      for (const auto& indexed_column_index : table.indexedColumnIndexes()) {
-        const auto& column = table.schema().columns().at(indexed_column_index);
-        const auto& value = row.values.at(indexed_column_index);
-        index_key_predicates.push_back(BoundComparisonPredicate{
-            Op::Eq,
-            BoundColumnRef{0, indexed_column_index, column.getType()},
-            value});
-      }
+      // OPTIMIZE : Even if we are doing an online delete, we can still use the original values to construct index key predicates and delete the index entry, instead of leaving the index entry dangling and cleaning it up later by a separate process.
+      const std::vector<BoundComparisonPredicate> index_key_predicates =
+          buildIndexKeyEqualityPredicates(table, row);
       const std::vector<std::vector<BoundComparisonPredicate>> ordered_predicates =
-          align_predicates_with_key_order(index_key_predicates,
-                                          table.indexedColumnIndexes());
-      BTreeCursor::findRIDs(pool, index_file->get(), true,
-                           ordered_predicates,
-                           table.indexedColumnIndexes());
+          prepareIndexKeyPredicates(index_key_predicates,
+                                      table.indexedColumnIndexes());
+      const auto& boundaries = buildTraversalBoundaries(ordered_predicates);
+      BTreeCursor::findEntries(pool, index_file->get(), boundaries, true);
     }
 
     wal.write(WALRecord::RecordType::DELETE, rid.heap_page_id,
@@ -195,23 +357,14 @@ void insertRow(BufferPool& pool, Table& table, const TypedRow& row, WAL& wal) {
     dbfs_log::execution().debug("Inserting record with key {} into table {}.",
          index_key::formatForDebug(key.value()),
          table.name());
-    std::vector<BoundComparisonPredicate> predicates;
-    for (const auto& indexed_column_index : table.indexedColumnIndexes()) {
-      const auto& column = table.schema().columns().at(indexed_column_index);
-      const auto& value = row.values.at(indexed_column_index);
-      predicates.push_back(BoundComparisonPredicate{
-        Op::Eq,
-        BoundColumnRef{0, indexed_column_index, column.getType()},
-        value
-      });
-    }
+    const std::vector<BoundComparisonPredicate> predicates =
+        buildIndexKeyEqualityPredicates(table, row);
     const std::vector<std::vector<BoundComparisonPredicate>> ordered_predicates =
-        align_predicates_with_key_order(predicates,
-                                        table.indexedColumnIndexes());
-    std::vector<RID> existing_rids =
-        BTreeCursor::findRIDs(pool, index_file->get(), false, ordered_predicates,
-                             table.indexedColumnIndexes());
-    if (!existing_rids.empty()) {
+        prepareIndexKeyPredicates(predicates, table.indexedColumnIndexes());
+    const auto& boundaries = buildTraversalBoundaries(ordered_predicates);
+    std::vector<IndexEntry> existing_entries =
+        BTreeCursor::findEntries(pool, index_file->get(), boundaries, false);
+    if (!existing_entries.empty()) {
       throw std::runtime_error(
           "Duplicate key is not allowed for indexed table: " + table.name());
     }
@@ -258,7 +411,7 @@ std::size_t updateMatchingRows(BufferPool& pool, Table& table,
 
     TypedRow original_row = RecordCellView(cell_start).getTypedRow(table.schema());
     pool.unpinPage(page, table.heapFile());
-    if (!matchesPredicates(original_row, bound_predicates)) {
+    if (!passesPredicates(original_row, bound_predicates)) {
       continue;
     }
 
@@ -279,13 +432,8 @@ std::unique_ptr<TypedRowOperator> buildReadSource(
     const std::vector<UnboundComparisonPredicate>& predicates) {
   const std::vector<BoundComparisonPredicate> bound_predicates =
       binder::bindPredicatesResolvableByTable(predicates, table);
-  // check if prerequesite for index scan is met.
-  std::vector<std::vector<BoundComparisonPredicate>> ordered_predicate;
-  if (!table.indexedColumnIndexes().empty()) {
-    ordered_predicate = align_predicates_with_key_order(
-        bound_predicates, table.indexedColumnIndexes());
-  }
-  if (ordered_predicate.empty() || ordered_predicate.front().empty()) {
+  IndexLookupPlan index_plan = planIndexLookup(table, bound_predicates);
+  if (!index_plan.can_use_index) {
     dbfs_log::execution().debug(
         "Building sequential scan operator for table {} because index scan "
         "prerequisites are not met.",
@@ -295,8 +443,7 @@ std::unique_ptr<TypedRowOperator> buildReadSource(
   }
   
   auto scan = std::make_unique<IndexScanOperator>(
-      pool, table.requireIndexFile(), ordered_predicate,
-      table.indexedColumnIndexes());
+      pool, table.requireIndexFile(), buildTraversalBoundaries(index_plan.ordered_predicates),std::move(index_plan.ordered_predicates));
   return std::make_unique<HeapFetchOperator>(std::move(scan), pool,
                                              table.heapFile(), table.schema(), bound_predicates);
 }

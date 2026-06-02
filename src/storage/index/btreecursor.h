@@ -2,9 +2,9 @@
 #include <optional>
 #include <ostream>
 #include <string>
+#include <utility>
 #include <vector>
 
-#include "execution/comparison_predicate.h"
 #include "storage/runtime/bufferpool.h"
 #include "storage/index/rid.h"
 
@@ -27,8 +27,9 @@ class BTreeCursor {
     std::string composite_key;
     bool is_inclusive;
   };
-  static std::vector<RID> findRIDs(BufferPool& pool, File& indexFile,
-                                       bool do_invalidate, const std::vector<std::vector<BoundComparisonPredicate>>& ordered_predicates, const std::vector<std::size_t>& key_order_indexes);
+  static std::vector<IndexEntry> findEntries(
+      BufferPool& pool, File& indexFile,
+      std::pair<Boundary, Boundary> boundaries, bool do_invalidate);
   static int findLeafPageID(BufferPool& pool, File& indexFile,
                             const std::string& key);
   static IntermediateCell splitPage(BufferPool& pool, File& indexFile, Page* old_page, Page* parent_page);
@@ -43,6 +44,7 @@ class BTreeCursor {
                                             const std::string& separate_key);
   static Page* ensureParentPage(BufferPool& pool, File& index_file,
                                 Page& old_page);
+  static bool isInsideBoundary(std::string_view key, Boundary boundary, bool is_boundary_left);
 
  public:
   static void dumpTree(BufferPool& pool, File& indexFile, std::ostream& os);

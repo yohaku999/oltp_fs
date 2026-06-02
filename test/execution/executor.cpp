@@ -955,6 +955,258 @@ TEST_F(ExecutorTest, ReadSelectUsesCompositePrimaryKeyPath) {
   EXPECT_FALSE(Table::isPersisted(new_table_name));
 }
 
+TEST_F(ExecutorTest, ReadSelectFiltersNonKeyColumnAfterCompositeKeyPrefixScan) {
+  const std::string new_table_name =
+      uniqueTableName("composite_prefix_filter_read_test");
+
+  executor::create_table(CreateTableParser(
+      "CREATE TABLE " + new_table_name + " ("
+      "c_w_id int NOT NULL, "
+      "c_d_id int NOT NULL, "
+      "c_id int NOT NULL, "
+      "c_last varchar(16) NOT NULL, "
+      "c_first varchar(16) NOT NULL, "
+      "PRIMARY KEY (c_w_id, c_d_id, c_id))"));
+
+  {
+    Table table = Table::getTable(new_table_name);
+    for (int district_id = 1; district_id <= 10; ++district_id) {
+      for (int customer_id = 1; customer_id <= 320; ++customer_id) {
+        const bool is_target =
+            district_id == 8 &&
+            (customer_id == 167 || customer_id == 249 ||
+             customer_id == 319);
+        const std::string last_name =
+            is_target ? "OUGHTANTIANTI" : "OTHER";
+        const std::string first_name =
+            "first" + std::to_string(customer_id);
+        executor::insert(
+            *pool_, table,
+            InsertParser("INSERT INTO " + new_table_name + " VALUES (" +
+                         "1, " + std::to_string(district_id) + ", " +
+                         std::to_string(customer_id) + ", '" + last_name +
+                         "', '" + first_name + "')"),
+            *wal_);
+      }
+    }
+  }
+
+  std::vector<TypedRow> seq_rows = executor::read(
+      *pool_, SelectParser("SELECT c_id FROM " + new_table_name +
+                           " WHERE c_last = 'OUGHTANTIANTI'"));
+  ASSERT_EQ(seq_rows.size(), 3u);
+
+  std::vector<TypedRow> prefix_rows = executor::read(
+      *pool_, SelectParser("SELECT c_id FROM " + new_table_name +
+                           " WHERE c_w_id = 1"
+                           " AND c_d_id = 8"));
+  ASSERT_EQ(prefix_rows.size(), 320u);
+
+  std::vector<TypedRow> rows = executor::read(
+      *pool_, SelectParser("SELECT c_first, c_id FROM " + new_table_name +
+                           " WHERE c_w_id = 1"
+                           " AND c_d_id = 8"
+                           " AND c_last = 'OUGHTANTIANTI'"
+                           " ORDER BY c_first"));
+
+  ASSERT_EQ(rows.size(), 3u);
+  EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[1]), 167);
+  EXPECT_EQ(std::get<Column::IntegerType>(rows[1].values[1]), 249);
+  EXPECT_EQ(std::get<Column::IntegerType>(rows[2].values[1]), 319);
+
+  executor::drop_table(DropTableParser("DROP TABLE " + new_table_name));
+  EXPECT_FALSE(Table::isPersisted(new_table_name));
+}
+
+TEST_F(ExecutorTest, ReadSelectFindsTpccCustomerByNameAfterLargePrefixScan) {
+  const std::string new_table_name =
+      uniqueTableName("tpcc_customer_name_read_test");
+
+  executor::create_table(CreateTableParser(
+      "CREATE TABLE " + new_table_name + " ("
+      "c_w_id int NOT NULL, "
+      "c_d_id int NOT NULL, "
+      "c_id int NOT NULL, "
+      "c_last varchar(16) NOT NULL, "
+      "c_first varchar(16) NOT NULL, "
+      "PRIMARY KEY (c_w_id, c_d_id, c_id))"));
+
+  {
+    Table table = Table::getTable(new_table_name);
+    for (int district_id = 1; district_id <= 10; ++district_id) {
+      for (int customer_id = 1; customer_id <= 3000; ++customer_id) {
+        const bool is_target =
+            district_id == 10 && customer_id == 990;
+        const std::string last_name =
+            is_target ? "EINGATIONEING" : "OTHER";
+        const std::string first_name =
+            "first" + std::to_string(customer_id);
+        executor::insert(
+            *pool_, table,
+            InsertParser("INSERT INTO " + new_table_name + " VALUES (" +
+                         "1, " + std::to_string(district_id) + ", " +
+                         std::to_string(customer_id) + ", '" + last_name +
+                         "', '" + first_name + "')"),
+            *wal_);
+      }
+    }
+  }
+
+  std::vector<TypedRow> prefix_rows = executor::read(
+      *pool_, SelectParser("SELECT c_id FROM " + new_table_name +
+                           " WHERE c_w_id = 1"
+                           " AND c_d_id = 10"));
+  ASSERT_EQ(prefix_rows.size(), 3000u);
+
+  {
+    Table table = Table::getTable(new_table_name);
+    const std::vector<std::pair<int, int>> updated_customers = {
+        {2, 1116}, {7, 2811}, {9, 610}, {8, 863}, {7, 799}, {5, 1313}};
+    for (const auto& [district_id, customer_id] : updated_customers) {
+      executor::update(
+          *pool_, table,
+          UpdateParser("UPDATE " + new_table_name +
+                       " SET c_first = 'updated'"
+                       " WHERE c_w_id = 1"
+                       " AND c_d_id = " + std::to_string(district_id) +
+                       " AND c_id = " + std::to_string(customer_id)),
+          *wal_);
+    }
+  }
+
+  prefix_rows = executor::read(
+      *pool_, SelectParser("SELECT c_id FROM " + new_table_name +
+                           " WHERE c_w_id = 1"
+                           " AND c_d_id = 10"));
+  ASSERT_EQ(prefix_rows.size(), 3000u);
+
+  std::vector<TypedRow> rows = executor::read(
+      *pool_, SelectParser("SELECT c_first, c_id FROM " + new_table_name +
+                           " WHERE c_w_id = 1"
+                           " AND c_d_id = 10"
+                           " AND c_last = 'EINGATIONEING'"
+                           " ORDER BY c_first"));
+
+  ASSERT_EQ(rows.size(), 1u);
+  EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[1]), 990);
+
+  executor::drop_table(DropTableParser("DROP TABLE " + new_table_name));
+  EXPECT_FALSE(Table::isPersisted(new_table_name));
+}
+
+TEST_F(ExecutorTest, ReadSelectFindsTpccCustomerByNameWithFullCustomerRows) {
+  const std::string new_table_name =
+      uniqueTableName("tpcc_full_customer_name_read_test");
+
+  executor::create_table(CreateTableParser(
+      "CREATE TABLE " + new_table_name + " ("
+      "c_w_id int NOT NULL, "
+      "c_d_id int NOT NULL, "
+      "c_id int NOT NULL, "
+      "c_discount decimal(4, 4) NOT NULL, "
+      "c_credit char(2) NOT NULL, "
+      "c_last varchar(16) NOT NULL, "
+      "c_first varchar(16) NOT NULL, "
+      "c_credit_lim decimal(12, 2) NOT NULL, "
+      "c_balance decimal(12, 2) NOT NULL, "
+      "c_ytd_payment float NOT NULL, "
+      "c_payment_cnt int NOT NULL, "
+      "c_delivery_cnt int NOT NULL, "
+      "c_street_1 varchar(20) NOT NULL, "
+      "c_street_2 varchar(20) NOT NULL, "
+      "c_city varchar(20) NOT NULL, "
+      "c_state char(2) NOT NULL, "
+      "c_zip char(9) NOT NULL, "
+      "c_phone char(16) NOT NULL, "
+      "c_since timestamp NOT NULL, "
+      "c_middle char(2) NOT NULL, "
+      "c_data varchar(500) NOT NULL, "
+      "PRIMARY KEY (c_w_id, c_d_id, c_id))"));
+
+  const auto repeatedData = [](int customer_id) {
+    std::string data = "customer-data-" + std::to_string(customer_id) + "-";
+    while (data.size() < 360) {
+      data += "abcdefghijklmnopqrstuvwxyz";
+    }
+    data.resize(360);
+    return data;
+  };
+
+  {
+    Table table = Table::getTable(new_table_name);
+    for (int district_id = 1; district_id <= 10; ++district_id) {
+      for (int customer_id = 1; customer_id <= 3000; ++customer_id) {
+        const bool is_target =
+            district_id == 10 && customer_id == 990;
+        const std::string last_name =
+            is_target ? "EINGATIONEING" : "OTHER";
+        executor::insert(
+            *pool_, table,
+            InsertParser("INSERT INTO " + new_table_name + " VALUES (" +
+                         "1, " + std::to_string(district_id) + ", " +
+                         std::to_string(customer_id) + ", "
+                         "0.1, 'GC', '" + last_name + "', "
+                         "'first" + std::to_string(customer_id) + "', "
+                         "50000.0, -10.0, 10.0, 1, 0, "
+                         "'street1', 'street2', 'city', 'ST', "
+                         "'123456789', '1234567890123456', "
+                         "'2026-06-02 22:36:19.899', 'OE', '" +
+                         repeatedData(customer_id) + "')"),
+            *wal_);
+      }
+    }
+  }
+
+  std::vector<TypedRow> prefix_rows = executor::read(
+      *pool_, SelectParser("SELECT c_id FROM " + new_table_name +
+                           " WHERE c_w_id = 1"
+                           " AND c_d_id = 10"));
+  ASSERT_EQ(prefix_rows.size(), 3000u);
+
+  {
+    Table table = Table::getTable(new_table_name);
+    const std::vector<std::tuple<int, int, bool>> updated_customers = {
+        {2, 1116, false}, {7, 2811, false}, {9, 610, true},
+        {8, 863, false}, {7, 799, false},  {5, 1313, true}};
+    for (const auto& [district_id, customer_id, update_data] :
+         updated_customers) {
+      std::string set_clause =
+          " SET c_balance = -90.5, c_ytd_payment = 90.5, "
+          "c_payment_cnt = 2";
+      if (update_data) {
+        set_clause += ", c_data = '" + repeatedData(customer_id + 10000) + "'";
+      }
+      executor::update(
+          *pool_, table,
+          UpdateParser("UPDATE " + new_table_name + set_clause +
+                       " WHERE c_w_id = 1"
+                       " AND c_d_id = " + std::to_string(district_id) +
+                       " AND c_id = " + std::to_string(customer_id)),
+          *wal_);
+    }
+  }
+
+  prefix_rows = executor::read(
+      *pool_, SelectParser("SELECT c_id FROM " + new_table_name +
+                           " WHERE c_w_id = 1"
+                           " AND c_d_id = 10"));
+  ASSERT_EQ(prefix_rows.size(), 3000u);
+
+  std::vector<TypedRow> rows = executor::read(
+      *pool_, SelectParser("SELECT c_first, c_middle, c_id FROM " +
+                           new_table_name +
+                           " WHERE c_w_id = 1"
+                           " AND c_d_id = 10"
+                           " AND c_last = 'EINGATIONEING'"
+                           " ORDER BY c_first"));
+
+  ASSERT_EQ(rows.size(), 1u);
+  EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[2]), 990);
+
+  executor::drop_table(DropTableParser("DROP TABLE " + new_table_name));
+  EXPECT_FALSE(Table::isPersisted(new_table_name));
+}
+
 TEST_F(ExecutorTest, ReadSelectRoundTripsTraceLikeWarehouseRow) {
   const std::string new_table_name = uniqueTableName("warehouse_read_test");
 

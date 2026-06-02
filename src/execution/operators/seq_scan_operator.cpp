@@ -35,7 +35,7 @@ std::optional<TypedRow> SeqScanOperator::next() {
       TypedRow row = RecordCellView(cell_start).getTypedRow(schema_);
       pool_.unpinPage(page, heap_file_);
       // Apply filtering: skip row if predicates don't match
-      if (!matchesPredicates(row, predicates_)) {
+      if (!passesPredicates(row, predicates_)) {
         continue;
       }
       logger_.recordOutput();

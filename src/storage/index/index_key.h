@@ -4,16 +4,13 @@
 #include <cstdint>
 #include <cstring>
 #include <stdexcept>
-
 #include <string>
 #include <string_view>
-#include <vector>
 #include <unordered_set>
+#include <vector>
 
 #include "schema/schema.h"
 #include "tuple/typed_row.h"
-#include "execution/comparison_predicate.h"
-#include "storage/index/btreecursor.h"
 
 namespace index_key {
 
@@ -122,59 +119,6 @@ inline std::string encodeRow(const Schema& schema, const TypedRow& row,
                                 schema.columns()[column_index].getType());
   }
   return encoded;
-}
-
-inline bool matches(std::string_view lhs, std::string_view rhs, Op op) {
-  const int result = lhs.compare(rhs);
-  switch (op) {
-    case Op::Eq: return result == 0;
-    case Op::Gt: return result > 0;
-    case Op::Ge: return result >= 0;
-    case Op::Lt: return result < 0;
-    case Op::Le: return result <= 0;
-  }
-  throw std::logic_error("Unsupported comparison operator.");
-}
-
-inline bool startsWith(std::string_view key, std::string_view prefix) {
-  return key.size() >= prefix.size() &&
-         key.substr(0, prefix.size()) == prefix;
-}
-
-inline int compareWithPrefix(std::string_view key, std::string_view prefix) {
-  const std::size_t compare_size = std::min(key.size(), prefix.size());
-  const int result = key.substr(0, compare_size).compare(
-      prefix.substr(0, compare_size));
-  if (result < 0) {
-    return -1;
-  }
-  if (result > 0) {
-    return 1;
-  }
-  if (key.size() < prefix.size()) {
-    return -1;
-  }
-  return 0;
-}
-
-inline bool matchesPrefix(std::string_view key, BTreeCursor::Boundary boundary, bool is_boundary_left) {
-  const int result = compareWithPrefix(key, boundary.composite_key);
-  if(is_boundary_left) {
-    // For left boundary, we want keys that are greater than (or equal to, if inclusive) the boundary.
-    if (boundary.is_inclusive) {
-      return result >= 0;
-    } else {
-      return result > 0;
-    }
-  } else {
-    // For right boundary, we want keys that are less than (or equal to, if inclusive) the boundary.
-    if (boundary.is_inclusive) {
-      return result <= 0;
-    } else {
-      return result < 0;
-    }
-  }
-  throw std::logic_error("Unsupported comparison operator.");
 }
 
 inline int compare(std::string_view lhs, std::string_view rhs) {
