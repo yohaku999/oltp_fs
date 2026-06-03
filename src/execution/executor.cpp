@@ -27,6 +27,7 @@
 #include "execution/parsers/update_parser.h"
 #include "execution/operators/seq_scan_operator.h"
 #include "execution/operators/loop_join_operator.h"
+#include "execution/operators/hash_join_operator.h"
 #include "storage/index/btreecursor.h"
 #include "storage/index/index_key.h"
 #include "storage/page/cell.h"
@@ -448,6 +449,68 @@ std::unique_ptr<TypedRowOperator> buildReadSource(
                                              table.heapFile(), table.schema(), bound_predicates);
 }
 
+std::optional<HashJoinKey> findHashJoinKeyForTwoTableJoin(
+    const std::vector<BoundComparisonPredicate>& predicates,
+    const std::vector<Table>& tables) {
+  if (tables.size() != 2) {
+    return std::nullopt;
+  }
+
+  const std::size_t outer_column_count =
+      tables[0].schema().columns().size();
+  const std::size_t inner_column_count =
+      tables[1].schema().columns().size();
+  const std::size_t joined_column_count =
+      outer_column_count + inner_column_count;
+
+  for (const auto& predicate : predicates) {
+    if (predicate.op != Op::Eq) {
+      continue;
+    }
+
+    const auto* left_column = std::get_if<BoundColumnRef>(&predicate.left);
+    const auto* right_column = std::get_if<BoundColumnRef>(&predicate.right);
+    if (left_column == nullptr || right_column == nullptr ||
+        left_column->type != right_column->type) {
+      continue;
+    }
+
+    const auto to_outer_index = [&](std::size_t column_index)
+        -> std::optional<std::size_t> {
+      if (column_index < outer_column_count) {
+        return column_index;
+      }
+      return std::nullopt;
+    };
+    const auto to_inner_index = [&](std::size_t column_index)
+        -> std::optional<std::size_t> {
+      if (column_index >= outer_column_count &&
+          column_index < joined_column_count) {
+        return column_index - outer_column_count;
+      }
+      return std::nullopt;
+    };
+
+    const std::optional<std::size_t> left_outer =
+        to_outer_index(left_column->column_index);
+    const std::optional<std::size_t> left_inner =
+        to_inner_index(left_column->column_index);
+    const std::optional<std::size_t> right_outer =
+        to_outer_index(right_column->column_index);
+    const std::optional<std::size_t> right_inner =
+        to_inner_index(right_column->column_index);
+
+    if (left_outer.has_value() && right_inner.has_value()) {
+      return HashJoinKey{left_outer.value(), right_inner.value()};
+    }
+    if (right_outer.has_value() && left_inner.has_value()) {
+      return HashJoinKey{right_outer.value(), left_inner.value()};
+    }
+  }
+
+  return std::nullopt;
+}
+
 }  // namespace
 
 /**
@@ -508,6 +571,11 @@ std::vector<TypedRow> executor::read(BufferPool& pool,
   std::unique_ptr<TypedRowOperator> pipeline;
   if (sources.size() == 1) {
     pipeline = std::move(sources.front());
+  } else if (std::optional<HashJoinKey> key =
+                 findHashJoinKeyForTwoTableJoin(bound_predicates, tables);
+             key.has_value()) {
+    pipeline = std::make_unique<HashJoinOperator>(
+        std::move(sources[0]), std::move(sources[1]), key.value());
   } else {
     pipeline = std::make_unique<LoopJoinOperator>(std::move(sources));
   }

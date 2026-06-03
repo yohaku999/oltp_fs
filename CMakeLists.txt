@@ -69,6 +69,7 @@ add_library(dbfs_src
     src/execution/parsers/insert_parser.cpp
     src/execution/parsers/update_parser.cpp
     src/execution/operators/heap_fetch_operator.cpp
+    src/execution/operators/hash_join_operator.cpp
     src/execution/executor.cpp
     src/execution/operators/index_scan_operator.cpp
     src/execution/operators/limit_operator.cpp
@@ -125,6 +126,9 @@ target_link_libraries(filter_operator_test dbfs_src GTest::gtest_main)
 add_executable(loop_join_operator_test test/execution/loop_join_operator.cpp)
 target_link_libraries(loop_join_operator_test dbfs_src GTest::gtest_main)
 
+add_executable(hash_join_operator_test test/execution/hash_join_operator.cpp)
+target_link_libraries(hash_join_operator_test dbfs_src GTest::gtest_main)
+
 add_executable(heap_fetch_operator_test test/execution/heap_fetch_operator.cpp)
 target_link_libraries(heap_fetch_operator_test dbfs_src GTest::gtest_main)
 
@@ -177,6 +181,7 @@ add_test(NAME ProjectionOperatorTest COMMAND projection_operator_test)
 add_test(NAME FilterOperatorTest COMMAND filter_operator_test)
 add_test(NAME LimitOperatorTest COMMAND limit_operator_test)
 add_test(NAME LoopJoinOperatorTest COMMAND loop_join_operator_test)
+add_test(NAME HashJoinOperatorTest COMMAND hash_join_operator_test)
 add_test(NAME OrderByOperatorTest COMMAND orderby_operator_test)
 add_test(NAME ExchangeOperatorTest COMMAND exchange_operator_test)
 add_test(NAME ServerTest COMMAND server_test)

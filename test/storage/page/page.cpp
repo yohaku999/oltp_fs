@@ -7,6 +7,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "storage/page/cell.h"
@@ -33,12 +34,9 @@ BTreeCursor::Boundary inclusiveBoundary(const std::string& key) {
   return BTreeCursor::Boundary{key, true};
 }
 
-std::vector<BoundComparisonPredicate> eqIntPredicate(int value) {
-  return std::vector<BoundComparisonPredicate>{
-      BoundComparisonPredicate{
-          Op::Eq,
-          BoundColumnRef{0, 0, Column::Type::Integer},
-          FieldValue{static_cast<Column::IntegerType>(value)}}};
+std::pair<BTreeCursor::Boundary, BTreeCursor::Boundary> exactBoundaries(
+    const std::string& key) {
+  return {inclusiveBoundary(key), inclusiveBoundary(key)};
 }
 
 }  // namespace
@@ -66,13 +64,14 @@ TEST(PageTest, InsertLeafPageAndFind) {
     EXPECT_EQ(expected_slot_ids[i], slot_id);
 
     LeafIndexPage leaf(*page);
-    auto [next_page, refs] = leaf.findRef(
-        inclusiveBoundary(encodeIntKey(entry.key)), false,
-        eqIntPredicate(entry.key));
+    const auto [left_boundary, right_boundary] =
+        exactBoundaries(encodeIntKey(entry.key));
+    auto [next_page, entries] =
+        leaf.findEntries(left_boundary, right_boundary, false);
     EXPECT_EQ(LeafIndexPage::NO_RIGHT_SIBLING, next_page);
-    ASSERT_FALSE(refs.empty());
-    EXPECT_EQ(entry.heap_page_id, refs.front().heap_page_id);
-    EXPECT_EQ(entry.slot_id, refs.front().slot_id);
+    ASSERT_FALSE(entries.empty());
+    EXPECT_EQ(entry.heap_page_id, entries.front().rid.heap_page_id);
+    EXPECT_EQ(entry.slot_id, entries.front().rid.slot_id);
   }
 
   LeafIndexPage leaf(*page);
@@ -295,10 +294,12 @@ TEST(PageTest, InvalidateSlotMarksPreviouslyCleanPageDirty) {
   EXPECT_TRUE(page->isDirty());
 
   LeafIndexPage leaf(*page);
-  auto [next_page, refs] = leaf.findRef(
-      inclusiveBoundary(encodeIntKey(123)), false, eqIntPredicate(123));
+  const auto [left_boundary, right_boundary] =
+      exactBoundaries(encodeIntKey(123));
+  auto [next_page, entries] =
+      leaf.findEntries(left_boundary, right_boundary, false);
   EXPECT_EQ(LeafIndexPage::NO_RIGHT_SIBLING, next_page);
-  EXPECT_TRUE(refs.empty());
+  EXPECT_TRUE(entries.empty());
 }
 
 TEST(PageTest, LeafSearchSkipsInvalidEntries) {
@@ -312,10 +313,12 @@ TEST(PageTest, LeafSearchSkipsInvalidEntries) {
 
   LeafIndexPage leaf(*page);
   EXPECT_FALSE(leaf.hasKey(encodeIntKey(123)));
-  auto [next_page, refs] = leaf.findRef(
-      inclusiveBoundary(encodeIntKey(123)), false, eqIntPredicate(123));
+  const auto [left_boundary, right_boundary] =
+      exactBoundaries(encodeIntKey(123));
+  auto [next_page, entries] =
+      leaf.findEntries(left_boundary, right_boundary, false);
   EXPECT_EQ(LeafIndexPage::NO_RIGHT_SIBLING, next_page);
-  EXPECT_TRUE(refs.empty());
+  EXPECT_TRUE(entries.empty());
 }
 
 TEST(PageTest, LeafInsertInvalidateReuseSlot) {
@@ -335,12 +338,14 @@ TEST(PageTest, LeafInsertInvalidateReuseSlot) {
   ASSERT_TRUE(second_slot.has_value());
   EXPECT_TRUE(leaf.hasKey(encodeIntKey(1)));
 
-  auto [next_page, refs] = leaf.findRef(
-      inclusiveBoundary(encodeIntKey(1)), false, eqIntPredicate(1));
+  const auto [left_boundary, right_boundary] =
+      exactBoundaries(encodeIntKey(1));
+  auto [next_page, entries] =
+      leaf.findEntries(left_boundary, right_boundary, false);
   EXPECT_EQ(LeafIndexPage::NO_RIGHT_SIBLING, next_page);
-  ASSERT_FALSE(refs.empty());
-  EXPECT_EQ(refs.front().heap_page_id, 1);
-  EXPECT_EQ(refs.front().slot_id, 1);
+  ASSERT_FALSE(entries.empty());
+  EXPECT_EQ(entries.front().rid.heap_page_id, 1);
+  EXPECT_EQ(entries.front().rid.slot_id, 1);
 }
 
 TEST(PageTest, HeapInsertInvalidateReuseSlot) {
