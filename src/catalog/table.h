@@ -12,6 +12,7 @@
 #include "schema/schema.h"
 #include "storage/index/rid.h"
 #include "storage/runtime/file.h"
+#include "execution/heapfile.h"
 #include "tuple/typed_row.h"
 
 class BufferPool;
@@ -46,7 +47,7 @@ class Table {
   std::vector<std::size_t> indexedColumnIndexes() const;
   std::optional<std::reference_wrapper<File>> indexFile();
   File& requireIndexFile();
-  File& heapFile() { return heap_file_; }
+  HeapFile& heapFile() { return heap_file_; }
 
  private:
         Table(std::string name, Schema schema,
@@ -69,5 +70,5 @@ class Table {
   Schema schema_;
   std::vector<std::string> indexed_column_names_;
   std::optional<File> index_file_;
-  File heap_file_;
+  HeapFile heap_file_;
 };

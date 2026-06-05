@@ -5,14 +5,12 @@
 
 #include "catalog/table.h"
 #include "execution/comparison_predicate.h"
+#include "execution/heapfile.h"
 #include "storage/index/btreecursor.h"
 #include "storage/index/index_key.h"
 #include "storage/index/rid.h"
-#include "storage/page/cell.h"
-#include "storage/page/page.h"
 #include "storage/record/record_cell.h"
 #include "storage/runtime/bufferpool.h"
-#include "storage/runtime/file.h"
 
 IndexLookupJoinOperator::IndexLookupJoinOperator(
     std::unique_ptr<TypedRowOperator> outer_child, BufferPool& pool,
@@ -97,28 +95,23 @@ std::vector<TypedRow> IndexLookupJoinOperator::lookupInnerRows(
   const std::vector<IndexEntry> entries = BTreeCursor::findEntries(
       pool_, inner_table_.requireIndexFile(), {boundary, boundary}, false);
 
-  // heapからデータを取得する走査。
-  // ここも責務が多い。
   std::vector<TypedRow> rows;
   rows.reserve(entries.size());
   for (const IndexEntry& entry : entries) {
-    Page* page = pool_.pinPage(entry.rid.heap_page_id,
-                               inner_table_.heapFile());
-    char* cell_start = page->slotCellStartUnchecked(entry.rid.slot_id);
-    if (!Cell::isValid(cell_start)) {
-      pool_.unpinPage(page, inner_table_.heapFile());
+    std::optional<TypedRow> inner_row =
+        inner_table_.heapFile().withCell(pool_, entry.rid,
+                                         [&](RecordCellView cell) {
+                                           return cell.getTypedRow(
+                                               inner_table_.schema());
+                                         });
+    if (!inner_row.has_value()) {
       continue;
     }
-
-    TypedRow inner_row =
-        RecordCellView(cell_start).getTypedRow(inner_table_.schema());
-    pool_.unpinPage(page, inner_table_.heapFile());
 
     logger_.recordInput();
-    if (!passesPredicates(inner_row, inner_predicates_)) {
-      continue;
+    if (passesPredicates(*inner_row, inner_predicates_)) {
+      rows.push_back(std::move(*inner_row));
     }
-    rows.push_back(std::move(inner_row));
   }
 
   return rows;

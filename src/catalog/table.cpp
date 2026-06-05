@@ -58,11 +58,7 @@ Table Table::initialize(const std::string& table_name, const Schema& schema) {
 
   try {
     Table table(table_name, schema, std::nullopt, {});
-
-    std::array<char, Page::PAGE_SIZE_BYTE> heap_page_buffer{};
-    Page::initializeNew(heap_page_buffer.data(), PageKind::Heap, 0, 0);
-    table.heap_file_.writePageFromBuffer(0, heap_page_buffer.data());
-
+    table.heap_file_.initialize();
     TableMetadataStore::write(table_name, schema, {});
     return table;
   } catch (...) {

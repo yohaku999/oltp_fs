@@ -33,7 +33,6 @@
 #include "storage/index/index_key.h"
 #include "storage/page/cell.h"
 #include "storage/page/page.h"
-#include "storage/record/heap_file_access.h"
 #include "storage/record/record_cell.h"
 #include "storage/record/record_serializer.h"
 #include "storage/runtime/bufferpool.h"
@@ -301,7 +300,7 @@ std::vector<RID> collectRidsNarrowedByPredicates(
         "Building sequential scan operator for table {} because index scan "
         "prerequisites are not met.",
         table.name());
-    return heap_file_access::collectRids(pool, table.heapFile());
+    return table.heapFile().collectRids(pool);
   }
 
   IndexScanOperator scan(pool, table.requireIndexFile(), buildTraversalBoundaries(index_plan.ordered_predicates),
@@ -319,16 +318,16 @@ std::size_t removeMatchingRows(BufferPool& pool, Table& table,
   std::size_t removed_count = 0;
 
   for (const RID& rid : rids) {
-    Page* page = pool.pinPage(rid.heap_page_id, table.heapFile());
+    Page* page = pool.pinPage(rid.heap_page_id, table.heapFile().rawFile());
     char* cell_start = page->slotCellStartUnchecked(rid.slot_id);
     if (!Cell::isValid(cell_start)) {
-      pool.unpinPage(page, table.heapFile());
+      pool.unpinPage(page, table.heapFile().rawFile());
       continue;
     }
 
     TypedRow row = RecordCellView(cell_start).getTypedRow(table.schema());
     if (!passesPredicates(row, bound_predicates)) {
-      pool.unpinPage(page, table.heapFile());
+      pool.unpinPage(page, table.heapFile().rawFile());
       continue;
     }
 
@@ -349,7 +348,7 @@ std::size_t removeMatchingRows(BufferPool& pool, Table& table,
     wal.write(WALRecord::RecordType::DELETE, rid.heap_page_id,
               DeleteRedoBody(rid.slot_id).encode());
     page->invalidateSlot(rid.slot_id);
-    pool.unpinPage(page, table.heapFile());
+    pool.unpinPage(page, table.heapFile().rawFile());
     ++removed_count;
   }
 
@@ -382,8 +381,26 @@ void insertRow(BufferPool& pool, Table& table, const TypedRow& row, WAL& wal) {
   RecordSerializer cell(table.schema(), row);
   const std::vector<std::byte>& serialized_cell = cell.serializedBytes();
 
-  const RID inserted_rid =
-      heap_file_access::appendCell(pool, table.heapFile(), serialized_cell);
+  File& heap_file = table.heapFile().rawFile();
+  uint16_t target_page_id = heap_file.getMaxPageID();
+  Page* heap_page = pool.pinPage(target_page_id, heap_file);
+  auto inserted_slot_id = heap_page->insertCell(serialized_cell);
+  if (!inserted_slot_id.has_value()) {
+    pool.unpinPage(heap_page, heap_file);
+    target_page_id = pool.createPage(PageKind::Heap, heap_file);
+    heap_page = pool.pinPage(target_page_id, heap_file);
+    inserted_slot_id = heap_page->insertCell(serialized_cell);
+    if (!inserted_slot_id.has_value()) {
+      pool.unpinPage(heap_page, heap_file);
+      throw std::runtime_error(
+          "Failed to insert record cell into a new heap page due to "
+          "insufficient space.");
+    }
+  }
+  pool.unpinPage(heap_page, heap_file);
+
+  const RID inserted_rid{
+      target_page_id, static_cast<uint16_t>(inserted_slot_id.value())};
 
   wal.write(WALRecord::RecordType::INSERT,
             inserted_rid.heap_page_id,
@@ -409,15 +426,15 @@ std::size_t updateMatchingRows(BufferPool& pool, Table& table,
   std::vector<TypedRow> updated_rows;
 
   for (const RID& rid : rids) {
-    Page* page = pool.pinPage(rid.heap_page_id, table.heapFile());
+    Page* page = pool.pinPage(rid.heap_page_id, table.heapFile().rawFile());
     char* cell_start = page->slotCellStartUnchecked(rid.slot_id);
     if (!Cell::isValid(cell_start)) {
-      pool.unpinPage(page, table.heapFile());
+      pool.unpinPage(page, table.heapFile().rawFile());
       continue;
     }
 
     TypedRow original_row = RecordCellView(cell_start).getTypedRow(table.schema());
-    pool.unpinPage(page, table.heapFile());
+    pool.unpinPage(page, table.heapFile().rawFile());
     if (!passesPredicates(original_row, bound_predicates)) {
       continue;
     }
@@ -445,7 +462,7 @@ std::unique_ptr<TypedRowOperator> buildReadSource(
         "Building sequential scan operator for table {} because index scan "
         "prerequisites are not met.",
         table.name());
-    return std::make_unique<SeqScanOperator>(pool, table.heapFile(),
+    return std::make_unique<SeqScanOperator>(pool, table.heapFile().rawFile(),
                                              table.schema(), bound_predicates);
   }
   

@@ -1,20 +1,18 @@
 #include "heap_fetch_operator.h"
 
 #include "execution/comparison_predicate.h"
+#include "execution/heapfile.h"
 #include "schema/schema.h"
 #include "storage/index/rid.h"
-#include "storage/page/page.h"
 #include "storage/record/record_cell.h"
-#include "execution/comparison_predicate.h"
 #include "storage/runtime/bufferpool.h"
-#include "storage/runtime/file.h"
 
 /**
  * HeapFetchOperator returns TypedRow given RID from its child operator.
  * It searches the heap file for the corresponding record cell reflecting predicate and decodes it into TypedRow.
  */
 HeapFetchOperator::HeapFetchOperator(
-    std::unique_ptr<RidOperator> child, BufferPool& pool, File& heap_file,
+    std::unique_ptr<RidOperator> child, BufferPool& pool, HeapFile& heap_file,
     const Schema& schema, std::vector<BoundComparisonPredicate> predicates)
     : child_(std::move(child)),
       pool_(pool),
@@ -35,14 +33,16 @@ std::optional<TypedRow> HeapFetchOperator::next() {
     }
 
     logger_.recordInput();
-    Page* page = pool_.pinPage(rid->heap_page_id, heap_file_);
-    TypedRow row =
-        RecordCellView(page->getSlotCellStart(rid->slot_id))
-            .getTypedRow(schema_);
-    pool_.unpinPage(page, heap_file_);
+    std::optional<TypedRow> row =
+        heap_file_.withCell(pool_, *rid, [&](RecordCellView cell) {
+          return cell.getTypedRow(schema_);
+        });
+    if (!row.has_value()) {
+      continue;
+    }
 
     // Apply filtering: skip row if predicates don't match
-    if (!passesPredicates(row, predicates_)) {
+    if (!passesPredicates(*row, predicates_)) {
       continue;
     }
 

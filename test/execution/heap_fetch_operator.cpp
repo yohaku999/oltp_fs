@@ -12,13 +12,12 @@
 #include "catalog/table.h"
 #include "execution/binder.h"
 #include "execution/comparison_predicate.h"
+#include "execution/executor.h"
 #include "execution/parsers/insert_parser.h"
 #include "storage/runtime/bufferpool.h"
 #include "storage/runtime/file.h"
 #include "storage/wal/wal.h"
 #include "stub_rid_operator.h"
-#include "storage/record/record_serializer.h"
-#include "storage/record/heap_file_access.h"
 
 class HeapFetchOperatorTest : public ::testing::Test {
  protected:
@@ -51,14 +50,9 @@ class HeapFetchOperatorTest : public ::testing::Test {
       InsertParser parser("INSERT INTO " + std::string(kTableName) +
                           " VALUES (" + std::to_string(i) + ", '" + char('a' + i - 1) +
                           "', " + std::to_string(i * 5) + ")");
-      TypedRow row = parser.extractRow(table_->schema());
-      RecordSerializer cell(table_->schema(), row);
-      const std::vector<std::byte>& serialized = cell.serializedBytes();
-      RID rid = heap_file_access::appendCell(*pool_, table_->heapFile(), serialized);
-      inserted_rids_.push_back(rid);
-      wal_->write(WALRecord::RecordType::INSERT, rid.heap_page_id,
-                  InsertRedoBody(rid.slot_id, serialized).encode());
+      executor::insert(*pool_, *table_, parser, *wal_);
     }
+    inserted_rids_ = table_->heapFile().collectRids(*pool_);
   }
 
   void TearDown() override {
