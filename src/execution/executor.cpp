@@ -14,6 +14,7 @@
 #include "execution/binder.h"
 #include "execution/operators/heap_fetch_operator.h"
 #include "execution/operators/index_scan_operator.h"
+#include "execution/operators/index_lookup_join_operator.h"
 #include "execution/operators/limit_operator.h"
 #include "execution/operator.h"
 #include "execution/operators/orderby_operator.h"
@@ -248,6 +249,11 @@ std::vector<std::vector<BoundComparisonPredicate>> prepareIndexKeyPredicates(
 struct IndexLookupPlan {
   bool can_use_index;
   std::vector<std::vector<BoundComparisonPredicate>> ordered_predicates;
+};
+
+struct IndexLookupJoinPlan {
+  std::vector<IndexLookupJoinKey> join_keys;
+  std::vector<IndexLookupJoinConstantKey> constant_keys;
 };
 
 IndexLookupPlan planIndexLookup(
@@ -511,6 +517,111 @@ std::optional<HashJoinKey> findHashJoinKeyForTwoTableJoin(
   return std::nullopt;
 }
 
+std::optional<IndexLookupJoinPlan> findIndexLookupJoinPlanForTwoTableJoin(
+    const std::vector<BoundComparisonPredicate>& predicates,
+    const std::vector<Table>& tables) {
+  if (tables.size() != 2 || tables[1].indexedColumnIndexes().empty()) {
+    return std::nullopt;
+  }
+
+  const std::size_t outer_column_count =
+      tables[0].schema().columns().size();
+  const std::size_t inner_column_count =
+      tables[1].schema().columns().size();
+  const std::size_t joined_column_count =
+      outer_column_count + inner_column_count;
+
+  const auto to_outer_index = [&](std::size_t column_index)
+      -> std::optional<std::size_t> {
+    if (column_index < outer_column_count) {
+      return column_index;
+    }
+    return std::nullopt;
+  };
+  const auto to_inner_index = [&](std::size_t column_index)
+      -> std::optional<std::size_t> {
+    if (column_index >= outer_column_count &&
+        column_index < joined_column_count) {
+      return column_index - outer_column_count;
+    }
+    return std::nullopt;
+  };
+
+  IndexLookupJoinPlan plan;
+  std::vector<bool> covered_inner_columns(inner_column_count, false);
+  const auto mark_covered = [&](std::size_t inner_column_index) {
+    if (inner_column_index < covered_inner_columns.size()) {
+      covered_inner_columns[inner_column_index] = true;
+    }
+  };
+
+  for (const auto& predicate : predicates) {
+    if (predicate.op != Op::Eq) {
+      continue;
+    }
+
+    const auto* left_column = std::get_if<BoundColumnRef>(&predicate.left);
+    const auto* right_column = std::get_if<BoundColumnRef>(&predicate.right);
+    const auto* left_value = std::get_if<FieldValue>(&predicate.left);
+    const auto* right_value = std::get_if<FieldValue>(&predicate.right);
+
+    if (left_column != nullptr && right_column != nullptr &&
+        left_column->type == right_column->type) {
+      const std::optional<std::size_t> left_outer =
+          to_outer_index(left_column->column_index);
+      const std::optional<std::size_t> left_inner =
+          to_inner_index(left_column->column_index);
+      const std::optional<std::size_t> right_outer =
+          to_outer_index(right_column->column_index);
+      const std::optional<std::size_t> right_inner =
+          to_inner_index(right_column->column_index);
+
+      if (left_outer.has_value() && right_inner.has_value()) {
+        plan.join_keys.push_back(
+            IndexLookupJoinKey{left_outer.value(), right_inner.value()});
+        mark_covered(right_inner.value());
+        continue;
+      }
+      if (right_outer.has_value() && left_inner.has_value()) {
+        plan.join_keys.push_back(
+            IndexLookupJoinKey{right_outer.value(), left_inner.value()});
+        mark_covered(left_inner.value());
+        continue;
+      }
+    }
+
+    const BoundColumnRef* column_ref =
+        left_column != nullptr ? left_column : right_column;
+    const FieldValue* value = left_value != nullptr ? left_value : right_value;
+    if (column_ref == nullptr || value == nullptr) {
+      continue;
+    }
+
+    const std::optional<std::size_t> inner_index =
+        to_inner_index(column_ref->column_index);
+    if (!inner_index.has_value()) {
+      continue;
+    }
+
+    plan.constant_keys.push_back(
+        IndexLookupJoinConstantKey{inner_index.value(), *value});
+    mark_covered(inner_index.value());
+  }
+
+  for (const std::size_t indexed_column_index :
+       tables[1].indexedColumnIndexes()) {
+    if (indexed_column_index >= covered_inner_columns.size() ||
+        !covered_inner_columns[indexed_column_index]) {
+      return std::nullopt;
+    }
+  }
+
+  if (plan.join_keys.empty()) {
+    return std::nullopt;
+  }
+  return plan;
+}
+
 }  // namespace
 
 /**
@@ -571,6 +682,17 @@ std::vector<TypedRow> executor::read(BufferPool& pool,
   std::unique_ptr<TypedRowOperator> pipeline;
   if (sources.size() == 1) {
     pipeline = std::move(sources.front());
+  } else if (std::optional<IndexLookupJoinPlan> index_lookup_join_plan =
+                 findIndexLookupJoinPlanForTwoTableJoin(bound_predicates,
+                                                        tables);
+             index_lookup_join_plan.has_value()) {
+    std::vector<BoundComparisonPredicate> inner_predicates =
+        binder::bindPredicatesResolvableByTable(predicates, tables[1]);
+    pipeline = std::make_unique<IndexLookupJoinOperator>(
+        std::move(sources[0]), pool, tables[1],
+        std::move(index_lookup_join_plan->join_keys),
+        std::move(index_lookup_join_plan->constant_keys),
+        std::move(inner_predicates));
   } else if (std::optional<HashJoinKey> key =
                  findHashJoinKeyForTwoTableJoin(bound_predicates, tables);
              key.has_value()) {
