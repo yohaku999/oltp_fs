@@ -1,4 +1,4 @@
-#include "storage/runtime/bufferpool.h"
+#include "storage/buffer/bufferpool.h"
 
 #include <gtest/gtest.h>
 
@@ -10,7 +10,7 @@
 #include <set>
 #include <stdexcept>
 
-#include "storage/runtime/file.h"
+#include "storage/disk/file.h"
 #include "storage/wal/lsn_allocator.h"
 #include "storage/page/page.h"
 #include "storage/record/record_cell.h"

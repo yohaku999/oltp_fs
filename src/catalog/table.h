@@ -11,7 +11,7 @@
 #include "catalog/table_metadata.h"
 #include "schema/schema.h"
 #include "storage/index/rid.h"
-#include "storage/runtime/file.h"
+#include "storage/disk/file.h"
 #include "execution/heapfile.h"
 #include "tuple/typed_row.h"
 

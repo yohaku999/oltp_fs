@@ -13,7 +13,7 @@
 #include "execution/parsers/delete_parser.h"
 #include "execution/parsers/insert_parser.h"
 #include "execution/parsers/select_parser.h"
-#include "storage/runtime/bufferpool.h"
+#include "storage/buffer/bufferpool.h"
 #include "storage/page/page.h"
 #include "storage/wal/wal.h"
 #include "storage/wal/wal_record.h"

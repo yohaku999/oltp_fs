@@ -4,8 +4,8 @@
 #include <string>
 #include <utility>
 
-#include "file.h"
 #include "frame_directory.h"
+#include "storage/disk/file.h"
 #include "storage/page/page.h"
 
 class WAL;

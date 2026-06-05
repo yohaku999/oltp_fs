@@ -5,8 +5,8 @@
 #include <fstream>
 #include <string>
 
-#include "file.h"
 #include "logging.h"
+#include "storage/disk/file.h"
 #include "storage/page/page.h"
 #include "storage/wal/wal.h"
 

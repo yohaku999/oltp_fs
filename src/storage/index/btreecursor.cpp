@@ -12,7 +12,7 @@
 #include <utility>
 #include <vector>
 
-#include "storage/runtime/bufferpool.h"
+#include "storage/buffer/bufferpool.h"
 #include "storage/page/cell.h"
 #include "index_key.h"
 #include "logging.h"

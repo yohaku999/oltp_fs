@@ -23,7 +23,7 @@
 #include "execution/parsers/create_table_parser.h"
 #include "execution/parsers/insert_parser.h"
 #include "server/server.h"
-#include "storage/runtime/bufferpool.h"
+#include "storage/buffer/bufferpool.h"
 #include "storage/wal/wal.h"
 
 namespace {

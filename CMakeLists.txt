@@ -43,15 +43,15 @@ set_target_properties(pg_query PROPERTIES
 add_dependencies(pg_query libpg_query_proj)
 
 add_library(dbfs_src
-    src/storage/runtime/bufferpool.cpp
-    src/storage/runtime/file.cpp
+    src/storage/buffer/bufferpool.cpp
+    src/storage/disk/file.cpp
     src/storage/page/page.cpp
     src/storage/index/index_page.cpp
     src/storage/index/intermediate_cell.cpp
     src/storage/index/leaf_cell.cpp
     src/storage/record/record_serializer.cpp
     src/storage/index/btreecursor.cpp
-    src/storage/runtime/frame_directory.cpp
+    src/storage/buffer/frame_directory.cpp
     src/storage/wal/lsn_allocator.cpp
     src/storage/wal/wal_record.cpp
     src/storage/wal/wal_body.cpp
@@ -96,7 +96,7 @@ elseif (MSVC)
     target_compile_options(dbfs_src PUBLIC /W4)
 endif()
 
-add_executable(bufferpool_test test/storage/runtime/bufferpool.cpp)
+add_executable(bufferpool_test test/storage/buffer/bufferpool.cpp)
 target_link_libraries(bufferpool_test dbfs_src GTest::gtest_main)
 
 add_executable(cell_test test/storage/page/cell.cpp)
@@ -105,7 +105,7 @@ target_link_libraries(cell_test dbfs_src GTest::gtest_main)
 add_executable(page_test test/storage/page/page.cpp)
 target_link_libraries(page_test dbfs_src GTest::gtest_main)
 
-add_executable(file_test test/storage/runtime/file.cpp)
+add_executable(file_test test/storage/disk/file.cpp)
 target_link_libraries(file_test dbfs_src GTest::gtest_main)
 
 add_executable(btreecursor_test test/storage/index/btreecursor.cpp)
@@ -147,7 +147,7 @@ target_link_libraries(server_test dbfs_src GTest::gtest_main)
 add_executable(table_test test/catalog/table.cpp)
 target_link_libraries(table_test dbfs_src GTest::gtest_main)
 
-add_executable(frame_directory_test test/storage/runtime/frame_directory.cpp)
+add_executable(frame_directory_test test/storage/buffer/frame_directory.cpp)
 target_link_libraries(frame_directory_test dbfs_src GTest::gtest_main)
 
 add_executable(wal_body_test test/storage/wal/wal_body.cpp)

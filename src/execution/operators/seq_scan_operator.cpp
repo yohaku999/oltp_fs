@@ -4,8 +4,8 @@
 #include "storage/page/cell.h"
 #include "storage/page/page.h"
 #include "storage/record/record_cell.h"
-#include "storage/runtime/bufferpool.h"
-#include "storage/runtime/file.h"
+#include "storage/buffer/bufferpool.h"
+#include "storage/disk/file.h"
 SeqScanOperator::SeqScanOperator(BufferPool& pool, File& heap_file,
                                  const Schema& schema, std::vector<BoundComparisonPredicate> predicates)
     : pool_(pool), heap_file_(heap_file), schema_(schema), predicates_(std::move(predicates)) {}

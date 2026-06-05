@@ -5,7 +5,7 @@
 #include "schema/schema.h"
 #include "storage/index/rid.h"
 #include "storage/record/record_cell.h"
-#include "storage/runtime/bufferpool.h"
+#include "storage/buffer/bufferpool.h"
 
 /**
  * HeapFetchOperator returns TypedRow given RID from its child operator.

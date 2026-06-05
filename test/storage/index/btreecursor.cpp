@@ -8,8 +8,8 @@
 #include <string>
 #include <vector>
 
-#include "storage/runtime/bufferpool.h"
-#include "storage/runtime/file.h"
+#include "storage/buffer/bufferpool.h"
+#include "storage/disk/file.h"
 #include "storage/page/page.h"
 #include "storage/index/index_key.h"
 #include "storage/index/index_page.h"

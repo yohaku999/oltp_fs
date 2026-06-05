@@ -1,4 +1,4 @@
-#include "storage/runtime/frame_directory.h"
+#include "storage/buffer/frame_directory.h"
 
 #include <gtest/gtest.h>
 

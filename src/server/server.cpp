@@ -31,7 +31,7 @@
 #include "execution/parsers/select_parser.h"
 #include "execution/parsers/update_parser.h"
 #include "execution/select_item.h"
-#include "storage/runtime/bufferpool.h"
+#include "storage/buffer/bufferpool.h"
 #include "storage/wal/wal.h"
 
 namespace {

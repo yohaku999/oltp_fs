@@ -21,7 +21,7 @@
 #include "execution/parsers/select_parser.h"
 #include "execution/parsers/update_parser.h"
 #include "storage/index/btreecursor.h"
-#include "storage/runtime/bufferpool.h"
+#include "storage/buffer/bufferpool.h"
 #include "storage/wal/wal.h"
 
 class ExecutorTest : public ::testing::Test {

@@ -10,7 +10,7 @@
 #include "storage/index/index_key.h"
 #include "storage/index/rid.h"
 #include "storage/record/record_cell.h"
-#include "storage/runtime/bufferpool.h"
+#include "storage/buffer/bufferpool.h"
 
 IndexLookupJoinOperator::IndexLookupJoinOperator(
     std::unique_ptr<TypedRowOperator> outer_child, BufferPool& pool,

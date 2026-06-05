@@ -5,7 +5,7 @@
 #include <utility>
 #include <vector>
 
-#include "storage/runtime/bufferpool.h"
+#include "storage/buffer/bufferpool.h"
 #include "storage/index/rid.h"
 
 class IntermediateCell;

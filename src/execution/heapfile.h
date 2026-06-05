@@ -13,8 +13,8 @@
 #include "storage/page/cell.h"
 #include "storage/page/page.h"
 #include "storage/record/record_cell.h"
-#include "storage/runtime/bufferpool.h"
-#include "storage/runtime/file.h"
+#include "storage/buffer/bufferpool.h"
+#include "storage/disk/file.h"
 
 class HeapFile {
  public:
