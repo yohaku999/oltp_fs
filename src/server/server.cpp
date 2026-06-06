@@ -356,7 +356,7 @@ void Server::writeFrame(int client_fd, const std::string& payload) {
 }
 
 std::string Server::handleRequest(const std::string& request) {
-  dbfs_log::server().info("received request: {}", request);
+  dbfs_log::server().debug("received request: {}", request);
   nlohmann::json req = nlohmann::json::parse(request);
 
   const std::string operation = req.value("operation", "");
@@ -416,10 +416,10 @@ std::string Server::handleRequest(const std::string& request) {
   std::string response = res.dump();
   const std::size_t max_log_len = 2000;
   if (response.size() > max_log_len) {
-    dbfs_log::server().info("response (truncated to {} bytes): {}...",
-                            max_log_len, response.substr(0, max_log_len));
+    dbfs_log::server().debug("response (truncated to {} bytes): {}...",
+                             max_log_len, response.substr(0, max_log_len));
   } else {
-    dbfs_log::server().info("response: {}", response);
+    dbfs_log::server().debug("response: {}", response);
   }
   return response;
 }

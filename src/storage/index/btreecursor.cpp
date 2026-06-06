@@ -261,7 +261,7 @@ void BTreeCursor::insertIntoIndex(BufferPool& pool, File& indexFile,
     target_page = parent_page;
   }
 
-  dbfs_log::index().info(
+  dbfs_log::index().debug(
       "Inserted index entry for key {} pointing to heap page ID {}, slot ID "
       "{}.",
       index_key::formatForDebug(key), heap_page_id, slot_id);
