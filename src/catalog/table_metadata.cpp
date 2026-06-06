@@ -4,8 +4,28 @@
 #include <fstream>
 #include <nlohmann/json.hpp>
 #include <stdexcept>
+#include <unordered_map>
 
 namespace {
+
+/**
+ * Benchmark-only process-local metadata cache.
+ * 
+ * TPC-C creates tables and indexes during setup, then runs the measured
+ * workload without DDL. Under that assumption, table metadata is effectively
+ * immutable during the measured phase, so caching avoids repeated metadata JSON
+ * file reads/parses from Table::getTable. 
+ * 
+ * This is intentionally not a production catalog cache:
+ * - no invalidation for external metadata file changes
+ * - no timestamp/version checks
+ * - no cross-process consistency
+ * - not safe for workloads that run DDL concurrently with queries
+ * 
+ * If DBFS starts supporting runtime DDL seriously, replace this with an
+ * explicit catalog cache and invalidation path.
+ */
+std::unordered_map<std::string, PersistedTableMetadata> metadata_cache;
 
 std::string prepareMetadataPath(const std::string& path) {
   std::filesystem::path filesystem_path(path);
@@ -52,10 +72,20 @@ void TableMetadataStore::write(
   if (!output.good()) {
     throw std::runtime_error("failed to write metadata file: " + meta_path);
   }
+
+  metadata_cache.insert_or_assign(table_name,
+                                  PersistedTableMetadata{schema, indexes});
 }
 
 PersistedTableMetadata TableMetadataStore::read(const std::string& table_name) {
-  return readFromPath(pathFor(table_name));
+  const auto cached = metadata_cache.find(table_name);
+  if (cached != metadata_cache.end()) {
+    return cached->second;
+  }
+
+  PersistedTableMetadata metadata = readFromPath(pathFor(table_name));
+  metadata_cache.insert_or_assign(table_name, metadata);
+  return metadata;
 }
 
 PersistedTableMetadata TableMetadataStore::readFromPath(
