@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>
 #include <map>
 #include <set>
 #include <string>
@@ -10,6 +11,18 @@
 
 class WAL;
 
+struct BufferPoolStats {
+  std::uint64_t pin_page_calls = 0;
+  std::uint64_t resident_hits = 0;
+  std::uint64_t misses = 0;
+  std::uint64_t evictions = 0;
+  std::uint64_t dirty_evictions = 0;
+  std::uint64_t read_page_into_buffer_calls = 0;
+  std::uint64_t write_page_from_buffer_calls = 0;
+  std::uint64_t find_victim_frame_calls = 0;
+  std::uint64_t zero_out_frame_calls = 0;
+};
+
 class BufferPool {
  public:
   static constexpr size_t MAX_FRAME_COUNT = 16384;
@@ -19,6 +32,7 @@ class BufferPool {
   void unpinPage(Page* page, File& file);
   uint16_t createPage(PageKind kind, File& file,
                       uint16_t right_most_child_page_id = HAS_NO_CHILD);
+  const BufferPoolStats& stats() const { return stats_; }
   ~BufferPool();
 
  private:
@@ -27,6 +41,7 @@ class BufferPool {
   static constexpr size_t MAX_PAGE_COUNT = 16384;
   void* buffer_;
   WAL& wal_;
+  BufferPoolStats stats_;
   void evictOnePage();
   void zeroOutFrame(int frame_id);
   // Design Intent:
@@ -38,6 +53,6 @@ class BufferPool {
   // Future: Eviction strategies (FIFO/LRU/Clock) will be injected into
   // FrameDirectory via Strategy pattern
   FrameDirectory frame_directory_;
-  std::pair<int, char*> acquireFrame();
+  std::pair<int, char*> acquireFrame(bool zero_frame);
   bool isPageFlushable(const Page& page) const;
 };
