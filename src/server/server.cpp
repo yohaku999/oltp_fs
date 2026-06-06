@@ -16,6 +16,7 @@
 #include <nlohmann/json.hpp>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "catalog/table.h"
@@ -263,63 +264,72 @@ void Server::start() {
       continue;
     }
 
-    std::string request;
-    try {
-      request = readFrame(client_fd);
-      std::string response = handleRequest(request);
-      writeFrame(client_fd, response);
-    } catch (const std::exception& e) {
-      // Log request and exception (backtrace) through the logging system
-      try {
-        if (!request.empty()) {
-          const std::size_t maxlen = 2000;
-          if (request.size() > maxlen) {
+    std::thread([this, client_fd]() {
+      for (;;) {
+        std::string request;
+        try {
+          request = readFrame(client_fd);
+          std::string response;
+          {
+            std::lock_guard<std::mutex> lock(request_mutex_);
+            response = handleRequest(request);
+          }
+          writeFrame(client_fd, response);
+        } catch (const std::exception& e) {
+          const std::string what = e.what();
+          if (what.find("client closed connection") != std::string::npos) {
+            dbfs_log::server().debug("client closed connection");
+            break;
+          }
+
+          // Log request and exception (backtrace) through the logging system
+          try {
+            if (!request.empty()) {
+              const std::size_t maxlen = 2000;
+              if (request.size() > maxlen) {
+                dbfs_log::server().error(
+                    "caught exception processing request (truncated): {}",
+                    request.substr(0, maxlen));
+              } else {
+                dbfs_log::server().error(
+                    "caught exception processing request: {}", request);
+              }
+            } else {
+              dbfs_log::server().error(
+                  "caught exception processing request: <empty request>");
+            }
+
+            dbfs_log::server().error("exception: {}", what);
+
+            // backtrace symbols at debug level
+            void* bt[64];
+            int bt_size = backtrace(bt, 64);
+            char** bt_syms = backtrace_symbols(bt, bt_size);
+            if (bt_syms) {
+              for (int i = 0; i < bt_size; ++i) {
+                dbfs_log::server().debug("backtrace[{}] {}", i, bt_syms[i]);
+              }
+              free(bt_syms);
+            }
+          } catch (...) {
             dbfs_log::server().error(
-                "caught exception processing request (truncated): {}",
-                request.substr(0, maxlen));
-          } else {
-            dbfs_log::server().error("caught exception processing request: {}",
-                                     request);
+                "failed while attempting to log exception/backtrace");
           }
-        } else {
-          dbfs_log::server().error(
-              "caught exception processing request: <empty request>");
-        }
 
-        std::string what = e.what();
-        if (what.find("client closed connection") != std::string::npos) {
-          dbfs_log::server().debug(
-              "client closed connection while processing request");
-        } else {
-          dbfs_log::server().error("exception: {}", what);
-        }
-
-        // backtrace symbols at debug level
-        void* bt[64];
-        int bt_size = backtrace(bt, 64);
-        char** bt_syms = backtrace_symbols(bt, bt_size);
-        if (bt_syms) {
-          for (int i = 0; i < bt_size; ++i) {
-            dbfs_log::server().debug("backtrace[{}] {}", i, bt_syms[i]);
+          nlohmann::json error;
+          error["ok"] = false;
+          error["sqlState"] = "58000";
+          error["errorMessage"] = e.what();
+          try {
+            writeFrame(client_fd, error.dump());
+          } catch (...) {
+            break;
           }
-          free(bt_syms);
         }
-      } catch (...) {
-        dbfs_log::server().error(
-            "failed while attempting to log exception/backtrace");
       }
 
-      nlohmann::json error;
-      error["ok"] = false;
-      error["sqlState"] = "58000";
-      error["errorMessage"] = e.what();
-      try {
-        writeFrame(client_fd, error.dump());
-      } catch (...) {
-      }
-    }
-
-    ::close(client_fd);
+      ::close(client_fd);
+    }).detach();
   }
 }
 

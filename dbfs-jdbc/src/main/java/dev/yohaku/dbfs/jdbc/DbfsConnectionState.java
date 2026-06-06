@@ -2,6 +2,7 @@ package dev.yohaku.dbfs.jdbc;
 
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
@@ -81,7 +82,17 @@ final class DbfsConnectionState {
             properties.putAll(info);
         }
 
-        return new DbfsConnectionState(url, properties, new ImplDbfsClient(url));
+        DbfsClient client = isRemoteUrl(url) ? new ImplDbfsClient(url) : new InMemoryDbfsClient(url);
+        return new DbfsConnectionState(url, properties, client);
+    }
+
+    private static boolean isRemoteUrl(String url) {
+        if (url == null || !url.startsWith("jdbc:dbfs://")) {
+            return false;
+        }
+
+        URI uri = URI.create(url.substring("jdbc:".length()));
+        return uri.getHost() != null && uri.getPort() >= 0;
     }
 
     String url() {

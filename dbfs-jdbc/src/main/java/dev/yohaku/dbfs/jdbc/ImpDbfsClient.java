@@ -31,6 +31,9 @@ final class ImplDbfsClient implements DbfsClient {
     private final String database;
     private final int connectTimeoutMillis;
     private final int readTimeoutMillis;
+    private Socket socket;
+    private DataOutputStream output;
+    private DataInputStream input;
 
     ImplDbfsClient(String url) {
         URI endpoint = parseJdbcUri(url);
@@ -63,34 +66,71 @@ final class ImplDbfsClient implements DbfsClient {
     }
 
     @Override
-    public void close() {
+    public synchronized void close() {
+        closeConnection();
     }
 
-    private RemoteResponse send(String operation, String sql, List<Object> parameters) throws SQLException {
-        try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress(host, port), connectTimeoutMillis);
-            socket.setSoTimeout(readTimeoutMillis);
+    private synchronized RemoteResponse send(String operation, String sql, List<Object> parameters)
+            throws SQLException {
+        try {
+            ensureConnected();
+            byte[] requestBytes = encodeRequest(operation, database, sql, parameters);
+            output.writeInt(requestBytes.length);
+            output.write(requestBytes);
+            output.flush();
 
-            try (DataOutputStream output = new DataOutputStream(new BufferedOutputStream(socket.getOutputStream()));
-                 DataInputStream input = new DataInputStream(new BufferedInputStream(socket.getInputStream()))) {
-                byte[] requestBytes = encodeRequest(operation, database, sql, parameters);
-                output.writeInt(requestBytes.length);
-                output.write(requestBytes);
-                output.flush();
-
-                int responseLength = input.readInt();
-                if (responseLength < 0 || responseLength > MAX_RESPONSE_BYTES) {
-                    throw new SQLException("Invalid dbfs server response length: " + responseLength);
-                }
-
-                byte[] responseBytes = new byte[responseLength];
-                input.readFully(responseBytes);
-                return OBJECT_MAPPER.readValue(responseBytes, RemoteResponse.class);
+            int responseLength = input.readInt();
+            if (responseLength < 0 || responseLength > MAX_RESPONSE_BYTES) {
+                throw new SQLException("Invalid dbfs server response length: " + responseLength);
             }
+
+            byte[] responseBytes = new byte[responseLength];
+            input.readFully(responseBytes);
+            return OBJECT_MAPPER.readValue(responseBytes, RemoteResponse.class);
         } catch (EOFException exception) {
+            closeConnection();
             throw new SQLException("dbfs server closed the connection unexpectedly", exception);
         } catch (IOException exception) {
+            closeConnection();
             throw new SQLException("Failed to communicate with dbfs server at " + host + ":" + port, exception);
+        }
+    }
+
+    private void ensureConnected() throws IOException {
+        if (socket != null && socket.isConnected() && !socket.isClosed()) {
+            return;
+        }
+
+        Socket newSocket = new Socket();
+        newSocket.connect(new InetSocketAddress(host, port), connectTimeoutMillis);
+        newSocket.setSoTimeout(readTimeoutMillis);
+        socket = newSocket;
+        output = new DataOutputStream(new BufferedOutputStream(socket.getOutputStream()));
+        input = new DataInputStream(new BufferedInputStream(socket.getInputStream()));
+    }
+
+    private void closeConnection() {
+        try {
+            if (output != null) {
+                output.close();
+            }
+        } catch (IOException ignored) {
+        }
+        try {
+            if (input != null) {
+                input.close();
+            }
+        } catch (IOException ignored) {
+        }
+        try {
+            if (socket != null) {
+                socket.close();
+            }
+        } catch (IOException ignored) {
+        } finally {
+            socket = null;
+            output = null;
+            input = null;
         }
     }
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <mutex>
 #include <string>
 
 class BufferPool;
@@ -16,6 +17,7 @@ class Server {
   int port_;
   std::unique_ptr<WAL> wal_;
   std::unique_ptr<BufferPool> pool_;
+  std::mutex request_mutex_;
 
   std::string readFrame(int client_fd);
   void writeFrame(int client_fd, const std::string& response);
