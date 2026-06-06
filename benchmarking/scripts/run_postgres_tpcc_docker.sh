@@ -356,14 +356,20 @@ echo "  Results:    ${RESULTS_DIR_CONTAINER} (mounted to ${RESULTS_ROOT})"
 if [[ "${ENABLE_PERF_PROFILE}" -eq 1 ]]; then
   echo "  perf data:  ${PERF_DATA_CONTAINER}"
   echo "  setup dir:  ${SETUP_RESULTS_DIR_CONTAINER}"
+elif [[ "${ENGINE}" == "postgres" ]]; then
+  echo "  setup dir:  ${SETUP_RESULTS_DIR_CONTAINER}"
 fi
 
 benchbase_exit_code=0
-if [[ "${ENABLE_PERF_PROFILE}" -eq 1 ]]; then
+if [[ "${ENABLE_PERF_PROFILE}" -eq 1 || "${ENGINE}" == "postgres" ]]; then
   echo "Preparing BenchBase dataset without perf..."
   if run_benchbase true true false "${SETUP_RESULTS_DIR_CONTAINER}" 0 "${HOST_BENCHBASE_SETUP_LOG_FILE}"; then
-    start_perf_profile
-    echo "Running BenchBase execute phase with perf..."
+    if [[ "${ENABLE_PERF_PROFILE}" -eq 1 ]]; then
+      start_perf_profile
+      echo "Running BenchBase execute phase with perf..."
+    else
+      echo "Running BenchBase execute phase..."
+    fi
     if run_benchbase false false true "${RESULTS_DIR_CONTAINER}" 1 "${HOST_BENCHBASE_EXECUTE_LOG_FILE}"; then
       benchbase_exit_code=0
     else
@@ -391,6 +397,9 @@ echo "BenchBase run completed. Results should be under:"
 echo "  ${HOST_RESULTS_DIR}"
 
 if [[ "${ENABLE_PERF_PROFILE}" -eq 1 ]]; then
+  echo "  ${HOST_BENCHBASE_SETUP_LOG_FILE}"
+  echo "  ${HOST_BENCHBASE_EXECUTE_LOG_FILE}"
+elif [[ "${ENGINE}" == "postgres" ]]; then
   echo "  ${HOST_BENCHBASE_SETUP_LOG_FILE}"
   echo "  ${HOST_BENCHBASE_EXECUTE_LOG_FILE}"
 else
