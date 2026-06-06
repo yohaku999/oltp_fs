@@ -2,3 +2,5 @@ build/
 dbfs-jdbc/target
 .DS_Store
 .vscode/
+benchmarking/results/
+data/

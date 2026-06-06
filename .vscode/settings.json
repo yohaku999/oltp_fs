@@ -1,5 +1,9 @@
 {
     "chat.tools.terminal.autoApprove": {
-        "mvn test": true
+        "mvn test": true,
+        "/^bash -n benchmarking/scripts/run_postgres_tpcc_docker\\.sh$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
     }
 }

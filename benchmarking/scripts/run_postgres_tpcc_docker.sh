@@ -24,6 +24,7 @@ PERF_MMAP_PAGES="${PERF_MMAP_PAGES:-64}"
 FLAMEGRAPH_WIDTH="${FLAMEGRAPH_WIDTH:-1800}"
 FLAMEGRAPH_FONT_SIZE="${FLAMEGRAPH_FONT_SIZE:-14}"
 FLAMEGRAPH_MIN_WIDTH="${FLAMEGRAPH_MIN_WIDTH:-0.5}"
+BENCHBASE_MONITOR_TYPE="${BENCHBASE_MONITOR_TYPE:-}"
 
 usage() {
   echo "Usage: $0 --config <path> [--profile-perf] [--perf-frequency <hz>] [--perf-mmap-pages <pages>]" >&2
@@ -145,6 +146,7 @@ HOST_BENCHBASE_LOG_FILE="${HOST_RESULTS_DIR}/benchbase.log"
 HOST_BENCHBASE_SETUP_LOG_FILE="${HOST_RESULTS_DIR}/benchbase_setup.log"
 HOST_BENCHBASE_EXECUTE_LOG_FILE="${HOST_RESULTS_DIR}/benchbase_execute.log"
 HOST_DBFS_COMPOSE_LOG_FILE="${HOST_RESULTS_DIR}/dbfs.compose.log"
+HOST_DBFS_SERVER_LOG_FILE="${HOST_RESULTS_DIR}/dbfs_server.log"
 HOST_DBFS_OPERATOR_LOG_FILE="${HOST_RESULTS_DIR}/dbfs.operator_rows.log"
 HOST_POSTGRES_COMPOSE_LOG_FILE="${HOST_RESULTS_DIR}/postgres.compose.log"
 RUN_LOG_SINCE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -152,6 +154,7 @@ RUN_LOG_SINCE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 mkdir -p "${HOST_RESULTS_DIR}"
 
 DBFS_OPERATOR_LOG_FILE_CONTAINER="${ARTIFACTS_DIR_CONTAINER}/dbfs.operator_rows.log"
+DBFS_SERVER_LOG_FILE_CONTAINER="${ARTIFACTS_DIR_CONTAINER}/dbfs_server.log"
 
 compose_cmd=(docker compose -f "${COMPOSE_FILE}")
 benchbase_env_args=()
@@ -159,7 +162,9 @@ perf_started=0
 runtime_logs_collected=0
 
 if [[ "${ENGINE}" == "dbfs" ]]; then
+  export DBFS_SERVER_LOG_FILE="${DBFS_SERVER_LOG_FILE:-${DBFS_SERVER_LOG_FILE_CONTAINER}}"
   export DBFS_OPERATOR_LOG_FILE="${DBFS_OPERATOR_LOG_FILE:-${DBFS_OPERATOR_LOG_FILE_CONTAINER}}"
+  rm -f "${HOST_DBFS_SERVER_LOG_FILE}"
   rm -f "${HOST_DBFS_OPERATOR_LOG_FILE}"
 fi
 
@@ -247,7 +252,7 @@ generate_flamegraph() {
   docker cp "${dbfs_container_id}:/app/dbfs_server" "${HOST_DBFS_BINARY_FILE}"
 
   echo "Generating flamegraph..."
-  "${compose_cmd[@]}" run --rm flamegraph sh -lc "mkdir -p /app && cp '${ARTIFACTS_DIR_CONTAINER}/dbfs_server' /app/dbfs_server && perf script -i '${PERF_DATA_CONTAINER}' > '${PERF_SCRIPT_CONTAINER}' && /opt/FlameGraph/stackcollapse-perf.pl '${PERF_SCRIPT_CONTAINER}' > '${PERF_FOLDED_CONTAINER}' && perl -pe \"s/nlohmann::json_abi_v[0-9_]+::basic_json<[^;]+>/nlohmann::json/g; s/nlohmann::json_abi_v[0-9_]+::detail::lexer<[^;]+>/nlohmann::json::lexer/g; s/std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >/std::string/g; s/std::__do_uninit_copy<[^;]+>/std::vector copy/g; s/std::allocator_traits<[^;]+>::construct/std::allocator construct/g; s/std::__new_allocator<[^;]+>::allocate/std::allocator allocate/g; s/std::__new_allocator<[^;]+>::deallocate/std::allocator deallocate/g; s/std::__detail::_Map_base<[^;]+>::operator\\[\\]/std::map::operator[]/g;\" '${PERF_FOLDED_CONTAINER}' > '${PERF_SIMPLIFIED_FOLDED_CONTAINER}' && /opt/FlameGraph/flamegraph.pl --title 'dbfs ${RUN_LABEL} ${WORKLOAD}' --subtitle 'simplified symbols, wider view' --width '${FLAMEGRAPH_WIDTH}' --fontsize '${FLAMEGRAPH_FONT_SIZE}' --minwidth '${FLAMEGRAPH_MIN_WIDTH}' --countname samples --hash '${PERF_SIMPLIFIED_FOLDED_CONTAINER}' > '${FLAMEGRAPH_CONTAINER}' && grep -E 'executor::read|LoopJoinOperator|AggregateOperator|FilterOperator|IndexScanOperator|SeqScanOperator|HeapFetchOperator' '${PERF_SIMPLIFIED_FOLDED_CONTAINER}' > /tmp/dbfs-read.folded || true && if test -s /tmp/dbfs-read.folded; then /opt/FlameGraph/flamegraph.pl --title 'dbfs ${RUN_LABEL} read path' --subtitle 'read/query-focused stacks' --width '${FLAMEGRAPH_WIDTH}' --fontsize '${FLAMEGRAPH_FONT_SIZE}' --minwidth '${FLAMEGRAPH_MIN_WIDTH}' --countname samples --hash /tmp/dbfs-read.folded > '${READ_FLAMEGRAPH_CONTAINER}'; fi && grep -E 'executor::insert|updateMatchingRows|removeMatchingRows|BTreeCursor|RecordSerializer|heap_file_access::appendCell' '${PERF_SIMPLIFIED_FOLDED_CONTAINER}' > /tmp/dbfs-write.folded || true && if test -s /tmp/dbfs-write.folded; then /opt/FlameGraph/flamegraph.pl --title 'dbfs ${RUN_LABEL} write path' --subtitle 'write/index-focused stacks' --width '${FLAMEGRAPH_WIDTH}' --fontsize '${FLAMEGRAPH_FONT_SIZE}' --minwidth '${FLAMEGRAPH_MIN_WIDTH}' --countname samples --hash /tmp/dbfs-write.folded > '${WRITE_FLAMEGRAPH_CONTAINER}'; fi"
+  "${compose_cmd[@]}" run --rm flamegraph sh -lc "mkdir -p /app && cp '${ARTIFACTS_DIR_CONTAINER}/dbfs_server' /app/dbfs_server && perf script -i '${PERF_DATA_CONTAINER}' > '${PERF_SCRIPT_CONTAINER}' && /opt/FlameGraph/stackcollapse-perf.pl '${PERF_SCRIPT_CONTAINER}' > '${PERF_FOLDED_CONTAINER}' && perl -pe \"s/nlohmann::json_abi_v[0-9_]+::basic_json<[^;]+>/nlohmann::json/g; s/nlohmann::json_abi_v[0-9_]+::detail::lexer<[^;]+>/nlohmann::json::lexer/g; s/std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >/std::string/g; s/std::__do_uninit_copy<[^;]+>/std::vector copy/g; s/std::allocator_traits<[^;]+>::construct/std::allocator construct/g; s/std::__new_allocator<[^;]+>::allocate/std::allocator allocate/g; s/std::__new_allocator<[^;]+>::deallocate/std::allocator deallocate/g; s/std::__detail::_Map_base<[^;]+>::operator\\[\\]/std::map::operator[]/g;\" '${PERF_FOLDED_CONTAINER}' > '${PERF_SIMPLIFIED_FOLDED_CONTAINER}' && /opt/FlameGraph/flamegraph.pl --title 'dbfs ${RUN_LABEL} ${WORKLOAD}' --subtitle 'simplified symbols, wider view' --width '${FLAMEGRAPH_WIDTH}' --fontsize '${FLAMEGRAPH_FONT_SIZE}' --minwidth '${FLAMEGRAPH_MIN_WIDTH}' --countname samples --hash '${PERF_SIMPLIFIED_FOLDED_CONTAINER}' > '${FLAMEGRAPH_CONTAINER}' && grep -E 'executor::read|LoopJoinOperator|AggregateOperator|FilterOperator|IndexScanOperator|SeqScanOperator|HeapFetchOperator' '${PERF_SIMPLIFIED_FOLDED_CONTAINER}' > /tmp/dbfs-read.folded || true && if test -s /tmp/dbfs-read.folded; then /opt/FlameGraph/flamegraph.pl --title 'dbfs ${RUN_LABEL} read path' --subtitle 'read/query-focused stacks' --width '${FLAMEGRAPH_WIDTH}' --fontsize '${FLAMEGRAPH_FONT_SIZE}' --minwidth '${FLAMEGRAPH_MIN_WIDTH}' --countname samples --hash /tmp/dbfs-read.folded > '${READ_FLAMEGRAPH_CONTAINER}'; fi && grep -E 'executor::insert|updateMatchingRows|removeMatchingRows|BTreeCursor|RecordSerializer|Page::insertCell' '${PERF_SIMPLIFIED_FOLDED_CONTAINER}' > /tmp/dbfs-write.folded || true && if test -s /tmp/dbfs-write.folded; then /opt/FlameGraph/flamegraph.pl --title 'dbfs ${RUN_LABEL} write path' --subtitle 'write/index-focused stacks' --width '${FLAMEGRAPH_WIDTH}' --fontsize '${FLAMEGRAPH_FONT_SIZE}' --minwidth '${FLAMEGRAPH_MIN_WIDTH}' --countname samples --hash /tmp/dbfs-write.folded > '${WRITE_FLAMEGRAPH_CONTAINER}'; fi"
 }
 
 run_benchbase() {
@@ -271,6 +276,10 @@ run_benchbase() {
     --execute="${execute_flag}" \
     -d "${results_dir}")
 
+  if [[ -n "${BENCHBASE_MONITOR_TYPE}" ]]; then
+    cmd+=(-mt "${BENCHBASE_MONITOR_TYPE}")
+  fi
+
   set +e
   "${cmd[@]}" 2>&1 | tee "${log_file}"
   local cmd_status=${PIPESTATUS[0]}
@@ -281,6 +290,7 @@ run_benchbase() {
 trap cleanup EXIT
 
 if [[ "${ENGINE}" == "dbfs" ]]; then
+  BENCHBASE_MONITOR_TYPE="${BENCHBASE_MONITOR_TYPE:-throughput}"
   trace_timing_file=${SQL_TRACE_TIMING_FILE:-${DBFS_SQL_TRACE_TIMING_FILE:-"${RESULTS_DIR_CONTAINER}/dbfs_query_trace.csv"}}
   benchbase_env_args+=( -e "SQL_TRACE_TIMING_FILE=${trace_timing_file}" )
 elif [[ "${ENGINE}" == "postgres" ]] && grep -q "<driver>${TRACING_POSTGRES_DRIVER_CLASS}</driver>" "${BENCHBASE_CONFIG_PATH}"; then
@@ -389,6 +399,7 @@ fi
 
 if [[ "${ENGINE}" == "dbfs" ]]; then
   echo "  ${HOST_DBFS_COMPOSE_LOG_FILE}"
+  echo "  ${HOST_DBFS_SERVER_LOG_FILE}"
   echo "  ${HOST_DBFS_OPERATOR_LOG_FILE}"
 else
   echo "  ${HOST_POSTGRES_COMPOSE_LOG_FILE}"
