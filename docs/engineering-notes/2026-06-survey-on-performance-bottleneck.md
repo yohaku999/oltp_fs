@@ -1,2 +1,0 @@
-# Survey on performance bottleneck
-

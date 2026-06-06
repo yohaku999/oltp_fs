@@ -1,4 +1,4 @@
-# Join Strategy Selection and Access Paths
+# Why Index Lookup Join Outperformed Hash Join
 
 ## Summary
 
