@@ -10,9 +10,9 @@
 #include <utility>
 #include <vector>
 
-#include "storage/page/cell.h"
 #include "storage/index/index_key.h"
 #include "storage/index/index_page.h"
+#include "storage/page/cell.h"
 #include "storage/record/record_cell.h"
 #include "storage/record/record_serializer.h"
 
@@ -26,8 +26,9 @@ RecordSerializer serializeSingleVarcharRecord(const std::string& value) {
 }
 
 std::string encodeIntKey(int value) {
-  return index_key::encodeFieldValue(FieldValue{static_cast<Column::IntegerType>(value)},
-                                     Column::Type::Integer);
+  return index_key::encodeFieldValue(
+      FieldValue{static_cast<Column::IntegerType>(value)},
+      Column::Type::Integer);
 }
 
 BTreeCursor::Boundary inclusiveBoundary(const std::string& key) {
@@ -57,7 +58,7 @@ TEST(PageTest, InsertLeafPageAndFind) {
   for (int i = 0; i < static_cast<int>(std::size(entries)); ++i) {
     const Entry& entry = entries[i];
     auto slot_id_opt = page->insertCell(
-      LeafCell(encodeIntKey(entry.key), entry.heap_page_id, entry.slot_id));
+        LeafCell(encodeIntKey(entry.key), entry.heap_page_id, entry.slot_id));
     ASSERT_TRUE(slot_id_opt.has_value());
     EXPECT_TRUE(page->isDirty());
     int slot_id = slot_id_opt.value();
@@ -84,14 +85,12 @@ TEST(PageTest, TransferCellsToCompactsSourcePage) {
   std::array<char, Page::PAGE_SIZE_BYTE> src_data{};
   std::array<char, Page::PAGE_SIZE_BYTE> dst_data{};
 
-  auto src_page =
-      std::make_unique<Page>(
-        Page::initializeNew(src_data.data(), PageKind::LeafIndex,
-                            LeafIndexPage::NO_RIGHT_SIBLING, 1));
-  auto dst_page =
-      std::make_unique<Page>(
-        Page::initializeNew(dst_data.data(), PageKind::LeafIndex,
-                            LeafIndexPage::NO_RIGHT_SIBLING, 2));
+  auto src_page = std::make_unique<Page>(
+      Page::initializeNew(src_data.data(), PageKind::LeafIndex,
+                          LeafIndexPage::NO_RIGHT_SIBLING, 1));
+  auto dst_page = std::make_unique<Page>(
+      Page::initializeNew(dst_data.data(), PageKind::LeafIndex,
+                          LeafIndexPage::NO_RIGHT_SIBLING, 2));
 
   for (int key = 1; key <= 4; ++key) {
     auto slot_id_opt = src_page->insertCell(LeafCell(encodeIntKey(key), 0, 0));
@@ -100,7 +99,7 @@ TEST(PageTest, TransferCellsToCompactsSourcePage) {
 
   // Use key 3 as the split boundary and verify that compaction leaves the
   // source and destination pages in the expected partitioned state.
-    LeafCell separate_cell(encodeIntKey(3), 0, 0);
+  LeafCell separate_cell(encodeIntKey(3), 0, 0);
   std::vector<std::byte> separate_serialized = separate_cell.serialize();
   LeafIndexPage src_leaf(*src_page);
   LeafIndexPage dst_leaf(*dst_page);
@@ -108,15 +107,15 @@ TEST(PageTest, TransferCellsToCompactsSourcePage) {
       dst_leaf,
       LeafCell::getKey(reinterpret_cast<char*>(separate_serialized.data())));
 
-    EXPECT_TRUE(dst_leaf.hasKey(encodeIntKey(1)));
-    EXPECT_TRUE(dst_leaf.hasKey(encodeIntKey(2)));
-    EXPECT_TRUE(dst_leaf.hasKey(encodeIntKey(3)));
-    EXPECT_FALSE(dst_leaf.hasKey(encodeIntKey(4)));
+  EXPECT_TRUE(dst_leaf.hasKey(encodeIntKey(1)));
+  EXPECT_TRUE(dst_leaf.hasKey(encodeIntKey(2)));
+  EXPECT_TRUE(dst_leaf.hasKey(encodeIntKey(3)));
+  EXPECT_FALSE(dst_leaf.hasKey(encodeIntKey(4)));
 
-    EXPECT_FALSE(src_leaf.hasKey(encodeIntKey(1)));
-    EXPECT_FALSE(src_leaf.hasKey(encodeIntKey(2)));
-    EXPECT_FALSE(src_leaf.hasKey(encodeIntKey(3)));
-    EXPECT_TRUE(src_leaf.hasKey(encodeIntKey(4)));
+  EXPECT_FALSE(src_leaf.hasKey(encodeIntKey(1)));
+  EXPECT_FALSE(src_leaf.hasKey(encodeIntKey(2)));
+  EXPECT_FALSE(src_leaf.hasKey(encodeIntKey(3)));
+  EXPECT_TRUE(src_leaf.hasKey(encodeIntKey(4)));
 
   // Layout: byte 0 = node type, byte 1 = slot count.
   uint8_t src_slot_count = static_cast<uint8_t>(src_data[1]);
@@ -150,9 +149,8 @@ TEST(PageTest, InsertLeafPageRunsOutOfSpace) {
     auto slot_id_opt = page->insertCell(cell);
     if (!slot_id_opt.has_value()) {
       saw_nullopt = true;
-      EXPECT_EQ(
-          0,
-          std::memcmp(page->data(), page_snapshot.data(), Page::PAGE_SIZE_BYTE));
+      EXPECT_EQ(0, std::memcmp(page->data(), page_snapshot.data(),
+                               Page::PAGE_SIZE_BYTE));
       break;
     }
     EXPECT_TRUE(page->isDirty());
@@ -177,8 +175,7 @@ TEST(PageTest, InsertOversizedHeapRecordDoesNotCorruptPage) {
 
   EXPECT_FALSE(slot_id_opt.has_value());
   EXPECT_EQ(
-      0,
-      std::memcmp(page->data(), page_snapshot.data(), Page::PAGE_SIZE_BYTE));
+      0, std::memcmp(page->data(), page_snapshot.data(), Page::PAGE_SIZE_BYTE));
 }
 
 TEST(PageTest, InsertIntermediatePageAndFind) {
@@ -193,8 +190,8 @@ TEST(PageTest, InsertIntermediatePageAndFind) {
   } entries[] = {{10000, 63}, {30000, 21}, {20000, 42}};
 
   for (const Entry& entry : entries) {
-    auto slot_id_opt =
-      page->insertCell(IntermediateCell(entry.page_id, encodeIntKey(entry.key)));
+    auto slot_id_opt = page->insertCell(
+        IntermediateCell(entry.page_id, encodeIntKey(entry.key)));
     ASSERT_TRUE(slot_id_opt.has_value());
     EXPECT_TRUE(page->isDirty());
   }
@@ -248,11 +245,11 @@ TEST(PageTest, InvalidateSlotSetsFlag) {
     EXPECT_FALSE(Cell::isValid(cell_data));
   };
 
-    auto assertSerializedInvalidation = [](PageKind kind,
+  auto assertSerializedInvalidation = [](PageKind kind,
                                          const std::vector<std::byte>& bytes) {
     std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
     auto page = std::make_unique<Page>(
-      Page::initializeNew(page_data.data(), kind, 0, 1));
+        Page::initializeNew(page_data.data(), kind, 0, 1));
     auto slot_id_opt = page->insertCell(bytes);
     ASSERT_TRUE(slot_id_opt.has_value());
     uint16_t slot_id = slot_id_opt.value();
@@ -338,8 +335,7 @@ TEST(PageTest, LeafInsertInvalidateReuseSlot) {
   ASSERT_TRUE(second_slot.has_value());
   EXPECT_TRUE(leaf.hasKey(encodeIntKey(1)));
 
-  const auto [left_boundary, right_boundary] =
-      exactBoundaries(encodeIntKey(1));
+  const auto [left_boundary, right_boundary] = exactBoundaries(encodeIntKey(1));
   auto [next_page, entries] =
       leaf.findEntries(left_boundary, right_boundary, false);
   EXPECT_EQ(LeafIndexPage::NO_RIGHT_SIBLING, next_page);

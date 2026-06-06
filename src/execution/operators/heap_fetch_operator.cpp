@@ -3,13 +3,14 @@
 #include "execution/comparison_predicate.h"
 #include "execution/heapfile.h"
 #include "schema/schema.h"
+#include "storage/buffer/bufferpool.h"
 #include "storage/index/rid.h"
 #include "storage/record/record_cell.h"
-#include "storage/buffer/bufferpool.h"
 
 /**
  * HeapFetchOperator returns TypedRow given RID from its child operator.
- * It searches the heap file for the corresponding record cell reflecting predicate and decodes it into TypedRow.
+ * It searches the heap file for the corresponding record cell reflecting
+ * predicate and decodes it into TypedRow.
  */
 HeapFetchOperator::HeapFetchOperator(
     std::unique_ptr<RidOperator> child, BufferPool& pool, HeapFile& heap_file,
@@ -33,10 +34,9 @@ std::optional<TypedRow> HeapFetchOperator::next() {
     }
 
     logger_.recordInput();
-    std::optional<TypedRow> row =
-        heap_file_.withCell(pool_, *rid, [&](RecordCellView cell) {
-          return cell.getTypedRow(schema_);
-        });
+    std::optional<TypedRow> row = heap_file_.withCell(
+        pool_, *rid,
+        [&](RecordCellView cell) { return cell.getTypedRow(schema_); });
     if (!row.has_value()) {
       continue;
     }

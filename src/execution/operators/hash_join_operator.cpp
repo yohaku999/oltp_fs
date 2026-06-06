@@ -4,7 +4,8 @@
 
 /**
  * HashJoinOperator implements a hash join algorithm for equi-join keys.
- * It is recommended to have child with more rows as inner child for better performance.
+ * It is recommended to have child with more rows as inner child for better
+ * performance.
  */
 HashJoinOperator::HashJoinOperator(
     std::unique_ptr<TypedRowOperator> outer_child,

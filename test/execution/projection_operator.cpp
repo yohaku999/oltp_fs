@@ -1,10 +1,11 @@
 #include "execution/operators/projection_operator.h"
-#include "stub_row_operator.h"
 
 #include <gtest/gtest.h>
 
 #include <optional>
 #include <vector>
+
+#include "stub_row_operator.h"
 
 TEST(ProjectionOperatorTest, SelectsSpecificColumnsByIndex) {
   std::vector<TypedRow> rows;

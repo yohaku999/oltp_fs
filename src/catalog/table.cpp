@@ -7,13 +7,13 @@
 #include "catalog/table_metadata.h"
 #include "execution/operators/heap_fetch_operator.h"
 #include "logging.h"
+#include "storage/buffer/bufferpool.h"
 #include "storage/index/btreecursor.h"
 #include "storage/index/index_key.h"
 #include "storage/index/index_page.h"
 #include "storage/page/page.h"
 #include "storage/record/record_cell.h"
 #include "storage/record/record_serializer.h"
-#include "storage/buffer/bufferpool.h"
 #include "storage/wal/wal.h"
 #include "storage/wal/wal_body.h"
 #include "storage/wal/wal_record.h"
@@ -46,8 +46,8 @@ Table::Table(std::string name, Schema schema,
       schema_(std::move(schema)),
       indexed_column_names_(std::move(indexed_column_names)),
       index_file_(index_path.has_value()
-                      ? std::optional<File>(
-                            std::in_place, preparePath(index_path.value()))
+                      ? std::optional<File>(std::in_place,
+                                            preparePath(index_path.value()))
                       : std::nullopt),
       heap_file_(preparePath(defaultHeapPath(name_))) {}
 
@@ -82,7 +82,8 @@ void Table::createIndex(const std::vector<std::string>& column_names) {
       return;
     }
     dbfs_log::catalog().warn(
-        "Ignoring additional index on table {} because only one index is supported.",
+        "Ignoring additional index on table {} because only one index is "
+        "supported.",
         name_);
     return;
   }
@@ -99,7 +100,8 @@ void Table::createIndex(const std::vector<std::string>& column_names) {
 
     TableMetadataStore::write(
         name_, schema_,
-        {PersistedIndexMetadata{index_file_->getFilePath(), indexed_column_names_}});
+        {PersistedIndexMetadata{index_file_->getFilePath(),
+                                indexed_column_names_}});
   } catch (...) {
     index_file_.reset();
     indexed_column_names_.clear();
@@ -141,7 +143,8 @@ bool Table::isPersisted(const std::string& table_name) {
 void Table::removeBackingFilesFor(const std::string& table_name) {
   const std::string meta_path = TableMetadataStore::pathFor(table_name);
   if (std::filesystem::exists(meta_path)) {
-    for (const auto& index : TableMetadataStore::readFromPath(meta_path).indexes) {
+    for (const auto& index :
+         TableMetadataStore::readFromPath(meta_path).indexes) {
       removeFileIfExists(index.index_path);
     }
   }
@@ -151,9 +154,9 @@ void Table::removeBackingFilesFor(const std::string& table_name) {
 
 std::string Table::defaultIndexPath(
     const std::string& table_name,
-  const std::vector<std::string>& indexed_column_names) {
+    const std::vector<std::string>& indexed_column_names) {
   return (std::filesystem::path("data") /
-      indexFileName(table_name, indexed_column_names))
+          indexFileName(table_name, indexed_column_names))
       .string();
 }
 
@@ -185,15 +188,17 @@ bool Table::hasIndexForColumn(const std::string& column_name) const {
 }
 
 std::string Table::extractIndexKey(const TypedRow& row) const {
-  const std::vector<std::size_t> indexed_column_indexes = indexedColumnIndexes();
+  const std::vector<std::size_t> indexed_column_indexes =
+      indexedColumnIndexes();
   return index_key::encodeRow(schema_, row, indexed_column_indexes);
 }
 
 /**
  * Attempts to build an exact match index key for the given column values.
  * Require all of the indexed columns to be present in the input,
- * but allow the input to contain additional columns that are not part of the index.
- * Returns nullopt if any of the indexed columns are not present in the input.
+ * but allow the input to contain additional columns that are not part of the
+ * index. Returns nullopt if any of the indexed columns are not present in the
+ * input.
  */
 std::optional<std::string> Table::tryBuildExactMatchIndexKey(
     const std::vector<ExactMatchIndexColumnValue>& exact_match_values) const {
@@ -201,7 +206,8 @@ std::optional<std::string> Table::tryBuildExactMatchIndexKey(
     return std::nullopt;
   }
 
-  std::vector<std::optional<FieldValue>> key_values(indexed_column_names_.size());
+  std::vector<std::optional<FieldValue>> key_values(
+      indexed_column_names_.size());
   for (const auto& column_value : exact_match_values) {
     for (std::size_t index = 0; index < indexed_column_names_.size(); ++index) {
       if (indexed_column_names_[index] != column_value.column_name) {
@@ -213,7 +219,8 @@ std::optional<std::string> Table::tryBuildExactMatchIndexKey(
     }
   }
 
-  const std::vector<std::size_t> indexed_column_indexes = indexedColumnIndexes();
+  const std::vector<std::size_t> indexed_column_indexes =
+      indexedColumnIndexes();
   std::string key;
   for (std::size_t index = 0; index < indexed_column_indexes.size(); ++index) {
     if (!key_values[index].has_value()) {

@@ -16,24 +16,21 @@ class ExchangeOperator : public Operator<T> {
   using PartitionHashFunction = std::function<size_t(const T&)>;
   using ChildFactory = std::function<std::unique_ptr<Operator<T>>(size_t)>;
 
-  // TODO: Decide how to handle cases where the number of consumers equals the number of
-  // producers; this may be solvable by configuration alone, or it may require introducing
-  // a batch-oriented operator abstraction.
-  // If this remains a thin wrapper over the runtime, reconsider whether the internal pieces
-  // should be called "operators" at all. Check how the original paper uses that terminology.
-  ExchangeOperator(size_t batch_capacity,
-                   size_t producer_threads_count,
-                   size_t consumer_threads_count,
-                   DispatchRule dispatch_rule,
-                   ChildFactory child_factory,
-                   std::optional<PartitionHashFunction> partition_hash_fn = std::nullopt,
-                   size_t consumer_index = 0)
-      : coordinator_(batch_capacity,
-                     producer_threads_count,
-                     consumer_threads_count,
-                     dispatch_rule,
-                     std::move(child_factory),
-                     std::move(partition_hash_fn)),
+  // TODO: Decide how to handle cases where the number of consumers equals the
+  // number of producers; this may be solvable by configuration alone, or it may
+  // require introducing a batch-oriented operator abstraction. If this remains
+  // a thin wrapper over the runtime, reconsider whether the internal pieces
+  // should be called "operators" at all. Check how the original paper uses that
+  // terminology.
+  ExchangeOperator(
+      size_t batch_capacity, size_t producer_threads_count,
+      size_t consumer_threads_count, DispatchRule dispatch_rule,
+      ChildFactory child_factory,
+      std::optional<PartitionHashFunction> partition_hash_fn = std::nullopt,
+      size_t consumer_index = 0)
+      : coordinator_(batch_capacity, producer_threads_count,
+                     consumer_threads_count, dispatch_rule,
+                     std::move(child_factory), std::move(partition_hash_fn)),
         consumer_index_(consumer_index) {
     if (consumer_threads_count != 1) {
       throw std::invalid_argument(

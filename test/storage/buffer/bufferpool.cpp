@@ -10,14 +10,14 @@
 #include <set>
 #include <stdexcept>
 
+#include "schema/schema.h"
 #include "storage/disk/file.h"
-#include "storage/wal/lsn_allocator.h"
 #include "storage/page/page.h"
 #include "storage/record/record_cell.h"
 #include "storage/record/record_serializer.h"
+#include "storage/wal/lsn_allocator.h"
 #include "storage/wal/wal.h"
 #include "storage/wal/wal_record.h"
-#include "schema/schema.h"
 
 namespace {
 
@@ -38,7 +38,6 @@ class BufferPoolTest : public ::testing::Test {
   std::unique_ptr<BufferPool> pool;
   std::unique_ptr<File> testFile;
   std::unique_ptr<WAL> wal;
-  
 
   void SetUp() override {
     std::remove(kTestFile);
@@ -82,8 +81,7 @@ TEST_F(BufferPoolTest, createNewPageAllFramesFilledSuccessfully) {
 TEST_F(BufferPoolTest, createNewPageWithEviction) {
   // Keep page snapshots so the test can compare the reloaded page bytes after
   // eviction writes them out to disk.
-  std::array<std::array<char, Page::PAGE_SIZE_BYTE>,
-             max_frames_count + 10>
+  std::array<std::array<char, Page::PAGE_SIZE_BYTE>, max_frames_count + 10>
       page_copies;
   std::array<uint16_t, max_frames_count + 10> page_ids;
 
@@ -116,7 +114,7 @@ TEST_F(BufferPoolTest, createNewPageWithEviction) {
     ASSERT_NE(page, nullptr) << "Should be able to access/reload page " << i;
 
     int cmp_result =
-      std::memcmp(page->data(), page_copies[i].data(), Page::PAGE_SIZE_BYTE);
+        std::memcmp(page->data(), page_copies[i].data(), Page::PAGE_SIZE_BYTE);
     EXPECT_EQ(cmp_result, 0)
         << "Page " << i << " content should match after eviction and reload";
     pool->unpinPage(page, *testFile);

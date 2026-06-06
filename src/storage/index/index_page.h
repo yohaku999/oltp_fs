@@ -4,19 +4,20 @@
 #include <stdexcept>
 #include <string>
 
-#include "intermediate_cell.h"
 #include "index_key.h"
+#include "intermediate_cell.h"
 #include "leaf_cell.h"
-#include "storage/page/page.h"
 #include "rid.h"
 #include "storage/index/btreecursor.h"
+#include "storage/page/page.h"
 
 // LeafIndexPage assume the underlying Page buffer/layout is
 // already initialized and do not own the storage.
 
 class LeafIndexPage {
  public:
-  static constexpr uint16_t NO_RIGHT_SIBLING = 65535; // special page ID indicating no right sibling for leaf pages.
+  static constexpr uint16_t NO_RIGHT_SIBLING =
+      65535;  // special page ID indicating no right sibling for leaf pages.
   explicit LeafIndexPage(Page& page) : page_(page) {
     if (!page_.isLeaf()) {
       throw std::logic_error("LeafIndexPage constructed with non-leaf Page");
@@ -83,7 +84,8 @@ class InternalIndexPage {
 
     if (!leftmost.has_value()) {
       throw std::logic_error(
-          "InternalIndexPage::leftMostChildPageId: internal page has no valid separator cell");
+          "InternalIndexPage::leftMostChildPageId: internal page has no valid "
+          "separator cell");
     }
 
     return leftmost->page_id();

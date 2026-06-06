@@ -5,7 +5,7 @@
 #include "tuple/typed_row.h"
 
 FieldValue resolveBoundOperand(const BoundOperand& operand,
-                              const TypedRow& row) {
+                               const TypedRow& row) {
   if (const auto* column_ref = std::get_if<BoundColumnRef>(&operand)) {
     if (column_ref->source_index != 0) {
       throw std::runtime_error(
@@ -25,7 +25,7 @@ FieldValue resolveBoundOperand(const BoundOperand& operand,
 }
 
 bool passesPredicates(const TypedRow& row,
-                       const std::vector<BoundComparisonPredicate>& predicates) {
+                      const std::vector<BoundComparisonPredicate>& predicates) {
   for (const auto& predicate : predicates) {
     const FieldValue left = resolveBoundOperand(predicate.left, row);
     const FieldValue right = resolveBoundOperand(predicate.right, row);

@@ -28,14 +28,13 @@ Schema CreateTableParser::extractSchema() const {
 
     const auto& column_name =
         column_definition.at("ColumnDef").at("colname").get<std::string>();
-    const auto& type_name =
-        column_definition.at("ColumnDef")
-            .at("typeName")
-            .at("names")
-            .back()
-            .at("String")
-            .at("sval")
-            .get<std::string>();
+    const auto& type_name = column_definition.at("ColumnDef")
+                                .at("typeName")
+                                .at("names")
+                                .back()
+                                .at("String")
+                                .at("sval")
+                                .get<std::string>();
     Column::Type column_type;
     if (type_name == "int4") {
       column_type = Column::Type::Integer;
@@ -46,9 +45,8 @@ Schema CreateTableParser::extractSchema() const {
                type_name == "timestamp") {
       column_type = Column::Type::Varchar;
     } else {
-      throw std::runtime_error(
-          "Unsupported type identifier for column " + column_name + ": " +
-          type_name);
+      throw std::runtime_error("Unsupported type identifier for column " +
+                               column_name + ": " + type_name);
     }
     columns.emplace_back(column_name, column_type);
   }
@@ -56,7 +54,8 @@ Schema CreateTableParser::extractSchema() const {
   return Schema(columns);
 }
 
-std::vector<std::string> CreateTableParser::extractPrimaryKeyColumnNames() const {
+std::vector<std::string> CreateTableParser::extractPrimaryKeyColumnNames()
+    const {
   const auto& table_elements = statementNode().at("CreateStmt").at("tableElts");
 
   for (const auto& table_element : table_elements) {

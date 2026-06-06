@@ -14,8 +14,7 @@ class FilterOperator : public TypedRowOperator {
  public:
   FilterOperator(std::unique_ptr<TypedRowOperator> child,
                  std::vector<BoundComparisonPredicate> predicates)
-      : child_(std::move(child)),
-        predicates_(std::move(predicates)) {}
+      : child_(std::move(child)), predicates_(std::move(predicates)) {}
 
   void open() override {
     logger_.open();

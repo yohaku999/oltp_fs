@@ -13,8 +13,7 @@ class OrderByOperator : public TypedRowOperator {
  public:
   OrderByOperator(std::unique_ptr<TypedRowOperator> child,
                   std::vector<OrderBySpec> order_by_specs)
-      : child_(std::move(child)),
-        order_by_specs_(std::move(order_by_specs)) {}
+      : child_(std::move(child)), order_by_specs_(std::move(order_by_specs)) {}
 
   void open() override;
   std::optional<TypedRow> next() override;

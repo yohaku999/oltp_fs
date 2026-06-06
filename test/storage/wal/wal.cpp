@@ -82,15 +82,12 @@ TEST_F(WALTest, InitializeNewFailsIfWalAlreadyExists) {
   auto wal = WAL::initializeNew(wal_path);
   wal.reset();
 
-  EXPECT_THROW({
-    auto reopened = WAL::initializeNew(wal_path);
-  }, std::system_error);
+  EXPECT_THROW(
+      { auto reopened = WAL::initializeNew(wal_path); }, std::system_error);
 }
 
 TEST_F(WALTest, OpenExistingFailsIfWalDoesNotExist) {
-  EXPECT_THROW({
-    auto wal = WAL::openExisting(wal_path);
-  }, std::system_error);
+  EXPECT_THROW({ auto wal = WAL::openExisting(wal_path); }, std::system_error);
 }
 
 TEST_F(WALTest, WriteOverloadAllocatesSequentialLSNsFromRecordSizes) {

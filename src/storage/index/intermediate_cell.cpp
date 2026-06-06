@@ -18,8 +18,7 @@ IntermediateCell IntermediateCell::decodeCell(char* data_p) {
 
 std::string IntermediateCell::getKey(const char* data_p) {
   // Skip: FLAG (1 byte) + key_size (2 bytes) + page_id (2 bytes)
-  const uint16_t key_size =
-      readValue<uint16_t>(data_p + Cell::FLAG_FIELD_SIZE);
+  const uint16_t key_size = readValue<uint16_t>(data_p + Cell::FLAG_FIELD_SIZE);
   const char* key_p = data_p + Cell::FLAG_FIELD_SIZE + sizeof(uint16_t) * 2;
   return std::string(key_p, key_p + key_size);
 }

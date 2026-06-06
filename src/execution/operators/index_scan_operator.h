@@ -9,13 +9,16 @@ class BufferPool;
 class File;
 
 #include "execution/comparison_predicate.h"
-#include "storage/index/btreecursor.h"
 #include "execution/operator.h"
+#include "storage/index/btreecursor.h"
 
 class IndexScanOperator : public RidOperator {
  public:
-  IndexScanOperator(BufferPool& pool, File& index_file, std::pair<BTreeCursor::Boundary, BTreeCursor::Boundary> boundaries,
-                    std::vector<std::vector<BoundComparisonPredicate>> index_ordered_predicates);
+  IndexScanOperator(
+      BufferPool& pool, File& index_file,
+      std::pair<BTreeCursor::Boundary, BTreeCursor::Boundary> boundaries,
+      std::vector<std::vector<BoundComparisonPredicate>>
+          index_ordered_predicates);
 
   void open() override;
   std::optional<RID> next() override;

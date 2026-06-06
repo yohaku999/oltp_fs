@@ -14,8 +14,7 @@ TEST(OrderByOperatorTest, SortsRowsBySingleColumnAscending) {
   rows.push_back(makeStubRow(2, "bob", 20));
 
   auto child = std::make_unique<StubRowOperator>(std::move(rows));
-  OrderByOperator order_by(
-      std::move(child), {{0, OrderByDirection::Asc}});
+  OrderByOperator order_by(std::move(child), {{0, OrderByDirection::Asc}});
 
   order_by.open();
 
@@ -42,9 +41,8 @@ TEST(OrderByOperatorTest, UsesLaterColumnsAsTieBreaker) {
   rows.push_back(makeStubRow(3, "carol", 20));
 
   auto child = std::make_unique<StubRowOperator>(std::move(rows));
-  OrderByOperator order_by(
-      std::move(child),
-      {{2, OrderByDirection::Asc}, {0, OrderByDirection::Asc}});
+  OrderByOperator order_by(std::move(child), {{2, OrderByDirection::Asc},
+                                              {0, OrderByDirection::Asc}});
 
   order_by.open();
 
@@ -71,8 +69,7 @@ TEST(OrderByOperatorTest, SortsRowsBySingleColumnDescending) {
   rows.push_back(makeStubRow(2, "bob", 20));
 
   auto child = std::make_unique<StubRowOperator>(std::move(rows));
-  OrderByOperator order_by(
-      std::move(child), {{0, OrderByDirection::Desc}});
+  OrderByOperator order_by(std::move(child), {{0, OrderByDirection::Desc}});
 
   order_by.open();
 

@@ -33,18 +33,18 @@ bool LeafIndexPage::hasKey(const std::string& key) const {
  * right sibling page ID if the right_boundary is not found in the current page
  * and we need to continue searching; otherwise, it is NO_RIGHT_SIBLING
  * indicating we can stop searching.
- * 
+ *
  */
 std::pair<uint16_t, std::vector<IndexEntry>> LeafIndexPage::findEntries(
     BTreeCursor::Boundary left_boundary, BTreeCursor::Boundary right_boundary,
     bool do_invalidate) {
-  
   std::vector<IndexEntry> matching_entries;
   bool need_to_scan_next_page = true;
   for (int idx = 0; idx < page_.getSlotCount(); ++idx) {
     char* cell_data = page_.data() + page_.getCellOffsetOnXthPointer(idx);
     if (!Cell::isValid(cell_data)) {
-      dbfs_log::index().debug("LeafIndexPage::findEntries skipping invalid slot {}", idx);
+      dbfs_log::index().debug(
+          "LeafIndexPage::findEntries skipping invalid slot {}", idx);
       continue;
     }
     LeafCell cell = cellAt(idx);
@@ -55,18 +55,16 @@ std::pair<uint16_t, std::vector<IndexEntry>> LeafIndexPage::findEntries(
       }
       matching_entries.push_back(
           IndexEntry{cell.key(), RID{cell.heap_page_id(), cell.slot_id()}});
-    } else if (!BTreeCursor::isInsideBoundary(cell.key(), right_boundary, false)) {
+    } else if (!BTreeCursor::isInsideBoundary(cell.key(), right_boundary,
+                                              false)) {
       need_to_scan_next_page = false;
     }
-
-  }  
-  if (need_to_scan_next_page) {
-    return std::make_pair(this->getRightSiblingPageId(), matching_entries);  
   }
-  else{
+  if (need_to_scan_next_page) {
+    return std::make_pair(this->getRightSiblingPageId(), matching_entries);
+  } else {
     return std::make_pair(LeafIndexPage::NO_RIGHT_SIBLING, matching_entries);
   }
-  
 }
 
 void LeafIndexPage::compact() {
@@ -85,14 +83,13 @@ void LeafIndexPage::compact() {
   uint16_t write_offset = static_cast<uint16_t>(Page::PAGE_SIZE_BYTE);
   for (uint16_t idx = 0; idx < new_slot_count; ++idx) {
     const LeafCell& cell = cells[idx];
-    write_offset =
-        static_cast<uint16_t>(write_offset - cell.payloadSize());
+    write_offset = static_cast<uint16_t>(write_offset - cell.payloadSize());
     char* cell_destination = page_.data() + write_offset;
     std::vector<std::byte> serialized = cell.serialize();
     std::memcpy(cell_destination, serialized.data(), serialized.size());
 
-    char* slot_pointer = page_.data() + Page::HEADDER_SIZE_BYTE +
-                         Page::CELL_POINTER_SIZE * idx;
+    char* slot_pointer =
+        page_.data() + Page::HEADDER_SIZE_BYTE + Page::CELL_POINTER_SIZE * idx;
     std::memcpy(slot_pointer, &write_offset, sizeof(uint16_t));
   }
 
@@ -103,7 +100,6 @@ void LeafIndexPage::compact() {
 
 void LeafIndexPage::transferAndCompactTo(LeafIndexPage& dst,
                                          const std::string& separate_key) {
-
   const int slot_count = page_.getSlotCount();
   for (int idx = 0; idx < slot_count; ++idx) {
     char* cell_data = page_.data() + page_.getCellOffsetOnXthPointer(idx);
@@ -146,8 +142,8 @@ void LeafIndexPage::transferAndCompactTo(LeafIndexPage& dst,
     std::vector<std::byte> serialized = cell.serialize();
     std::memcpy(cell_destination, serialized.data(), serialized.size());
 
-    char* slot_pointer = page_.data() + Page::HEADDER_SIZE_BYTE +
-                         Page::CELL_POINTER_SIZE * idx;
+    char* slot_pointer =
+        page_.data() + Page::HEADDER_SIZE_BYTE + Page::CELL_POINTER_SIZE * idx;
     std::memcpy(slot_pointer, &write_offset, sizeof(uint16_t));
   }
 
@@ -155,7 +151,7 @@ void LeafIndexPage::transferAndCompactTo(LeafIndexPage& dst,
   page_.updateSlotDirectoryOffset(write_offset);
   page_.markDirty();
 
-    dbfs_log::index().info(
+  dbfs_log::index().info(
       "Completed transfer and compaction of LeafIndexPage. New slot count: {}, "
       "new slot directory offset: {}",
       new_slot_count, write_offset);
@@ -171,9 +167,10 @@ uint16_t InternalIndexPage::rightMostChildPageId() const {
 
 /**
  * returns the child page ID to follow for a given key
- * The child page ID is determined based on the separator keys in the internal index page.
- * The function iterates through the valid separator cells in the page and compares their keys with the given key.
- * It returns the page ID of the first separator cell whose key is greater than or equal to the given key.
+ * The child page ID is determined based on the separator keys in the internal
+ * index page. The function iterates through the valid separator cells in the
+ * page and compares their keys with the given key. It returns the page ID of
+ * the first separator cell whose key is greater than or equal to the given key.
  * If no such separator cell is found, it returns the rightmost child page ID.
  */
 uint16_t InternalIndexPage::findChildPage(const std::string& key) {
@@ -197,8 +194,9 @@ uint16_t InternalIndexPage::findChildPage(const std::string& key) {
       return cell.page_id();
     }
   }
-  dbfs_log::index().debug("InternalIndexPage::findChildPage: Going to right most child {}.",
-            rightMostChildPageId());
+  dbfs_log::index().debug(
+      "InternalIndexPage::findChildPage: Going to right most child {}.",
+      rightMostChildPageId());
   return rightMostChildPageId();
 }
 
@@ -218,14 +216,13 @@ void InternalIndexPage::compact() {
   uint16_t write_offset = static_cast<uint16_t>(Page::PAGE_SIZE_BYTE);
   for (uint16_t idx = 0; idx < new_slot_count; ++idx) {
     const IntermediateCell& cell = cells[idx];
-    write_offset =
-        static_cast<uint16_t>(write_offset - cell.payloadSize());
+    write_offset = static_cast<uint16_t>(write_offset - cell.payloadSize());
     char* cell_destination = page_.data() + write_offset;
     std::vector<std::byte> serialized = cell.serialize();
     std::memcpy(cell_destination, serialized.data(), serialized.size());
 
-    char* slot_pointer = page_.data() + Page::HEADDER_SIZE_BYTE +
-                         Page::CELL_POINTER_SIZE * idx;
+    char* slot_pointer =
+        page_.data() + Page::HEADDER_SIZE_BYTE + Page::CELL_POINTER_SIZE * idx;
     std::memcpy(slot_pointer, &write_offset, sizeof(uint16_t));
   }
 
@@ -294,8 +291,8 @@ void InternalIndexPage::transferAndCompactTo(InternalIndexPage& dst,
     std::vector<std::byte> serialized = cell.serialize();
     std::memcpy(cell_destination, serialized.data(), serialized.size());
 
-    char* slot_pointer = page_.data() + Page::HEADDER_SIZE_BYTE +
-                         Page::CELL_POINTER_SIZE * idx;
+    char* slot_pointer =
+        page_.data() + Page::HEADDER_SIZE_BYTE + Page::CELL_POINTER_SIZE * idx;
     std::memcpy(slot_pointer, &write_offset, sizeof(uint16_t));
   }
 
@@ -303,7 +300,7 @@ void InternalIndexPage::transferAndCompactTo(InternalIndexPage& dst,
   page_.updateSlotDirectoryOffset(write_offset);
   page_.markDirty();
 
-    dbfs_log::index().info(
+  dbfs_log::index().info(
       "Completed transfer and compaction of InternalIndexPage. New slot count: "
       "{}, new slot directory offset: {}",
       new_slot_count, write_offset);

@@ -2,9 +2,8 @@
 
 #include <filesystem>
 #include <fstream>
-#include <stdexcept>
-
 #include <nlohmann/json.hpp>
+#include <stdexcept>
 
 namespace {
 
@@ -40,7 +39,7 @@ void TableMetadataStore::write(
   for (const auto& column : schema.columns()) {
     metadata["columns"].push_back(
         {{"name", column.getName()},
-      {"type", Column::typeToString(column.getType())}});
+         {"type", Column::typeToString(column.getType())}});
   }
 
   const std::string meta_path = pathFor(table_name);
@@ -90,7 +89,8 @@ PersistedTableMetadata TableMetadataStore::readFromPath(
             throw std::runtime_error(
                 "invalid table metadata: indexedColumns must be strings");
           }
-          indexed_column_names.push_back(indexed_column_json.get<std::string>());
+          indexed_column_names.push_back(
+              indexed_column_json.get<std::string>());
         }
       } else if (index_json.contains("indexedColumn") &&
                  index_json["indexedColumn"].is_string()) {
@@ -113,7 +113,7 @@ PersistedTableMetadata TableMetadataStore::readFromPath(
 
     columns.emplace_back(
         column_json["name"].get<std::string>(),
-      Column::typeFromString(column_json["type"].get<std::string>()));
+        Column::typeFromString(column_json["type"].get<std::string>()));
   }
 
   return PersistedTableMetadata{Schema(std::move(columns)), std::move(indexes)};

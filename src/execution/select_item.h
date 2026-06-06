@@ -1,8 +1,8 @@
 #pragma once
 
 #include <cstddef>
-#include <vector>
 #include <variant>
+#include <vector>
 
 #include "execution/comparison_predicate.h"
 

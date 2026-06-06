@@ -1,5 +1,4 @@
 #include "execution/operators/exchange/exchange_operator.h"
-#include "execution/operators/exchange/exchange_coordinator.h"
 
 #include <gtest/gtest.h>
 
@@ -8,19 +7,19 @@
 #include <stdexcept>
 #include <vector>
 
+#include "execution/operators/exchange/exchange_coordinator.h"
 #include "stub_rid_operator.h"
 #include "stub_row_operator.h"
 
 TEST(ExchangeOperatorTest, ReturnsAllRowsFromMultipleProducers) {
   std::vector<std::vector<TypedRow>> producer_rows;
-  producer_rows.push_back({makeStubRow(1, "alice", 10), makeStubRow(2, "bob", 20)});
-  producer_rows.push_back({makeStubRow(3, "carol", 30), makeStubRow(4, "dave", 40)});
+  producer_rows.push_back(
+      {makeStubRow(1, "alice", 10), makeStubRow(2, "bob", 20)});
+  producer_rows.push_back(
+      {makeStubRow(3, "carol", 30), makeStubRow(4, "dave", 40)});
 
   ExchangeOperator<> exchange(
-      2,
-      producer_rows.size(),
-      1,
-      ExchangeOperator<>::DispatchRule::RoundRobin,
+      2, producer_rows.size(), 1, ExchangeOperator<>::DispatchRule::RoundRobin,
       [&producer_rows](size_t index) -> std::unique_ptr<TypedRowOperator> {
         return std::make_unique<StubRowOperator>(producer_rows[index]);
       });
@@ -41,13 +40,8 @@ TEST(ExchangeOperatorTest, ReturnsAllRowsFromMultipleProducers) {
 
 TEST(ExchangeOperatorTest, ReturnsEofImmediatelyWhenNoProducersExist) {
   ExchangeOperator<> exchange(
-      2,
-      0,
-      1,
-      ExchangeOperator<>::DispatchRule::RoundRobin,
-      [](size_t) -> std::unique_ptr<TypedRowOperator> {
-        return nullptr;
-      });
+      2, 0, 1, ExchangeOperator<>::DispatchRule::RoundRobin,
+      [](size_t) -> std::unique_ptr<TypedRowOperator> { return nullptr; });
 
   exchange.open();
   EXPECT_FALSE(exchange.next().has_value());
@@ -55,16 +49,13 @@ TEST(ExchangeOperatorTest, ReturnsEofImmediatelyWhenNoProducersExist) {
 }
 
 TEST(ExchangeOperatorTest, RejectsMultipleConsumerThreads) {
-  EXPECT_THROW(
-      ExchangeOperator<>(
-          2,
-          1,
-          2,
-          ExchangeOperator<>::DispatchRule::RoundRobin,
-          [](size_t) -> std::unique_ptr<TypedRowOperator> {
-            return std::make_unique<StubRowOperator>(std::vector<TypedRow>{makeStubRow(1, "alice", 10)});
-          }),
-      std::invalid_argument);
+  EXPECT_THROW(ExchangeOperator<>(
+                   2, 1, 2, ExchangeOperator<>::DispatchRule::RoundRobin,
+                   [](size_t) -> std::unique_ptr<TypedRowOperator> {
+                     return std::make_unique<StubRowOperator>(
+                         std::vector<TypedRow>{makeStubRow(1, "alice", 10)});
+                   }),
+               std::invalid_argument);
 }
 
 TEST(RidExchangeOperatorTest, ReturnsAllRidsFromMultipleProducers) {
@@ -73,9 +64,7 @@ TEST(RidExchangeOperatorTest, ReturnsAllRidsFromMultipleProducers) {
   producer_rids.push_back({RID{3, 30}, RID{4, 40}});
 
   ExchangeOperator<RID> exchange(
-      2,
-      producer_rids.size(),
-      1,
+      2, producer_rids.size(), 1,
       ExchangeOperator<RID>::DispatchRule::RoundRobin,
       [&producer_rids](size_t index) -> std::unique_ptr<RidOperator> {
         return std::make_unique<StubRidOperator>(producer_rids[index]);
@@ -104,15 +93,14 @@ TEST(ExchangeCoordinatorTest, HashPartitionRoutesRowsToMatchingConsumers) {
   });
 
   ExchangeCoordinator<TypedRow> coordinator(
-      2,
-      producer_rows.size(),
-      2,
+      2, producer_rows.size(), 2,
       ExchangeCoordinator<TypedRow>::DispatchRule::HashPartition,
       [&producer_rows](size_t index) -> std::unique_ptr<TypedRowOperator> {
         return std::make_unique<StubRowOperator>(producer_rows[index]);
       },
       [](const TypedRow& row) -> size_t {
-        return static_cast<size_t>(std::get<Column::IntegerType>(row.values[0]));
+        return static_cast<size_t>(
+            std::get<Column::IntegerType>(row.values[0]));
       });
 
   coordinator.consumerAt(0).open();
@@ -139,12 +127,11 @@ TEST(ExchangeCoordinatorTest, HashPartitionRoutesRowsToMatchingConsumers) {
 
 TEST(ExchangeCoordinatorTest, StartOnceIsOneShotAndDoesNotDuplicateRows) {
   std::vector<std::vector<TypedRow>> producer_rows;
-  producer_rows.push_back({makeStubRow(1, "alice", 10), makeStubRow(2, "bob", 20)});
+  producer_rows.push_back(
+      {makeStubRow(1, "alice", 10), makeStubRow(2, "bob", 20)});
 
   ExchangeCoordinator<TypedRow> coordinator(
-      1,
-      producer_rows.size(),
-      1,
+      1, producer_rows.size(), 1,
       ExchangeCoordinator<TypedRow>::DispatchRule::RoundRobin,
       [&producer_rows](size_t index) -> std::unique_ptr<TypedRowOperator> {
         return std::make_unique<StubRowOperator>(producer_rows[index]);

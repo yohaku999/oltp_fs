@@ -15,8 +15,9 @@ bool isNumericType(Column::Type type) {
  * Tries to bind the given column reference to a column in the specified tables.
  * If the column reference does not specify a table name,
  * then it will be bound to the first matching column found in the tables.
- * If multiple matching columns are found for an unqualified reference, an exception is thrown due to ambiguity.
- * If no matching column is found, std::nullopt is returned.
+ * If multiple matching columns are found for an unqualified reference, an
+ * exception is thrown due to ambiguity. If no matching column is found,
+ * std::nullopt is returned.
  */
 std::optional<BoundColumnRef> tryBindColumnRef(
     const ColumnRef& column_ref, const std::vector<Table>& tables) {
@@ -29,7 +30,8 @@ std::optional<BoundColumnRef> tryBindColumnRef(
     const bool table_matches =
         !has_table_name || column_ref.table_name == table.name();
     if (!table_matches) {
-      // if the table name doesn't match, skip all columns of this table and move on to the next table
+      // if the table name doesn't match, skip all columns of this table and
+      // move on to the next table
       joined_column_offset += table_column_count;
       continue;
     }
@@ -38,14 +40,16 @@ std::optional<BoundColumnRef> tryBindColumnRef(
         table.schema().getColumnIndex(column_ref.column_name);
     if (column_index >= 0) {
       const BoundColumnRef bound_column{
-          0, joined_column_offset + static_cast<std::size_t>(column_index), table.schema().columns().at(column_index).getType()};
+          0, joined_column_offset + static_cast<std::size_t>(column_index),
+          table.schema().columns().at(column_index).getType()};
 
       if (has_table_name) {
         return bound_column;
       }
 
       if (matched_column.has_value()) {
-        // if the column reference is unqualified and we've already found a matching column before, then this reference is ambiguous.
+        // if the column reference is unqualified and we've already found a
+        // matching column before, then this reference is ambiguous.
         throw std::runtime_error("Ambiguous column: " + column_ref.column_name);
       }
 
@@ -58,8 +62,8 @@ std::optional<BoundColumnRef> tryBindColumnRef(
   return matched_column;
 }
 
-std::optional<BoundOperand> tryBindOperand(
-    const UnboundOperand& operand, const std::vector<Table>& tables) {
+std::optional<BoundOperand> tryBindOperand(const UnboundOperand& operand,
+                                           const std::vector<Table>& tables) {
   // when the operand is a column reference
   if (const auto* column_ref = std::get_if<ColumnRef>(&operand)) {
     const std::optional<BoundColumnRef> bound_column =
@@ -79,7 +83,6 @@ std::optional<BoundOperand> tryBindOperand(
 }
 
 }  // namespace
-
 
 BoundColumnRef bindColumnRef(const ColumnRef& column_ref,
                              const std::vector<Table>& tables) {
@@ -123,8 +126,9 @@ std::vector<BoundSelectItem> bindSelectItems(
         const std::size_t column_count = table.schema().columns().size();
         for (std::size_t column_index = 0; column_index < column_count;
              ++column_index) {
-          bound_select_items.push_back(
-              BoundColumnRef{0, joined_column_offset + column_index, table.schema().columns().at(column_index).getType()});
+          bound_select_items.push_back(BoundColumnRef{
+              0, joined_column_offset + column_index,
+              table.schema().columns().at(column_index).getType()});
         }
         joined_column_offset += column_count;
       }
@@ -138,12 +142,13 @@ std::vector<BoundSelectItem> bindSelectItems(
 
     const auto& aggregate_call = std::get<UnboundAggregateCall>(item);
     if (const auto* column_ref =
-        std::get_if<ColumnRef>(&aggregate_call.argument)) {
-      bound_select_items.push_back(BoundAggregateCall{aggregate_call.function,
-                                                      bindColumnRef(*column_ref, tables),
-                                                      aggregate_call.is_distinct});
+            std::get_if<ColumnRef>(&aggregate_call.argument)) {
+      bound_select_items.push_back(BoundAggregateCall{
+          aggregate_call.function, bindColumnRef(*column_ref, tables),
+          aggregate_call.is_distinct});
     } else {
-      // This is an aggregate call with the special argument meaning "all columns".
+      // This is an aggregate call with the special argument meaning "all
+      // columns".
       bound_select_items.push_back(BoundAggregateCall{
           aggregate_call.function, AggregateAllColumnsArgument{},
           aggregate_call.is_distinct});
@@ -169,22 +174,25 @@ std::vector<BoundComparisonPredicate> bindPredicates(
 }
 
 /**
- * Binds as many predicates as possible using only the specified table, and returns the bound predicates.
- * Predicates that cannot be fully bound using the specified table are silently dropped.
+ * Binds as many predicates as possible using only the specified table, and
+ * returns the bound predicates. Predicates that cannot be fully bound using the
+ * specified table are silently dropped.
  */
 std::vector<BoundComparisonPredicate> bindPredicatesResolvableByTable(
-  const std::vector<UnboundComparisonPredicate>& predicates,
-  const Table& table) {
+    const std::vector<UnboundComparisonPredicate>& predicates,
+    const Table& table) {
   std::vector<BoundComparisonPredicate> bound_predicates;
   bound_predicates.reserve(predicates.size());
 
   for (const auto& predicate : predicates) {
-    std::optional<BoundOperand> left = tryBindOperand(predicate.left, std::vector<Table>{table});
+    std::optional<BoundOperand> left =
+        tryBindOperand(predicate.left, std::vector<Table>{table});
     if (!left.has_value()) {
       continue;
     }
 
-    std::optional<BoundOperand> right = tryBindOperand(predicate.right, std::vector<Table>{table});
+    std::optional<BoundOperand> right =
+        tryBindOperand(predicate.right, std::vector<Table>{table});
     if (!right.has_value()) {
       continue;
     }
@@ -210,7 +218,8 @@ std::vector<BoundUpdateAssignment> bindUpdateAssignments(
                                assignment.target_column_name);
     }
 
-    const std::size_t target_column_index = static_cast<std::size_t>(column_index);
+    const std::size_t target_column_index =
+        static_cast<std::size_t>(column_index);
     const Column::Type target_type =
         table.schema().columns().at(target_column_index).getType();
 
@@ -225,11 +234,11 @@ std::vector<BoundUpdateAssignment> bindUpdateAssignments(
           "UPDATE arithmetic requires a numeric target column.");
     }
 
-    const auto& arithmetic = std::get<UnboundSelfArithmeticUpdate>(assignment.value);
+    const auto& arithmetic =
+        std::get<UnboundSelfArithmeticUpdate>(assignment.value);
     if (!std::holds_alternative<Column::IntegerType>(arithmetic.literal) &&
         !std::holds_alternative<Column::DoubleType>(arithmetic.literal)) {
-      throw std::runtime_error(
-          "UPDATE arithmetic requires a numeric literal.");
+      throw std::runtime_error("UPDATE arithmetic requires a numeric literal.");
     }
 
     bound_assignments.push_back(BoundUpdateAssignment{

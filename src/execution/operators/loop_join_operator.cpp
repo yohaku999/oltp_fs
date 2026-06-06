@@ -3,7 +3,7 @@
 #include <utility>
 
 LoopJoinOperator::LoopJoinOperator(
-  std::vector<std::unique_ptr<TypedRowOperator>> children)
+    std::vector<std::unique_ptr<TypedRowOperator>> children)
     : children_(std::move(children)) {}
 
 void LoopJoinOperator::open() {
@@ -22,7 +22,8 @@ void LoopJoinOperator::open() {
   }
 
   logger_.setMetric("sources", materialized_source_rows_.size());
-  for (std::size_t index = 0; index < materialized_source_rows_.size(); ++index) {
+  for (std::size_t index = 0; index < materialized_source_rows_.size();
+       ++index) {
     logger_.setMetric("child" + std::to_string(index) + "_rows",
                       materialized_source_rows_[index].size());
   }
@@ -57,7 +58,7 @@ void LoopJoinOperator::close() {
 }
 
 std::vector<TypedRow> LoopJoinOperator::materializeSourceRows(
-  TypedRowOperator& child) const {
+    TypedRowOperator& child) const {
   std::vector<TypedRow> rows;
   child.open();
   while (std::optional<TypedRow> row = child.next()) {
@@ -71,11 +72,10 @@ std::vector<TypedRow> LoopJoinOperator::materializeSourceRows(
 TypedRow LoopJoinOperator::buildJoinedRow() const {
   TypedRow row;
   for (std::size_t source_index = 0;
-       source_index < materialized_source_rows_.size();
-       ++source_index) {
+       source_index < materialized_source_rows_.size(); ++source_index) {
     const TypedRow& source_row =
         materialized_source_rows_[source_index]
-                                [source_row_cursors_[source_index]];
+                                 [source_row_cursors_[source_index]];
     row.values.insert(row.values.end(), source_row.values.begin(),
                       source_row.values.end());
   }
@@ -84,13 +84,11 @@ TypedRow LoopJoinOperator::buildJoinedRow() const {
 }
 
 void LoopJoinOperator::advanceSourceRowCursors() {
-  for (std::size_t source_index = source_row_cursors_.size();
-       source_index > 0;
+  for (std::size_t source_index = source_row_cursors_.size(); source_index > 0;
        --source_index) {
     const std::size_t index = source_index - 1;
     source_row_cursors_[index] += 1;
-    if (source_row_cursors_[index] <
-        materialized_source_rows_[index].size()) {
+    if (source_row_cursors_[index] < materialized_source_rows_[index].size()) {
       return;
     }
     source_row_cursors_[index] = 0;

@@ -16,7 +16,8 @@ std::vector<std::string> SelectParser::extractTableNames() const {
   const auto& from_clause = statementNode().at("SelectStmt").at("fromClause");
   std::vector<std::string> table_names;
   for (const auto& entry : from_clause) {
-    const std::string table_name = entry.at("RangeVar").at("relname").get<std::string>();
+    const std::string table_name =
+        entry.at("RangeVar").at("relname").get<std::string>();
     table_names.push_back(table_name);
   }
   return table_names;
@@ -49,11 +50,9 @@ std::vector<UnboundSelectItem> SelectParser::extractSelectItems() const {
 
       std::string function_name =
           func_name_node.at(0).at("String").at("sval").get<std::string>();
-      std::transform(function_name.begin(), function_name.end(),
-                     function_name.begin(),
-                     [](unsigned char ch) {
-                       return static_cast<char>(std::tolower(ch));
-                     });
+      std::transform(
+          function_name.begin(), function_name.end(), function_name.begin(),
+          [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
       if (function_name == "sum") {
         if (is_distinct) {
           throw std::runtime_error(
@@ -62,8 +61,7 @@ std::vector<UnboundSelectItem> SelectParser::extractSelectItems() const {
 
         const auto& args = func_call.at("args");
         select_items.push_back(UnboundAggregateCall{
-            AggregateFunction::Sum,
-            parseColumnRef(args.at(0).at("ColumnRef")),
+            AggregateFunction::Sum, parseColumnRef(args.at(0).at("ColumnRef")),
             false});
         continue;
       }
@@ -71,8 +69,7 @@ std::vector<UnboundSelectItem> SelectParser::extractSelectItems() const {
       if (function_name == "count") {
         if (func_call.value("agg_star", false)) {
           if (is_distinct) {
-            throw std::runtime_error(
-                "COUNT(DISTINCT *) is not supported.");
+            throw std::runtime_error("COUNT(DISTINCT *) is not supported.");
           }
 
           select_items.push_back(UnboundAggregateCall{
@@ -83,13 +80,12 @@ std::vector<UnboundSelectItem> SelectParser::extractSelectItems() const {
         const auto& args = func_call.at("args");
         select_items.push_back(UnboundAggregateCall{
             AggregateFunction::Count,
-            parseColumnRef(args.at(0).at("ColumnRef")),
-            is_distinct});
+            parseColumnRef(args.at(0).at("ColumnRef")), is_distinct});
         continue;
       }
 
       throw std::runtime_error("Unsupported aggregate function: " +
-                                 function_name);
+                               function_name);
     }
 
     throw std::runtime_error("Unsupported select target.");
@@ -98,7 +94,8 @@ std::vector<UnboundSelectItem> SelectParser::extractSelectItems() const {
   return select_items;
 }
 
-std::vector<std::optional<std::string>> SelectParser::extractSelectAliases() const {
+std::vector<std::optional<std::string>> SelectParser::extractSelectAliases()
+    const {
   const auto& targets = statementNode().at("SelectStmt").at("targetList");
 
   std::vector<std::optional<std::string>> aliases;
@@ -134,8 +131,7 @@ std::vector<OrderBySpec> SelectParser::extractOrderBySpecs(
                                column_ref.column_name);
     }
 
-    const std::string direction =
-        sort_by.value("sortby_dir", "SORTBY_DEFAULT");
+    const std::string direction = sort_by.value("sortby_dir", "SORTBY_DEFAULT");
     OrderByDirection order_by_direction;
     if (direction == "SORTBY_DEFAULT" || direction == "SORTBY_ASC") {
       order_by_direction = OrderByDirection::Asc;
@@ -163,7 +159,7 @@ std::optional<std::size_t> SelectParser::extractLimitCount() const {
   return static_cast<std::size_t>(limit);
 }
 
-std::vector<UnboundComparisonPredicate> SelectParser::extractComparisonPredicates(
-    const Schema& schema) const {
+std::vector<UnboundComparisonPredicate>
+SelectParser::extractComparisonPredicates(const Schema& schema) const {
   return parseWhereClausePredicates(statementNode().at("SelectStmt"), schema);
 }

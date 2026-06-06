@@ -1,8 +1,8 @@
 #pragma once
-#include <queue>
-#include <mutex>
 #include <condition_variable>
+#include <mutex>
 #include <optional>
+#include <queue>
 
 template <typename T>
 class ClosableQueue {

@@ -44,8 +44,8 @@ void FrameDirectory::registerResidentPage(int frame_id, int page_id,
   auto key = std::make_pair(page_id, file_path);
   page_to_frame_[key] = frame_id;
 
-  dbfs_log::storage().debug("Registered page {} from {} in frame {}", page_id, file_path,
-            frame_id);
+  dbfs_log::storage().debug("Registered page {} from {} in frame {}", page_id,
+                            file_path, frame_id);
 }
 
 void FrameDirectory::unregisterResidentPage(int frame_id) {
@@ -57,20 +57,21 @@ void FrameDirectory::unregisterResidentPage(int frame_id) {
 
   free_frames_.insert(frame_id);
 
-  dbfs_log::storage().debug("Unregistered and deleted page from frame {}", frame_id);
+  dbfs_log::storage().debug("Unregistered and deleted page from frame {}",
+                            frame_id);
 }
 
 void FrameDirectory::pin(int frame_id) {
   frames_[frame_id].pin_count++;
   dbfs_log::storage().debug("Marked frame {} as pinned, count = {}", frame_id,
-            frames_[frame_id].pin_count);
+                            frames_[frame_id].pin_count);
 }
 
 void FrameDirectory::unpin(int frame_id) {
   if (frames_[frame_id].pin_count > 0) {
     frames_[frame_id].pin_count--;
-    dbfs_log::storage().debug("Marked frame {} as unpinned, count = {}", frame_id,
-              frames_[frame_id].pin_count);
+    dbfs_log::storage().debug("Marked frame {} as unpinned, count = {}",
+                              frame_id, frames_[frame_id].pin_count);
   }
 }
 
@@ -93,7 +94,8 @@ std::optional<int> FrameDirectory::findVictimFrame() {
       dump += fmt::format("[id={} pin={} has_page={}] ", i,
                           frames_[i].pin_count, frames_[i].page != nullptr);
     }
-    dbfs_log::storage().warn("No evictable frames found (all pinned or empty). {}", dump);
+    dbfs_log::storage().warn(
+        "No evictable frames found (all pinned or empty). {}", dump);
     return std::nullopt;
   }
 
@@ -103,8 +105,9 @@ std::optional<int> FrameDirectory::findVictimFrame() {
   std::uniform_int_distribution<> dis(0, candidates.size() - 1);
   int victim = candidates[dis(gen)];
 
-  dbfs_log::storage().debug("Found victim frame {} (randomly selected from {} candidates)",
-            victim, candidates.size());
+  dbfs_log::storage().debug(
+      "Found victim frame {} (randomly selected from {} candidates)", victim,
+      candidates.size());
   return victim;
 }
 

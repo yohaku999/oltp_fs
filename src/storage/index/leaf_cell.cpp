@@ -23,8 +23,7 @@ LeafCell LeafCell::decodeCell(char* data_p) {
 }
 
 std::string LeafCell::getKey(const char* data_p) {
-  const uint16_t key_size =
-      readValue<uint16_t>(data_p + Cell::FLAG_FIELD_SIZE);
+  const uint16_t key_size = readValue<uint16_t>(data_p + Cell::FLAG_FIELD_SIZE);
   const char* key_p = data_p + Cell::FLAG_FIELD_SIZE + sizeof(uint16_t) * 3;
   return std::string(key_p, key_p + key_size);
 }

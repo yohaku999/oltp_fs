@@ -1,8 +1,7 @@
 #include "insert_parser.h"
 
-#include <unordered_set>
-
 #include <stdexcept>
+#include <unordered_set>
 #include <utility>
 
 #include "execution/parsers/parser_ast_helpers.h"

@@ -6,7 +6,6 @@
 #include <cstdio>
 #include <fstream>
 #include <memory>
-
 #include <nlohmann/json.hpp>
 
 #include "execution/executor.h"
@@ -51,7 +50,8 @@ class TableTest : public ::testing::Test {
   static std::string singleVarcharValue(const TypedRow& row) {
     if (row.values.size() != 2 ||
         !std::holds_alternative<Column::VarcharType>(row.values[1])) {
-      throw std::runtime_error("Expected row with integer key and varchar value.");
+      throw std::runtime_error(
+          "Expected row with integer key and varchar value.");
     }
     return std::get<Column::VarcharType>(row.values[1]);
   }
@@ -163,7 +163,8 @@ TEST_F(TableTest, InsertIndexFindRIDAndReadRowRoundTrip) {
       InsertParser("INSERT INTO table_test_table VALUES (11, 'table-value')"),
       *wal_);
   std::vector<TypedRow> rows = executor::read(
-      *pool_, SelectParser("SELECT id, value FROM table_test_table WHERE id = 11"));
+      *pool_,
+      SelectParser("SELECT id, value FROM table_test_table WHERE id = 11"));
   ASSERT_EQ(rows.size(), 1u);
   TypedRow restored = rows.front();
   EXPECT_EQ(singleVarcharValue(restored), "table-value");
@@ -186,9 +187,9 @@ TEST_F(TableTest, HasIndexForColumnChecksCompositeIndexMembership) {
 TEST_F(TableTest, InsertHeapRecordWithWalWritesInsertRecord) {
   Table table = createSingleColumnTable();
 
-  executor::insert(*pool_, table,
-                   InsertParser("INSERT INTO table_test_table VALUES (11, 'wal')"),
-                   *wal_);
+  executor::insert(
+      *pool_, table,
+      InsertParser("INSERT INTO table_test_table VALUES (11, 'wal')"), *wal_);
   wal_->flush();
 
   std::vector<WALRecord> records = readWalRecords(kWalPath);
@@ -204,9 +205,9 @@ TEST_F(TableTest, InsertHeapRecordWithWalWritesInsertRecord) {
 TEST_F(TableTest, InvalidateHeapRecordWithWalWritesDeleteRecord) {
   Table table = createSingleColumnTable();
 
-  executor::insert(*pool_, table,
-                   InsertParser("INSERT INTO table_test_table VALUES (22, 'gone')"),
-                   *wal_);
+  executor::insert(
+      *pool_, table,
+      InsertParser("INSERT INTO table_test_table VALUES (22, 'gone')"), *wal_);
   executor::remove(*pool_, table,
                    DeleteParser("DELETE FROM table_test_table WHERE id = 22"),
                    *wal_);
@@ -222,7 +223,9 @@ TEST_F(TableTest, InvalidateHeapRecordWithWalWritesDeleteRecord) {
   const auto& delete_body = std::get<DeleteRedoBody>(body);
   EXPECT_EQ(delete_body.offset, 0);
 
-  EXPECT_TRUE(executor::read(
-                  *pool_, SelectParser("SELECT id, value FROM table_test_table WHERE id = 22"))
-                  .empty());
+  EXPECT_TRUE(
+      executor::read(
+          *pool_,
+          SelectParser("SELECT id, value FROM table_test_table WHERE id = 22"))
+          .empty());
 }

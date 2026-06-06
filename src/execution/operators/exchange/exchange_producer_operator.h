@@ -12,7 +12,9 @@ class ExchangeProducerOperator {
   ExchangeProducerOperator(std::unique_ptr<Operator<T>> child,
                            std::shared_ptr<ExchangeSink<T>> sink,
                            size_t batch_capacity)
-      : child_(std::move(child)), sink_(sink), batch_capacity_(batch_capacity) {}
+      : child_(std::move(child)),
+        sink_(sink),
+        batch_capacity_(batch_capacity) {}
 
   void run() {
     child_->open();

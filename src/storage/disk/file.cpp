@@ -23,8 +23,9 @@ void File::invalidateCache(const std::string& file_path) {
   }
 
   if (cached->second.lock()) {
-    throw std::logic_error("cannot invalidate file cache while state is still in use: " +
-                           file_path);
+    throw std::logic_error(
+        "cannot invalidate file cache while state is still in use: " +
+        file_path);
   }
 
   state_cache_.erase(cached);
@@ -65,8 +66,9 @@ void File::writeHeader() {
     state_->stream->clear();
     throw std::runtime_error("failed to write header: " + file_path_);
   }
-  dbfs_log::storage().debug("Wrote header for file {}: max_page_id {}, root_page_id {}",
-            file_path_, state_->max_page_id, state_->root_page_id);
+  dbfs_log::storage().debug(
+      "Wrote header for file {}: max_page_id {}, root_page_id {}", file_path_,
+      state_->max_page_id, state_->root_page_id);
 
   state_->stream->clear();
   state_->header_dirty = false;
@@ -104,8 +106,9 @@ void File::close() {
     try {
       writeHeader();
     } catch (const std::exception& ex) {
-      dbfs_log::storage().error("failed to write header for file {} during close: {}",
-                file_path_, ex.what());
+      dbfs_log::storage().error(
+          "failed to write header for file {} during close: {}", file_path_,
+          ex.what());
       // fall through and still attempt to close the stream
     } catch (...) {
       dbfs_log::storage().error(
@@ -148,11 +151,11 @@ File::~File() {
   try {
     close();
   } catch (const std::exception& ex) {
-    dbfs_log::storage().error("failed to close file {} in destructor: {}", file_path_,
-              ex.what());
+    dbfs_log::storage().error("failed to close file {} in destructor: {}",
+                              file_path_, ex.what());
   } catch (...) {
-    dbfs_log::storage().error("failed to close file {} in destructor: unknown error",
-              file_path_);
+    dbfs_log::storage().error(
+        "failed to close file {} in destructor: unknown error", file_path_);
   }
 }
 
@@ -170,8 +173,9 @@ File::File(const std::string& file_path) : file_path_(file_path) {
   state_ = std::make_shared<SharedState>();
   const bool is_new_file = !std::filesystem::exists(file_path_) ||
                            std::filesystem::file_size(file_path_) == 0;
-  dbfs_log::storage().debug("initializing File object for path: {}, is_new_file: {}", file_path_,
-            is_new_file);
+  dbfs_log::storage().debug(
+      "initializing File object for path: {}, is_new_file: {}", file_path_,
+      is_new_file);
 
   if (!is_new_file) {
     initializeStreamIfClosed();
@@ -186,9 +190,9 @@ File::File(const std::string& file_path) : file_path_(file_path) {
     state_->root_page_id =
         readValue<uint16_t>(header_buffer.get() + File::MAX_PAGE_ID_SIZE_BYTE);
     dbfs_log::storage().debug(
-      "opened existing file: {}, max_page_id loaded from header: {}, "
-      "root_page_id loaded from header: {}",
-      file_path_, state_->max_page_id, state_->root_page_id);
+        "opened existing file: {}, max_page_id loaded from header: {}, "
+        "root_page_id loaded from header: {}",
+        file_path_, state_->max_page_id, state_->root_page_id);
   } else {
     std::ofstream creator(file_path_, std::ios::binary | std::ios::trunc);
     if (!creator) {

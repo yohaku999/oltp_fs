@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <optional>
 #include <vector>
+
 #include "execution/comparison_predicate.h"
 #include "execution/operator.h"
 
@@ -10,10 +11,10 @@ class BufferPool;
 class File;
 class Schema;
 
-
 class SeqScanOperator : public TypedRowOperator {
  public:
-  SeqScanOperator(BufferPool& pool, File& heap_file, const Schema& schema, std::vector<BoundComparisonPredicate> predicates = {});
+  SeqScanOperator(BufferPool& pool, File& heap_file, const Schema& schema,
+                  std::vector<BoundComparisonPredicate> predicates = {});
 
   void open() override;
   std::optional<TypedRow> next() override;

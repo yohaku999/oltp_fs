@@ -9,8 +9,7 @@
 
 class StubRidOperator : public RidOperator {
  public:
-  explicit StubRidOperator(std::vector<RID> rids)
-      : rids_(std::move(rids)) {}
+  explicit StubRidOperator(std::vector<RID> rids) : rids_(std::move(rids)) {}
 
   void open() override {
     is_open_ = true;

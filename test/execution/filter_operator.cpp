@@ -14,11 +14,10 @@ TEST(FilterOperatorTest, ReturnsOnlyRowsMatchingEqualityPredicate) {
   rows.push_back(makeStubRow(3, "alice", 30));
 
   auto child = std::make_unique<StubRowOperator>(std::move(rows));
-  FilterOperator filter(
-      std::move(child),
-      std::vector<BoundComparisonPredicate>{
-    {Op::Eq, BoundColumnRef{0, 1}, FieldValue(Column::VarcharType("alice"))}
-  });
+  FilterOperator filter(std::move(child),
+                        std::vector<BoundComparisonPredicate>{
+                            {Op::Eq, BoundColumnRef{0, 1},
+                             FieldValue(Column::VarcharType("alice"))}});
   filter.open();
 
   std::optional<TypedRow> first = filter.next();
@@ -42,7 +41,8 @@ TEST(FilterOperatorTest, SkipsRowsUntilRangePredicateMatches) {
   auto child = std::make_unique<StubRowOperator>(std::move(rows));
   FilterOperator filter(
       std::move(child),
-      std::vector<BoundComparisonPredicate>{{Op::Ge, BoundColumnRef{0, 2}, FieldValue(Column::IntegerType(20))}});
+      std::vector<BoundComparisonPredicate>{
+          {Op::Ge, BoundColumnRef{0, 2}, FieldValue(Column::IntegerType(20))}});
 
   filter.open();
 
@@ -67,8 +67,10 @@ TEST(FilterOperatorTest, AppliesAllPredicatesAsConjunction) {
   auto child = std::make_unique<StubRowOperator>(std::move(rows));
   FilterOperator filter(
       std::move(child),
-      std::vector<BoundComparisonPredicate>{{Op::Eq, BoundColumnRef{0, 1}, FieldValue(Column::VarcharType("alice"))},
-                                            {Op::Eq, BoundColumnRef{0, 2}, FieldValue(Column::IntegerType(20))}});
+      std::vector<BoundComparisonPredicate>{
+          {Op::Eq, BoundColumnRef{0, 1},
+           FieldValue(Column::VarcharType("alice"))},
+          {Op::Eq, BoundColumnRef{0, 2}, FieldValue(Column::IntegerType(20))}});
 
   filter.open();
 

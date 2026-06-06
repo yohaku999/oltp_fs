@@ -4,8 +4,8 @@
 #include <utility>
 #include <vector>
 
-#include "storage/index/index_key.h"
 #include "storage/index/btreecursor.h"
+#include "storage/index/index_key.h"
 
 namespace {
 std::vector<BoundComparisonPredicate> flattenPredicates(
@@ -21,14 +21,14 @@ std::vector<BoundComparisonPredicate> flattenPredicates(
 }  // namespace
 
 IndexScanOperator::IndexScanOperator(
-    BufferPool& pool, File& index_file, std::pair<BTreeCursor::Boundary, BTreeCursor::Boundary> boundaries,
+    BufferPool& pool, File& index_file,
+    std::pair<BTreeCursor::Boundary, BTreeCursor::Boundary> boundaries,
     std::vector<std::vector<BoundComparisonPredicate>> index_ordered_predicates)
     : pool_(pool),
       indexFile_(index_file),
       boundaries_(boundaries),
       index_ordered_predicates_(std::move(index_ordered_predicates)),
-      lookup_done_(false) {
-}
+      lookup_done_(false) {}
 
 void IndexScanOperator::open() {
   lookup_done_ = false;

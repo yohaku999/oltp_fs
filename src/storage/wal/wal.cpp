@@ -61,14 +61,14 @@ std::pair<std::uint64_t, std::uint64_t> readWalBootstrapState(
 }  // namespace
 
 std::unique_ptr<WAL> WAL::initializeNew(const std::string& wal_path) {
-  return std::unique_ptr<WAL>(new WAL(wal_path, 0, 0,
-                                      O_CREAT | O_EXCL | O_WRONLY));
+  return std::unique_ptr<WAL>(
+      new WAL(wal_path, 0, 0, O_CREAT | O_EXCL | O_WRONLY));
 }
 
 std::unique_ptr<WAL> WAL::openExisting(const std::string& wal_path) {
   const auto [next_lsn, durable_lsn] = readWalBootstrapState(wal_path);
-  return std::unique_ptr<WAL>(new WAL(wal_path, next_lsn, durable_lsn,
-                                      O_WRONLY | O_APPEND));
+  return std::unique_ptr<WAL>(
+      new WAL(wal_path, next_lsn, durable_lsn, O_WRONLY | O_APPEND));
 }
 
 WAL::WAL(const std::string& wal_path, std::uint64_t next_lsn,

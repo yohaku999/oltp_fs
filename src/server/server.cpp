@@ -1,25 +1,22 @@
 #include "server.h"
 
 #include <arpa/inet.h>
+#include <execinfo.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
-#include <execinfo.h>
-#include <cstdlib>
-#include <iostream>
-#include "logging.h"
-
 #include <cerrno>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <iostream>
 #include <memory>
+#include <nlohmann/json.hpp>
 #include <stdexcept>
 #include <string>
 #include <vector>
-
-#include <nlohmann/json.hpp>
 
 #include "catalog/table.h"
 #include "execution/executor.h"
@@ -31,6 +28,7 @@
 #include "execution/parsers/select_parser.h"
 #include "execution/parsers/update_parser.h"
 #include "execution/select_item.h"
+#include "logging.h"
 #include "storage/buffer/bufferpool.h"
 #include "storage/wal/wal.h"
 
@@ -58,7 +56,8 @@ std::string renderJsonLiteral(const nlohmann::json& value) {
   if (value.is_boolean()) {
     return value.get<bool>() ? "TRUE" : "FALSE";
   }
-  if (value.is_number_integer() || value.is_number_unsigned() || value.is_number_float()) {
+  if (value.is_number_integer() || value.is_number_unsigned() ||
+      value.is_number_float()) {
     return value.dump();
   }
   throw std::runtime_error("Unsupported JSON parameter type.");
@@ -79,7 +78,8 @@ std::string renderSqlWithParameters(const std::string& sql,
     const char current = sql[index];
     if (current == '\'') {
       rendered.push_back(current);
-      if (in_single_quoted_string && index + 1 < sql.size() && sql[index + 1] == '\'') {
+      if (in_single_quoted_string && index + 1 < sql.size() &&
+          sql[index + 1] == '\'') {
         rendered.push_back(sql[index + 1]);
         ++index;
         continue;
@@ -88,7 +88,8 @@ std::string renderSqlWithParameters(const std::string& sql,
       continue;
     }
 
-    if (current == '?' && !in_single_quoted_string && parameter_index < parameters.size()) {
+    if (current == '?' && !in_single_quoted_string &&
+        parameter_index < parameters.size()) {
       rendered += renderJsonLiteral(parameters[parameter_index]);
       ++parameter_index;
       continue;
@@ -107,7 +108,8 @@ std::string leadingKeyword(const std::string& sql) {
   }
 
   const std::size_t last = sql.find_first_of(" \t\r\n", first);
-  std::string keyword = sql.substr(first, last == std::string::npos ? std::string::npos : last - first);
+  std::string keyword = sql.substr(
+      first, last == std::string::npos ? std::string::npos : last - first);
   for (char& ch : keyword) {
     ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
   }
@@ -146,7 +148,8 @@ std::vector<std::string> selectColumnNames(const SelectParser& parser) {
 
   const Schema joined_schema = joinedSchemaForTables(tables);
   std::vector<std::string> columns;
-  const std::vector<UnboundSelectItem> select_items = parser.extractSelectItems();
+  const std::vector<UnboundSelectItem> select_items =
+      parser.extractSelectItems();
   const std::vector<std::optional<std::string>> aliases =
       parser.extractSelectAliases();
   for (std::size_t idx = 0; idx < select_items.size(); ++idx) {
@@ -169,7 +172,8 @@ std::vector<std::string> selectColumnNames(const SelectParser& parser) {
     }
 
     const auto& aggregate = std::get<UnboundAggregateCall>(item);
-    std::string name = aggregate.function == AggregateFunction::Count ? "count" : "sum";
+    std::string name =
+        aggregate.function == AggregateFunction::Count ? "count" : "sum";
     if (const auto* column_ref = std::get_if<ColumnRef>(&aggregate.argument)) {
       name += "(" + column_ref->column_name + ")";
     } else {
@@ -189,7 +193,8 @@ void recvAll(int fd, void* buffer, size_t length) {
       throw std::runtime_error("client closed connection");
     }
     if (byte_read < 0) {
-      throw std::runtime_error(std::string("recv failed: ") + std::strerror(errno));
+      throw std::runtime_error(std::string("recv failed: ") +
+                               std::strerror(errno));
     }
     received += static_cast<size_t>(byte_read);
   }
@@ -201,7 +206,8 @@ void sendAll(int fd, const void* buffer, size_t length) {
   while (sent < length) {
     ssize_t byte_sent = ::send(fd, p + sent, length - sent, 0);
     if (byte_sent <= 0) {
-      throw std::runtime_error(std::string("send failed: ") + std::strerror(errno));
+      throw std::runtime_error(std::string("send failed: ") +
+                               std::strerror(errno));
     }
     sent += static_cast<size_t>(byte_sent);
   }
@@ -209,13 +215,11 @@ void sendAll(int fd, const void* buffer, size_t length) {
 
 }  // namespace
 
-Server::Server(int port)
-    : port_(port) {
+Server::Server(int port) : port_(port) {
   std::filesystem::create_directories("data");
   const std::string wal_path = "data/server.wal";
-  wal_ = std::filesystem::exists(wal_path)
-             ? WAL::openExisting(wal_path)
-             : WAL::initializeNew(wal_path);
+  wal_ = std::filesystem::exists(wal_path) ? WAL::openExisting(wal_path)
+                                           : WAL::initializeNew(wal_path);
   pool_ = std::make_unique<BufferPool>(*wal_);
 }
 
@@ -224,13 +228,16 @@ Server::~Server() = default;
 void Server::start() {
   int server_fd = ::socket(AF_INET, SOCK_STREAM, 0);
   if (server_fd < 0) {
-    throw std::runtime_error(std::string("socket failed: ") + std::strerror(errno));
+    throw std::runtime_error(std::string("socket failed: ") +
+                             std::strerror(errno));
   }
 
   int opt = 1;
-  if (::setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+  if (::setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) <
+      0) {
     ::close(server_fd);
-    throw std::runtime_error(std::string("setsockopt failed: ") + std::strerror(errno));
+    throw std::runtime_error(std::string("setsockopt failed: ") +
+                             std::strerror(errno));
   }
 
   sockaddr_in addr{};
@@ -240,12 +247,14 @@ void Server::start() {
 
   if (::bind(server_fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
     ::close(server_fd);
-    throw std::runtime_error(std::string("bind failed: ") + std::strerror(errno));
+    throw std::runtime_error(std::string("bind failed: ") +
+                             std::strerror(errno));
   }
 
   if (::listen(server_fd, 16) < 0) {
     ::close(server_fd);
-    throw std::runtime_error(std::string("listen failed: ") + std::strerror(errno));
+    throw std::runtime_error(std::string("listen failed: ") +
+                             std::strerror(errno));
   }
 
   for (;;) {
@@ -265,17 +274,22 @@ void Server::start() {
         if (!request.empty()) {
           const std::size_t maxlen = 2000;
           if (request.size() > maxlen) {
-            dbfs_log::server().error("caught exception processing request (truncated): {}", request.substr(0, maxlen));
+            dbfs_log::server().error(
+                "caught exception processing request (truncated): {}",
+                request.substr(0, maxlen));
           } else {
-            dbfs_log::server().error("caught exception processing request: {}", request);
+            dbfs_log::server().error("caught exception processing request: {}",
+                                     request);
           }
         } else {
-          dbfs_log::server().error("caught exception processing request: <empty request>");
+          dbfs_log::server().error(
+              "caught exception processing request: <empty request>");
         }
 
         std::string what = e.what();
         if (what.find("client closed connection") != std::string::npos) {
-          dbfs_log::server().debug("client closed connection while processing request");
+          dbfs_log::server().debug(
+              "client closed connection while processing request");
         } else {
           dbfs_log::server().error("exception: {}", what);
         }
@@ -291,7 +305,8 @@ void Server::start() {
           free(bt_syms);
         }
       } catch (...) {
-        dbfs_log::server().error("failed while attempting to log exception/backtrace");
+        dbfs_log::server().error(
+            "failed while attempting to log exception/backtrace");
       }
 
       nlohmann::json error;
@@ -335,10 +350,11 @@ std::string Server::handleRequest(const std::string& request) {
   nlohmann::json req = nlohmann::json::parse(request);
 
   const std::string operation = req.value("operation", "");
-  const std::string sql = renderSqlWithParameters(
-      req.at("sql").get<std::string>(),
-      req.value("parameters", nlohmann::json::array()));
-  const nlohmann::json parameters = req.value("parameters", nlohmann::json::array());
+  const std::string sql =
+      renderSqlWithParameters(req.at("sql").get<std::string>(),
+                              req.value("parameters", nlohmann::json::array()));
+  const nlohmann::json parameters =
+      req.value("parameters", nlohmann::json::array());
 
   dbfs_log::server().debug("parsed SQL: {}", sql);
   nlohmann::json res;
@@ -390,8 +406,8 @@ std::string Server::handleRequest(const std::string& request) {
   std::string response = res.dump();
   const std::size_t max_log_len = 2000;
   if (response.size() > max_log_len) {
-    dbfs_log::server().info("response (truncated to {} bytes): {}...", max_log_len,
-             response.substr(0, max_log_len));
+    dbfs_log::server().info("response (truncated to {} bytes): {}...",
+                            max_log_len, response.substr(0, max_log_len));
   } else {
     dbfs_log::server().info("response: {}", response);
   }

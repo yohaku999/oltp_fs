@@ -6,11 +6,11 @@
 #include "catalog/table.h"
 #include "execution/comparison_predicate.h"
 #include "execution/heapfile.h"
+#include "storage/buffer/bufferpool.h"
 #include "storage/index/btreecursor.h"
 #include "storage/index/index_key.h"
 #include "storage/index/rid.h"
 #include "storage/record/record_cell.h"
-#include "storage/buffer/bufferpool.h"
 
 IndexLookupJoinOperator::IndexLookupJoinOperator(
     std::unique_ptr<TypedRowOperator> outer_child, BufferPool& pool,
@@ -98,12 +98,10 @@ std::vector<TypedRow> IndexLookupJoinOperator::lookupInnerRows(
   std::vector<TypedRow> rows;
   rows.reserve(entries.size());
   for (const IndexEntry& entry : entries) {
-    std::optional<TypedRow> inner_row =
-        inner_table_.heapFile().withCell(pool_, entry.rid,
-                                         [&](RecordCellView cell) {
-                                           return cell.getTypedRow(
-                                               inner_table_.schema());
-                                         });
+    std::optional<TypedRow> inner_row = inner_table_.heapFile().withCell(
+        pool_, entry.rid, [&](RecordCellView cell) {
+          return cell.getTypedRow(inner_table_.schema());
+        });
     if (!inner_row.has_value()) {
       continue;
     }

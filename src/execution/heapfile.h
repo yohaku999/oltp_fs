@@ -9,12 +9,12 @@
 #include <utility>
 #include <vector>
 
+#include "storage/buffer/bufferpool.h"
+#include "storage/disk/file.h"
 #include "storage/index/rid.h"
 #include "storage/page/cell.h"
 #include "storage/page/page.h"
 #include "storage/record/record_cell.h"
-#include "storage/buffer/bufferpool.h"
-#include "storage/disk/file.h"
 
 class HeapFile {
  public:
@@ -28,6 +28,10 @@ class HeapFile {
 
   File& rawFile() { return file_; }
   const File& rawFile() const { return file_; }
+
+  bool isPageIDUsed(uint16_t page_id) const {
+    return file_.isPageIDUsed(page_id);
+  }
 
   std::vector<RID> collectRids(BufferPool& pool) {
     std::vector<RID> rids;

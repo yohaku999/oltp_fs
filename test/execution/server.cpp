@@ -1,4 +1,7 @@
+#include "server/server.h"
+
 #include <arpa/inet.h>
+#include <gtest/gtest.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <sys/wait.h>
@@ -10,19 +13,16 @@
 #include <cstdio>
 #include <filesystem>
 #include <memory>
+#include <nlohmann/json.hpp>
 #include <stdexcept>
 #include <string>
 #include <system_error>
 #include <thread>
 
-#include <gtest/gtest.h>
-#include <nlohmann/json.hpp>
-
 #include "catalog/table.h"
 #include "execution/executor.h"
 #include "execution/parsers/create_table_parser.h"
 #include "execution/parsers/insert_parser.h"
-#include "server/server.h"
 #include "storage/buffer/bufferpool.h"
 #include "storage/wal/wal.h"
 
@@ -78,7 +78,8 @@ int pickUnusedPort() {
   if (::getsockname(fd, reinterpret_cast<sockaddr*>(&addr), &length) < 0) {
     const int error = errno;
     ::close(fd);
-    throw std::system_error(error, std::generic_category(), "getsockname failed");
+    throw std::system_error(error, std::generic_category(),
+                            "getsockname failed");
   }
 
   ::close(fd);
@@ -115,10 +116,12 @@ nlohmann::json sendRequest(int port, const std::string& operation,
   timeval timeout{};
   timeout.tv_sec = read_timeout_ms / 1000;
   timeout.tv_usec = (read_timeout_ms % 1000) * 1000;
-  if (::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) {
+  if (::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) <
+      0) {
     const int error = errno;
     ::close(fd);
-    throw std::system_error(error, std::generic_category(), "setsockopt failed");
+    throw std::system_error(error, std::generic_category(),
+                            "setsockopt failed");
   }
 
   sockaddr_in addr{};
@@ -138,7 +141,8 @@ nlohmann::json sendRequest(int port, const std::string& operation,
       {"parameters", parameters},
   };
   const std::string payload = request.dump();
-  const std::uint32_t payload_size = htonl(static_cast<uint32_t>(payload.size()));
+  const std::uint32_t payload_size =
+      htonl(static_cast<uint32_t>(payload.size()));
 
   if (::send(fd, &payload_size, sizeof(payload_size), 0) < 0 ||
       ::send(fd, payload.data(), payload.size(), 0) < 0) {
@@ -168,7 +172,8 @@ void waitForServerReady(int port) {
       addr.sin_family = AF_INET;
       addr.sin_port = htons(static_cast<uint16_t>(port));
       addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-      if (::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0) {
+      if (::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) ==
+          0) {
         ::close(fd);
         return;
       }
@@ -204,25 +209,25 @@ void prepareTpccLikeDataset(const std::filesystem::path& temp_dir) {
   auto wal = WAL::initializeNew("server_setup.wal");
   auto pool = std::make_unique<BufferPool>(*wal);
 
-  executor::create_table(CreateTableParser(
-      "CREATE TABLE warehouse ("
-      "w_id int NOT NULL, "
-      "w_ytd decimal(12, 2) NOT NULL, "
-      "PRIMARY KEY (w_id))"));
-  executor::create_table(CreateTableParser(
-      "CREATE TABLE stock ("
-      "s_i_id int NOT NULL, "
-      "s_w_id int NOT NULL, "
-      "s_quantity int NOT NULL, "
-      "PRIMARY KEY (s_i_id, s_w_id))"));
-  executor::create_table(CreateTableParser(
-      "CREATE TABLE order_line ("
-      "ol_o_id int NOT NULL, "
-      "ol_d_id int NOT NULL, "
-      "ol_w_id int NOT NULL, "
-      "ol_number int NOT NULL, "
-      "ol_i_id int NOT NULL, "
-      "PRIMARY KEY (ol_o_id, ol_d_id, ol_w_id, ol_number))"));
+  executor::create_table(
+      CreateTableParser("CREATE TABLE warehouse ("
+                        "w_id int NOT NULL, "
+                        "w_ytd decimal(12, 2) NOT NULL, "
+                        "PRIMARY KEY (w_id))"));
+  executor::create_table(
+      CreateTableParser("CREATE TABLE stock ("
+                        "s_i_id int NOT NULL, "
+                        "s_w_id int NOT NULL, "
+                        "s_quantity int NOT NULL, "
+                        "PRIMARY KEY (s_i_id, s_w_id))"));
+  executor::create_table(
+      CreateTableParser("CREATE TABLE order_line ("
+                        "ol_o_id int NOT NULL, "
+                        "ol_d_id int NOT NULL, "
+                        "ol_w_id int NOT NULL, "
+                        "ol_number int NOT NULL, "
+                        "ol_i_id int NOT NULL, "
+                        "PRIMARY KEY (ol_o_id, ol_d_id, ol_w_id, ol_number))"));
 
   Table warehouse = Table::getTable("warehouse");
   Table stock = Table::getTable("stock");
@@ -244,16 +249,17 @@ void prepareTpccLikeDataset(const std::filesystem::path& temp_dir) {
   const int first_order_id = 3001 - kOrderCount;
   for (int order_id = first_order_id; order_id < 3001; ++order_id) {
     for (int line_number = 1; line_number <= kLinesPerOrder; ++line_number) {
-      const int item_id = ((order_id - first_order_id) * kLinesPerOrder +
-                           line_number) % kStockItems + 1;
-      executor::insert(
-          *pool, order_line,
-          InsertParser("INSERT INTO order_line VALUES (" +
-                       std::to_string(order_id) + ", " +
-                       std::to_string(kDistrictId) + ", 1, " +
-                       std::to_string(line_number) + ", " +
-                       std::to_string(item_id) + ")"),
-          *wal);
+      const int item_id =
+          ((order_id - first_order_id) * kLinesPerOrder + line_number) %
+              kStockItems +
+          1;
+      executor::insert(*pool, order_line,
+                       InsertParser("INSERT INTO order_line VALUES (" +
+                                    std::to_string(order_id) + ", " +
+                                    std::to_string(kDistrictId) + ", 1, " +
+                                    std::to_string(line_number) + ", " +
+                                    std::to_string(item_id) + ")"),
+                       *wal);
     }
   }
 
@@ -301,9 +307,7 @@ class ServerTest : public ::testing::Test {
     prepareTpccLikeDataset(temp_dir_);
   }
 
-  static void TearDownTestSuite() {
-    std::filesystem::remove_all(temp_dir_);
-  }
+  static void TearDownTestSuite() { std::filesystem::remove_all(temp_dir_); }
 
   void SetUp() override {
     port_ = pickUnusedPort();
@@ -322,6 +326,5 @@ class ServerTest : public ::testing::Test {
 };
 
 std::filesystem::path ServerTest::temp_dir_;
-
 
 }  // namespace

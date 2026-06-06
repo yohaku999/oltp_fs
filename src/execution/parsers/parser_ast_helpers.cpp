@@ -1,9 +1,9 @@
 #include "execution/parsers/parser_ast_helpers.h"
-#include "execution/comparison_predicate.h"
 
 #include <stdexcept>
 #include <string>
 
+#include "execution/comparison_predicate.h"
 #include "schema/schema.h"
 
 namespace {
@@ -11,8 +11,7 @@ namespace {
 Column::Type requireColumnType(const nlohmann::json& expression,
                                const Schema& schema);
 UnboundOperand parseOperand(const nlohmann::json& expression,
-                            const Schema& schema,
-                            Column::Type constant_type);
+                            const Schema& schema, Column::Type constant_type);
 
 Op parseComparisonOp(const nlohmann::json& expr) {
   const std::string op =
@@ -83,7 +82,8 @@ void extractPredicatesFromNode(const nlohmann::json& node, const Schema& schema,
 ColumnRef parseColumnRef(const nlohmann::json& column_ref) {
   const auto& fields = column_ref.at("fields");
   if (fields.size() == 1) {
-    return ColumnRef{"", fields.at(0).at("String").at("sval").get<std::string>()};
+    return ColumnRef{"",
+                     fields.at(0).at("String").at("sval").get<std::string>()};
   }
   if (fields.size() == 2) {
     return ColumnRef{fields.at(0).at("String").at("sval").get<std::string>(),
@@ -109,8 +109,7 @@ Column::Type requireColumnType(const nlohmann::json& expression,
 }
 
 UnboundOperand parseOperand(const nlohmann::json& expression,
-                            const Schema& schema,
-                            Column::Type constant_type) {
+                            const Schema& schema, Column::Type constant_type) {
   if (expression.contains("ColumnRef")) {
     const ColumnRef column_ref = parseColumnRef(expression.at("ColumnRef"));
     const int column_index = schema.getColumnIndex(column_ref.column_name);
@@ -128,12 +127,13 @@ UnboundOperand parseOperand(const nlohmann::json& expression,
   throw std::runtime_error("Unsupported predicate operand.");
 }
 
-}
+}  // namespace
 
 ColumnRef parseColumnRef(const nlohmann::json& column_ref) {
   const auto& fields = column_ref.at("fields");
   if (fields.size() == 1) {
-    return ColumnRef{"", fields.at(0).at("String").at("sval").get<std::string>()};
+    return ColumnRef{"",
+                     fields.at(0).at("String").at("sval").get<std::string>()};
   }
   if (fields.size() == 2) {
     return ColumnRef{fields.at(0).at("String").at("sval").get<std::string>(),
@@ -178,7 +178,7 @@ int parseConstIntegerValue(const nlohmann::json& item) {
 }
 
 FieldValue parseConstFieldValue(const nlohmann::json& item,
-                               Column::Type column_type) {
+                                Column::Type column_type) {
   const auto& constant = item.at("A_Const");
   if (constant.value("isnull", false)) {
     return std::monostate{};
@@ -190,8 +190,8 @@ FieldValue parseConstFieldValue(const nlohmann::json& item,
         return static_cast<Column::IntegerType>(parseConstIntegerValue(item));
       }
       if (constant.contains("fval")) {
-        return static_cast<Column::IntegerType>(std::stod(
-            constant.at("fval").at("fval").get<std::string>()));
+        return static_cast<Column::IntegerType>(
+            std::stod(constant.at("fval").at("fval").get<std::string>()));
       }
       throw std::runtime_error("Unsupported constant for Integer column");
     case Column::Type::Double:
@@ -253,9 +253,8 @@ UnboundUpdateValue parseUpdateAssignmentValue(
                              column_ref.column_name);
   }
 
-  return UnboundSelfArithmeticUpdate{
-      parseUpdateBinaryOperator(binary_expr),
-      parseConstFieldValue(rhs, target_type)};
+  return UnboundSelfArithmeticUpdate{parseUpdateBinaryOperator(binary_expr),
+                                     parseConstFieldValue(rhs, target_type)};
 }
 
 std::vector<UnboundComparisonPredicate> parseWhereClausePredicates(

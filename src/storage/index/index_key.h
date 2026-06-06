@@ -78,7 +78,8 @@ inline std::string encodeVarchar(const std::string& value) {
   return encoded;
 }
 
-inline std::string encodeFieldValue(const FieldValue& value, Column::Type type) {
+inline std::string encodeFieldValue(const FieldValue& value,
+                                    Column::Type type) {
   if (isNullFieldValue(value)) {
     throw std::runtime_error("Index keys do not support NULL values.");
   }
@@ -155,8 +156,9 @@ inline TypedRow decodeToTypedRow(std::string_view key) {
         }
         std::uint32_t sortable = 0;
         for (int shift = 24; shift >= 0; shift -= 8) {
-          sortable |= static_cast<std::uint32_t>(
-              static_cast<unsigned char>(key[pos++])) << shift;
+          sortable |=
+              static_cast<std::uint32_t>(static_cast<unsigned char>(key[pos++]))
+              << shift;
         }
         int value = static_cast<int>(sortable ^ 0x80000000u);
         row.values.push_back(value);
@@ -168,11 +170,13 @@ inline TypedRow decodeToTypedRow(std::string_view key) {
         }
         std::uint64_t sortable = 0;
         for (int shift = 56; shift >= 0; shift -= 8) {
-          sortable |= static_cast<std::uint64_t>(
-              static_cast<unsigned char>(key[pos++])) << shift;
+          sortable |=
+              static_cast<std::uint64_t>(static_cast<unsigned char>(key[pos++]))
+              << shift;
         }
-        std::uint64_t bits =
-            (sortable & (1ull << 63)) != 0 ? ~sortable : (sortable ^ (1ull << 63));
+        std::uint64_t bits = (sortable & (1ull << 63)) != 0
+                                 ? ~sortable
+                                 : (sortable ^ (1ull << 63));
         double value;
         std::memcpy(&value, &bits, sizeof(value));
         row.values.push_back(value);
@@ -187,7 +191,8 @@ inline TypedRow decodeToTypedRow(std::string_view key) {
               pos++;
               break;
             }
-            if (pos < key.size() && static_cast<unsigned char>(key[pos]) == 0xFF) {
+            if (pos < key.size() &&
+                static_cast<unsigned char>(key[pos]) == 0xFF) {
               pos++;
               value.push_back('\0');
               continue;
@@ -200,7 +205,8 @@ inline TypedRow decodeToTypedRow(std::string_view key) {
         break;
       }
       default:
-        throw std::runtime_error("Invalid index key encoding: unknown type prefix.");
+        throw std::runtime_error(
+            "Invalid index key encoding: unknown type prefix.");
     }
   }
   return row;

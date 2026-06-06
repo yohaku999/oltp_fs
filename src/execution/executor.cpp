@@ -9,16 +9,20 @@
 #include <vector>
 
 #include "../logging.h"
-#include "execution/operators/filter_operator.h"
-#include "execution/operators/aggregate_operator.h"
+#include "catalog/table.h"
 #include "execution/binder.h"
-#include "execution/operators/heap_fetch_operator.h"
-#include "execution/operators/index_scan_operator.h"
-#include "execution/operators/index_lookup_join_operator.h"
-#include "execution/operators/limit_operator.h"
 #include "execution/operator.h"
+#include "execution/operators/aggregate_operator.h"
+#include "execution/operators/filter_operator.h"
+#include "execution/operators/hash_join_operator.h"
+#include "execution/operators/heap_fetch_operator.h"
+#include "execution/operators/index_lookup_join_operator.h"
+#include "execution/operators/index_scan_operator.h"
+#include "execution/operators/limit_operator.h"
+#include "execution/operators/loop_join_operator.h"
 #include "execution/operators/orderby_operator.h"
 #include "execution/operators/projection_operator.h"
+#include "execution/operators/seq_scan_operator.h"
 #include "execution/parsers/create_index_parser.h"
 #include "execution/parsers/create_table_parser.h"
 #include "execution/parsers/delete_parser.h"
@@ -26,20 +30,16 @@
 #include "execution/parsers/insert_parser.h"
 #include "execution/parsers/select_parser.h"
 #include "execution/parsers/update_parser.h"
-#include "execution/operators/seq_scan_operator.h"
-#include "execution/operators/loop_join_operator.h"
-#include "execution/operators/hash_join_operator.h"
+#include "storage/buffer/bufferpool.h"
 #include "storage/index/btreecursor.h"
 #include "storage/index/index_key.h"
 #include "storage/page/cell.h"
 #include "storage/page/page.h"
 #include "storage/record/record_cell.h"
 #include "storage/record/record_serializer.h"
-#include "storage/buffer/bufferpool.h"
 #include "storage/wal/wal.h"
 #include "storage/wal/wal_body.h"
 #include "storage/wal/wal_record.h"
-#include "catalog/table.h"
 
 namespace {
 
@@ -50,7 +50,8 @@ struct PredicateValueAndType {
 
 PredicateValueAndType extractValueAndType(
     const BoundComparisonPredicate& predicate) {
-  const BoundColumnRef* left_column = std::get_if<BoundColumnRef>(&predicate.left);
+  const BoundColumnRef* left_column =
+      std::get_if<BoundColumnRef>(&predicate.left);
   const BoundColumnRef* right_column =
       std::get_if<BoundColumnRef>(&predicate.right);
   const FieldValue* left_value = std::get_if<FieldValue>(&predicate.left);
@@ -69,14 +70,14 @@ PredicateValueAndType extractValueAndType(
 
 std::vector<BoundComparisonPredicate>::const_iterator findPredicateByOp(
     const std::vector<BoundComparisonPredicate>& predicates, Op op) {
-  return std::find_if(
-      predicates.begin(), predicates.end(),
-      [op](const BoundComparisonPredicate& predicate) {
-        return predicate.op == op;
-      });
+  return std::find_if(predicates.begin(), predicates.end(),
+                      [op](const BoundComparisonPredicate& predicate) {
+                        return predicate.op == op;
+                      });
 }
 
-std::pair<BTreeCursor::Boundary, BTreeCursor::Boundary> buildTraversalBoundaries(
+std::pair<BTreeCursor::Boundary, BTreeCursor::Boundary>
+buildTraversalBoundaries(
     const std::vector<std::vector<BoundComparisonPredicate>>&
         ordered_predicates) {
   BTreeCursor::Boundary left_boundary{"", true};
@@ -166,14 +167,16 @@ FieldValue evaluateBoundUpdateValue(const BoundUpdateValue& value,
   }
 
   if (target_type == Column::Type::Double) {
-    const double lhs = std::holds_alternative<Column::DoubleType>(original_value)
-                           ? std::get<Column::DoubleType>(original_value)
-                           : static_cast<double>(
-                                 std::get<Column::IntegerType>(original_value));
-    const double rhs = std::holds_alternative<Column::DoubleType>(arithmetic.literal)
-                           ? std::get<Column::DoubleType>(arithmetic.literal)
-                           : static_cast<double>(
-                                 std::get<Column::IntegerType>(arithmetic.literal));
+    const double lhs =
+        std::holds_alternative<Column::DoubleType>(original_value)
+            ? std::get<Column::DoubleType>(original_value)
+            : static_cast<double>(
+                  std::get<Column::IntegerType>(original_value));
+    const double rhs =
+        std::holds_alternative<Column::DoubleType>(arithmetic.literal)
+            ? std::get<Column::DoubleType>(arithmetic.literal)
+            : static_cast<double>(
+                  std::get<Column::IntegerType>(arithmetic.literal));
     if (arithmetic.op == UpdateBinaryOperator::Add) {
       return lhs + rhs;
     }
@@ -183,9 +186,10 @@ FieldValue evaluateBoundUpdateValue(const BoundUpdateValue& value,
   throw std::runtime_error("Unsupported UPDATE arithmetic target type.");
 }
 
-TypedRow applyUpdateAssignments(const TypedRow& original_row,
-                                const std::vector<BoundUpdateAssignment>& assignments,
-                                const Schema& schema) {
+TypedRow applyUpdateAssignments(
+    const TypedRow& original_row,
+    const std::vector<BoundUpdateAssignment>& assignments,
+    const Schema& schema) {
   TypedRow updated_row = original_row;
   for (const auto& assignment : assignments) {
     updated_row.values[assignment.target_column_index] =
@@ -210,7 +214,8 @@ std::vector<Item> collectItems(Source& source) {
 
 /**
  * Prepare predicates for index scan.
- * Filter the given predicates to keep only those that can be used for index scan and group them by their corresponding index key order.
+ * Filter the given predicates to keep only those that can be used for index
+ * scan and group them by their corresponding index key order.
  */
 std::vector<std::vector<BoundComparisonPredicate>> prepareIndexKeyPredicates(
     const std::vector<BoundComparisonPredicate>& predicates,
@@ -222,17 +227,17 @@ std::vector<std::vector<BoundComparisonPredicate>> prepareIndexKeyPredicates(
     // only key value predicates can be used for index scan.
     const auto* left_column = std::get_if<BoundColumnRef>(&predicate.left);
     const auto* right_column = std::get_if<BoundColumnRef>(&predicate.right);
-    const bool has_column_value_pair = (left_column != nullptr) !=
-                                       (right_column != nullptr);
+    const bool has_column_value_pair =
+        (left_column != nullptr) != (right_column != nullptr);
     if (!has_column_value_pair) {
       continue;
     }
 
     const BoundColumnRef* column_ref =
         left_column != nullptr ? left_column : right_column;
-    const auto it = std::find(key_order_indexes.begin(),
-                              key_order_indexes.end(),
-                              column_ref->column_index);
+    const auto it =
+        std::find(key_order_indexes.begin(), key_order_indexes.end(),
+                  column_ref->column_index);
     if (it == key_order_indexes.end()) {
       continue;
     }
@@ -278,8 +283,7 @@ std::vector<BoundComparisonPredicate> buildIndexKeyEqualityPredicates(
   for (const std::size_t indexed_column_index : table.indexedColumnIndexes()) {
     const auto& column = table.schema().columns().at(indexed_column_index);
     predicates.push_back(BoundComparisonPredicate{
-        Op::Eq,
-        BoundColumnRef{0, indexed_column_index, column.getType()},
+        Op::Eq, BoundColumnRef{0, indexed_column_index, column.getType()},
         row.values.at(indexed_column_index)});
   }
 
@@ -303,14 +307,16 @@ std::vector<RID> collectRidsNarrowedByPredicates(
     return table.heapFile().collectRids(pool);
   }
 
-  IndexScanOperator scan(pool, table.requireIndexFile(), buildTraversalBoundaries(index_plan.ordered_predicates),
-                         std::move(index_plan.ordered_predicates));
+  IndexScanOperator scan(
+      pool, table.requireIndexFile(),
+      buildTraversalBoundaries(index_plan.ordered_predicates),
+      std::move(index_plan.ordered_predicates));
   return collectItems<RID>(scan);
 }
 
-std::size_t removeMatchingRows(BufferPool& pool, Table& table,
-                               const std::vector<UnboundComparisonPredicate>& predicates,
-                               WAL& wal) {
+std::size_t removeMatchingRows(
+    BufferPool& pool, Table& table,
+    const std::vector<UnboundComparisonPredicate>& predicates, WAL& wal) {
   const std::vector<RID> rids =
       collectRidsNarrowedByPredicates(pool, table, predicates);
   const std::vector<BoundComparisonPredicate> bound_predicates =
@@ -318,10 +324,9 @@ std::size_t removeMatchingRows(BufferPool& pool, Table& table,
   std::size_t removed_count = 0;
 
   for (const RID& rid : rids) {
-    std::optional<TypedRow> row =
-        table.heapFile().withCell(pool, rid, [&](RecordCellView cell) {
-          return cell.getTypedRow(table.schema());
-        });
+    std::optional<TypedRow> row = table.heapFile().withCell(
+        pool, rid,
+        [&](RecordCellView cell) { return cell.getTypedRow(table.schema()); });
     if (!row.has_value()) {
       continue;
     }
@@ -333,13 +338,16 @@ std::size_t removeMatchingRows(BufferPool& pool, Table& table,
     // delete corresponding key from index file.
     const auto index_file = table.indexFile();
     if (index_file.has_value()) {
-      // create index key predicates from row, since index search result can have redundant RIDs by its nature.
-      // OPTIMIZE : Even if we are doing an online delete, we can still use the original values to construct index key predicates and delete the index entry, instead of leaving the index entry dangling and cleaning it up later by a separate process.
+      // create index key predicates from row, since index search result can
+      // have redundant RIDs by its nature. OPTIMIZE : Even if we are doing an
+      // online delete, we can still use the original values to construct index
+      // key predicates and delete the index entry, instead of leaving the index
+      // entry dangling and cleaning it up later by a separate process.
       const std::vector<BoundComparisonPredicate> index_key_predicates =
           buildIndexKeyEqualityPredicates(table, *row);
-      const std::vector<std::vector<BoundComparisonPredicate>> ordered_predicates =
-          prepareIndexKeyPredicates(index_key_predicates,
-                                      table.indexedColumnIndexes());
+      const std::vector<std::vector<BoundComparisonPredicate>>
+          ordered_predicates = prepareIndexKeyPredicates(
+              index_key_predicates, table.indexedColumnIndexes());
       const auto& boundaries = buildTraversalBoundaries(ordered_predicates);
       BTreeCursor::findEntries(pool, index_file->get(), boundaries, true);
     }
@@ -361,12 +369,13 @@ void insertRow(BufferPool& pool, Table& table, const TypedRow& row, WAL& wal) {
   if (index_file.has_value()) {
     key = table.extractIndexKey(row);
     dbfs_log::execution().debug("Inserting record with key {} into table {}.",
-         index_key::formatForDebug(key.value()),
-         table.name());
+                                index_key::formatForDebug(key.value()),
+                                table.name());
     const std::vector<BoundComparisonPredicate> predicates =
         buildIndexKeyEqualityPredicates(table, row);
-    const std::vector<std::vector<BoundComparisonPredicate>> ordered_predicates =
-        prepareIndexKeyPredicates(predicates, table.indexedColumnIndexes());
+    const std::vector<std::vector<BoundComparisonPredicate>>
+        ordered_predicates =
+            prepareIndexKeyPredicates(predicates, table.indexedColumnIndexes());
     const auto& boundaries = buildTraversalBoundaries(ordered_predicates);
     std::vector<IndexEntry> existing_entries =
         BTreeCursor::findEntries(pool, index_file->get(), boundaries, false);
@@ -375,7 +384,8 @@ void insertRow(BufferPool& pool, Table& table, const TypedRow& row, WAL& wal) {
           "Duplicate key is not allowed for indexed table: " + table.name());
     }
   } else {
-    dbfs_log::execution().debug("Inserting record into table {}.", table.name());
+    dbfs_log::execution().debug("Inserting record into table {}.",
+                                table.name());
   }
 
   RecordSerializer cell(table.schema(), row);
@@ -399,11 +409,10 @@ void insertRow(BufferPool& pool, Table& table, const TypedRow& row, WAL& wal) {
   }
   pool.unpinPage(heap_page, heap_file);
 
-  const RID inserted_rid{
-      target_page_id, static_cast<uint16_t>(inserted_slot_id.value())};
+  const RID inserted_rid{target_page_id,
+                         static_cast<uint16_t>(inserted_slot_id.value())};
 
-  wal.write(WALRecord::RecordType::INSERT,
-            inserted_rid.heap_page_id,
+  wal.write(WALRecord::RecordType::INSERT, inserted_rid.heap_page_id,
             InsertRedoBody(inserted_rid.slot_id, serialized_cell).encode());
 
   if (index_file.has_value()) {
@@ -413,12 +422,13 @@ void insertRow(BufferPool& pool, Table& table, const TypedRow& row, WAL& wal) {
   }
 }
 
-std::size_t updateMatchingRows(BufferPool& pool, Table& table,
-                               const std::vector<UnboundComparisonPredicate>& predicates,
-                               const UpdateParser& parser, WAL& wal) {
+std::size_t updateMatchingRows(
+    BufferPool& pool, Table& table,
+    const std::vector<UnboundComparisonPredicate>& predicates,
+    const UpdateParser& parser, WAL& wal) {
   const std::vector<BoundUpdateAssignment> bound_assignments =
-    binder::bindUpdateAssignments(parser.extractAssignments(table.schema()),
-                  table);
+      binder::bindUpdateAssignments(parser.extractAssignments(table.schema()),
+                                    table);
   const std::vector<RID> rids =
       collectRidsNarrowedByPredicates(pool, table, predicates);
   const std::vector<BoundComparisonPredicate> bound_predicates =
@@ -426,10 +436,9 @@ std::size_t updateMatchingRows(BufferPool& pool, Table& table,
   std::vector<TypedRow> updated_rows;
 
   for (const RID& rid : rids) {
-    std::optional<TypedRow> original_row =
-        table.heapFile().withCell(pool, rid, [&](RecordCellView cell) {
-          return cell.getTypedRow(table.schema());
-        });
+    std::optional<TypedRow> original_row = table.heapFile().withCell(
+        pool, rid,
+        [&](RecordCellView cell) { return cell.getTypedRow(table.schema()); });
     if (!original_row.has_value()) {
       continue;
     }
@@ -438,11 +447,12 @@ std::size_t updateMatchingRows(BufferPool& pool, Table& table,
       continue;
     }
 
-    updated_rows.push_back(
-        applyUpdateAssignments(*original_row, bound_assignments, table.schema()));
+    updated_rows.push_back(applyUpdateAssignments(
+        *original_row, bound_assignments, table.schema()));
   }
 
-  const std::size_t removed_count = removeMatchingRows(pool, table, predicates, wal);
+  const std::size_t removed_count =
+      removeMatchingRows(pool, table, predicates, wal);
   for (const TypedRow& updated_row : updated_rows) {
     insertRow(pool, table, updated_row, wal);
   }
@@ -464,11 +474,14 @@ std::unique_ptr<TypedRowOperator> buildReadSource(
     return std::make_unique<SeqScanOperator>(pool, table.heapFile().rawFile(),
                                              table.schema(), bound_predicates);
   }
-  
+
   auto scan = std::make_unique<IndexScanOperator>(
-      pool, table.requireIndexFile(), buildTraversalBoundaries(index_plan.ordered_predicates),std::move(index_plan.ordered_predicates));
+      pool, table.requireIndexFile(),
+      buildTraversalBoundaries(index_plan.ordered_predicates),
+      std::move(index_plan.ordered_predicates));
   return std::make_unique<HeapFetchOperator>(std::move(scan), pool,
-                                             table.heapFile(), table.schema(), bound_predicates);
+                                             table.heapFile(), table.schema(),
+                                             bound_predicates);
 }
 
 std::optional<HashJoinKey> findHashJoinKeyForTwoTableJoin(
@@ -478,10 +491,8 @@ std::optional<HashJoinKey> findHashJoinKeyForTwoTableJoin(
     return std::nullopt;
   }
 
-  const std::size_t outer_column_count =
-      tables[0].schema().columns().size();
-  const std::size_t inner_column_count =
-      tables[1].schema().columns().size();
+  const std::size_t outer_column_count = tables[0].schema().columns().size();
+  const std::size_t inner_column_count = tables[1].schema().columns().size();
   const std::size_t joined_column_count =
       outer_column_count + inner_column_count;
 
@@ -497,15 +508,15 @@ std::optional<HashJoinKey> findHashJoinKeyForTwoTableJoin(
       continue;
     }
 
-    const auto to_outer_index = [&](std::size_t column_index)
-        -> std::optional<std::size_t> {
+    const auto to_outer_index =
+        [&](std::size_t column_index) -> std::optional<std::size_t> {
       if (column_index < outer_column_count) {
         return column_index;
       }
       return std::nullopt;
     };
-    const auto to_inner_index = [&](std::size_t column_index)
-        -> std::optional<std::size_t> {
+    const auto to_inner_index =
+        [&](std::size_t column_index) -> std::optional<std::size_t> {
       if (column_index >= outer_column_count &&
           column_index < joined_column_count) {
         return column_index - outer_column_count;
@@ -540,22 +551,20 @@ std::optional<IndexLookupJoinPlan> findIndexLookupJoinPlanForTwoTableJoin(
     return std::nullopt;
   }
 
-  const std::size_t outer_column_count =
-      tables[0].schema().columns().size();
-  const std::size_t inner_column_count =
-      tables[1].schema().columns().size();
+  const std::size_t outer_column_count = tables[0].schema().columns().size();
+  const std::size_t inner_column_count = tables[1].schema().columns().size();
   const std::size_t joined_column_count =
       outer_column_count + inner_column_count;
 
-  const auto to_outer_index = [&](std::size_t column_index)
-      -> std::optional<std::size_t> {
+  const auto to_outer_index =
+      [&](std::size_t column_index) -> std::optional<std::size_t> {
     if (column_index < outer_column_count) {
       return column_index;
     }
     return std::nullopt;
   };
-  const auto to_inner_index = [&](std::size_t column_index)
-      -> std::optional<std::size_t> {
+  const auto to_inner_index =
+      [&](std::size_t column_index) -> std::optional<std::size_t> {
     if (column_index >= outer_column_count &&
         column_index < joined_column_count) {
       return column_index - outer_column_count;
@@ -646,8 +655,8 @@ std::optional<IndexLookupJoinPlan> findIndexLookupJoinPlanForTwoTableJoin(
 - multi-column records are supported by RecordSerializer and RecordCellView
 - E2E uses Table-backed fixtures
 - key is still passed separately from TypedRow in executor::insert/update
- * 
- * 
+ *
+ *
  */
 std::vector<TypedRow> executor::read(BufferPool& pool,
                                      const SelectParser& parser) {
@@ -673,10 +682,11 @@ std::vector<TypedRow> executor::read(BufferPool& pool,
 
   std::vector<std::unique_ptr<TypedRowOperator>> sources;
   for (auto& table : tables) {
-    std::unique_ptr<TypedRowOperator> source = buildReadSource(pool, table, predicates);
+    std::unique_ptr<TypedRowOperator> source =
+        buildReadSource(pool, table, predicates);
     sources.push_back(std::move(source));
   }
-  
+
   // build bound predicates
   const std::vector<BoundComparisonPredicate> bound_predicates =
       binder::bindPredicates(predicates, tables);
@@ -686,8 +696,10 @@ std::vector<TypedRow> executor::read(BufferPool& pool,
   bool has_aggregate = false;
   bool has_projection = false;
   for (const auto& item : bound_select_items) {
-    has_aggregate = has_aggregate || std::holds_alternative<BoundAggregateCall>(item);
-    has_projection = has_projection || std::holds_alternative<BoundColumnRef>(item);
+    has_aggregate =
+        has_aggregate || std::holds_alternative<BoundAggregateCall>(item);
+    has_projection =
+        has_projection || std::holds_alternative<BoundColumnRef>(item);
   }
   if (has_aggregate && has_projection) {
     throw std::runtime_error(
@@ -719,55 +731,56 @@ std::vector<TypedRow> executor::read(BufferPool& pool,
   }
 
   // filter
-  pipeline = std::make_unique<FilterOperator>(std::move(pipeline),
-                                              bound_predicates);
+  pipeline =
+      std::make_unique<FilterOperator>(std::move(pipeline), bound_predicates);
   std::vector<TypedRow> items;
   if (has_aggregate) {
     std::vector<OrderBySpec> order_by_specs =
         parser.extractOrderBySpecs(joined_schema);
     if (!order_by_specs.empty()) {
-      throw std::runtime_error("ORDER BY is not supported for aggregate queries.");
+      throw std::runtime_error(
+          "ORDER BY is not supported for aggregate queries.");
     }
 
     pipeline = std::make_unique<AggregateOperator>(
-      std::move(pipeline),
-      select_item::extractAggregateCalls(bound_select_items));
+        std::move(pipeline),
+        select_item::extractAggregateCalls(bound_select_items));
 
     std::optional<std::size_t> limit_count = parser.extractLimitCount();
     if (limit_count.has_value()) {
       pipeline = std::make_unique<LimitOperator>(std::move(pipeline),
-                                                limit_count.value());
+                                                 limit_count.value());
     }
     items = collectItems<TypedRow>(*pipeline);
-  }else{
+  } else {
     // order by
     std::vector<OrderBySpec> order_by_specs =
         parser.extractOrderBySpecs(joined_schema);
     if (!order_by_specs.empty()) {
       pipeline = std::make_unique<OrderByOperator>(std::move(pipeline),
-                                                  std::move(order_by_specs));
+                                                   std::move(order_by_specs));
     }
 
     // limit
     std::optional<std::size_t> limit_count = parser.extractLimitCount();
     if (limit_count.has_value()) {
       pipeline = std::make_unique<LimitOperator>(std::move(pipeline),
-                                                limit_count.value());
+                                                 limit_count.value());
     }
-    
+
     // projection
     std::vector<std::size_t> projection_indices =
         select_item::extractProjectionIndices(bound_select_items);
     ProjectionOperator projection(std::move(pipeline), projection_indices);
     items = collectItems<TypedRow>(projection);
   }
-  dbfs_log::execution().info("Query returned {} rows.", items.size());  
+  dbfs_log::execution().info("Query returned {} rows.", items.size());
   return items;
 }
 
 void executor::create_table(const CreateTableParser& parser) {
-  Table table = Table::initialize(parser.extractTableName(),
-                                  parser.extractSchema());
+  Table table =
+      Table::initialize(parser.extractTableName(), parser.extractSchema());
 
   const std::vector<std::string> primary_key_columns =
       parser.extractPrimaryKeyColumnNames();
@@ -779,7 +792,8 @@ void executor::create_table(const CreateTableParser& parser) {
 void executor::create_index(const CreateIndexParser& parser) {
   const std::vector<std::string> column_names = parser.extractColumnNames();
   if (column_names.empty()) {
-    throw std::runtime_error("CREATE INDEX requires at least one index column.");
+    throw std::runtime_error(
+        "CREATE INDEX requires at least one index column.");
   }
 
   Table table = Table::getTable(parser.extractTableName());
@@ -790,14 +804,14 @@ void executor::drop_table(const DropTableParser& parser) {
   Table::removeBackingFilesFor(parser.extractTableName());
 }
 
-void executor::insert(BufferPool& pool, Table& table, const InsertParser& parser,
-                      WAL& wal) {
+void executor::insert(BufferPool& pool, Table& table,
+                      const InsertParser& parser, WAL& wal) {
   const TypedRow row = parser.extractRow(table.schema());
   insertRow(pool, table, row, wal);
 }
 
-void executor::remove(BufferPool& pool, Table& table, const DeleteParser& parser,
-                      WAL& wal) {
+void executor::remove(BufferPool& pool, Table& table,
+                      const DeleteParser& parser, WAL& wal) {
   const std::vector<UnboundComparisonPredicate> predicates =
       parser.extractComparisonPredicates(table.schema());
   removeMatchingRows(pool, table, predicates, wal);
@@ -811,7 +825,8 @@ void executor::remove(BufferPool& pool, Table& table, const DeleteParser& parser
  * fewer page-structure assumptions) without requiring in-place updates or
  * special-case split handling.
  */
-void executor::update(BufferPool& pool, Table& table, const UpdateParser& parser, WAL& wal) {
+void executor::update(BufferPool& pool, Table& table,
+                      const UpdateParser& parser, WAL& wal) {
   const std::vector<UnboundComparisonPredicate> predicates =
       parser.extractComparisonPredicates(table.schema());
   const std::size_t updated_count =

@@ -1,7 +1,7 @@
+#include "drop_table_parser.h"
+
 #include <stdexcept>
 #include <utility>
-
-#include "drop_table_parser.h"
 
 DropTableParser::DropTableParser(std::string sql)
     : PgQueryJsonParser(std::move(sql)) {}

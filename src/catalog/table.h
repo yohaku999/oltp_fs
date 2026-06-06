@@ -1,18 +1,18 @@
 #pragma once
 
-#include <optional>
 #include <filesystem>
 #include <functional>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "catalog/table_metadata.h"
-#include "schema/schema.h"
-#include "storage/index/rid.h"
-#include "storage/disk/file.h"
 #include "execution/heapfile.h"
+#include "schema/schema.h"
+#include "storage/disk/file.h"
+#include "storage/index/rid.h"
 #include "tuple/typed_row.h"
 
 class BufferPool;
@@ -50,13 +50,12 @@ class Table {
   HeapFile& heapFile() { return heap_file_; }
 
  private:
-        Table(std::string name, Schema schema,
-          std::optional<std::string> index_path,
-          std::vector<std::string> indexed_column_names);
+  Table(std::string name, Schema schema, std::optional<std::string> index_path,
+        std::vector<std::string> indexed_column_names);
 
   static std::string defaultIndexPath(
-        const std::string& table_name,
-        const std::vector<std::string>& indexed_column_names);
+      const std::string& table_name,
+      const std::vector<std::string>& indexed_column_names);
 
   static std::string defaultHeapPath(const std::string& table_name);
 

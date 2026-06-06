@@ -1,9 +1,10 @@
-#include <string>
-#include <vector>
+#include "storage/index/index_key.h"
 
 #include <gtest/gtest.h>
 
-#include "storage/index/index_key.h"
+#include <string>
+#include <vector>
+
 #include "storage/index/btreecursor.h"
 
 namespace {
@@ -76,18 +77,16 @@ TEST(IndexKeyTest, CompositeRowEncodingFollowsColumnOrder) {
 }
 
 TEST(IndexKeyTest, PrefixMatchesSupportRangeOperators) {
-  const std::string prefix =
-      std::string("I") + index_key::encodeInteger(1) +
-      std::string("I") + index_key::encodeInteger(7);
+  const std::string prefix = std::string("I") + index_key::encodeInteger(1) +
+                             std::string("I") + index_key::encodeInteger(7);
   const std::string matching =
       prefix + std::string("I") + index_key::encodeInteger(3001);
-  const std::string previous =
-      std::string("I") + index_key::encodeInteger(1) +
-      std::string("I") + index_key::encodeInteger(6) +
-      std::string("I") + index_key::encodeInteger(9999);
-  const std::string next =
-      std::string("I") + index_key::encodeInteger(1) +
-      std::string("I") + index_key::encodeInteger(8);
+  const std::string previous = std::string("I") + index_key::encodeInteger(1) +
+                               std::string("I") + index_key::encodeInteger(6) +
+                               std::string("I") +
+                               index_key::encodeInteger(9999);
+  const std::string next = std::string("I") + index_key::encodeInteger(1) +
+                           std::string("I") + index_key::encodeInteger(8);
 
   const BTreeCursor::Boundary inclusive{prefix, true};
   const BTreeCursor::Boundary exclusive{prefix, false};

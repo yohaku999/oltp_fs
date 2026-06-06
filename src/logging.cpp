@@ -57,7 +57,8 @@ std::shared_ptr<spdlog::sinks::sink> fileSink(const char* path) {
 spdlog::logger& makeLogger(const std::string& name,
                            spdlog::level::level_enum level,
                            std::vector<spdlog::sink_ptr> sinks) {
-  auto logger = std::make_shared<spdlog::logger>(name, sinks.begin(), sinks.end());
+  auto logger =
+      std::make_shared<spdlog::logger>(name, sinks.begin(), sinks.end());
   logger->set_level(level);
   logger->flush_on(spdlog::level::warn);
   spdlog::register_logger(logger);

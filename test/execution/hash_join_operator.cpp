@@ -28,18 +28,18 @@ std::string stringValue(const FieldValue& value) {
 
 TEST(HashJoinOperatorTest, JoinsRowsUsingConfiguredColumnIndexes) {
   std::vector<TypedRow> outer_rows;
-  outer_rows.push_back(makeRow({Column::IntegerType(1),
-                                Column::VarcharType("dept-a")}));
-  outer_rows.push_back(makeRow({Column::IntegerType(2),
-                                Column::VarcharType("dept-b")}));
+  outer_rows.push_back(
+      makeRow({Column::IntegerType(1), Column::VarcharType("dept-a")}));
+  outer_rows.push_back(
+      makeRow({Column::IntegerType(2), Column::VarcharType("dept-b")}));
 
   std::vector<TypedRow> inner_rows;
-  inner_rows.push_back(makeRow({Column::VarcharType("dept-b"),
-                                Column::VarcharType("bob")}));
-  inner_rows.push_back(makeRow({Column::VarcharType("dept-a"),
-                                Column::VarcharType("alice")}));
-  inner_rows.push_back(makeRow({Column::VarcharType("dept-a"),
-                                Column::VarcharType("carol")}));
+  inner_rows.push_back(
+      makeRow({Column::VarcharType("dept-b"), Column::VarcharType("bob")}));
+  inner_rows.push_back(
+      makeRow({Column::VarcharType("dept-a"), Column::VarcharType("alice")}));
+  inner_rows.push_back(
+      makeRow({Column::VarcharType("dept-a"), Column::VarcharType("carol")}));
 
   HashJoinOperator join(
       std::make_unique<StubRowOperator>(std::move(outer_rows)),
@@ -62,12 +62,12 @@ TEST(HashJoinOperatorTest, JoinsRowsUsingConfiguredColumnIndexes) {
 
   std::sort(joined_rows.begin(), joined_rows.end());
   ASSERT_EQ(joined_rows.size(), 3U);
-  EXPECT_EQ(joined_rows[0], std::make_pair(Column::IntegerType(1),
-                                           std::string("alice")));
-  EXPECT_EQ(joined_rows[1], std::make_pair(Column::IntegerType(1),
-                                           std::string("carol")));
-  EXPECT_EQ(joined_rows[2], std::make_pair(Column::IntegerType(2),
-                                           std::string("bob")));
+  EXPECT_EQ(joined_rows[0],
+            std::make_pair(Column::IntegerType(1), std::string("alice")));
+  EXPECT_EQ(joined_rows[1],
+            std::make_pair(Column::IntegerType(1), std::string("carol")));
+  EXPECT_EQ(joined_rows[2],
+            std::make_pair(Column::IntegerType(2), std::string("bob")));
 
   EXPECT_FALSE(join.next().has_value());
   join.close();

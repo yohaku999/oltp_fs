@@ -79,9 +79,12 @@ TEST(LoopJoinOperatorTest, SupportsMultipleSources) {
   source2_rows.push_back(makeJoinRow({Column::IntegerType(20)}));
 
   std::vector<std::unique_ptr<TypedRowOperator>> children;
-  children.push_back(std::make_unique<StubRowOperator>(std::move(source0_rows)));
-  children.push_back(std::make_unique<StubRowOperator>(std::move(source1_rows)));
-  children.push_back(std::make_unique<StubRowOperator>(std::move(source2_rows)));
+  children.push_back(
+      std::make_unique<StubRowOperator>(std::move(source0_rows)));
+  children.push_back(
+      std::make_unique<StubRowOperator>(std::move(source1_rows)));
+  children.push_back(
+      std::make_unique<StubRowOperator>(std::move(source2_rows)));
 
   LoopJoinOperator join(std::move(children));
 

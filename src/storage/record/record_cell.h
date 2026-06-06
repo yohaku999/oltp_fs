@@ -7,8 +7,8 @@
 #include <vector>
 
 #include "schema/schema.h"
-#include "tuple/typed_row.h"
 #include "storage/page/cell.h"
+#include "tuple/typed_row.h"
 
 /**
  * Heap record binary layout.

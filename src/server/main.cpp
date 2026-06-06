@@ -1,7 +1,7 @@
-#include "server/server.h"
-
 #include <cstdlib>
 #include <string>
+
+#include "server/server.h"
 
 int main() {
   const char* port_text = std::getenv("DBFS_PORT");

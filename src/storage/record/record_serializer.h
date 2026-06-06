@@ -2,9 +2,9 @@
 
 #include <vector>
 
+#include "record_cell.h"
 #include "schema/schema.h"
 #include "tuple/typed_row.h"
-#include "record_cell.h"
 
 class RecordSerializer {
  public:

@@ -1,8 +1,7 @@
 #pragma once
 
-#include <vector>
-
 #include <nlohmann/json.hpp>
+#include <vector>
 
 #include "execution/comparison_predicate.h"
 #include "execution/update_assignment.h"
@@ -15,7 +14,7 @@ ColumnRef parseColumnRef(const nlohmann::json& column_ref);
 int parseConstIntegerValue(const nlohmann::json& item);
 
 FieldValue parseConstFieldValue(const nlohmann::json& item,
-                               Column::Type column_type);
+                                Column::Type column_type);
 
 UnboundUpdateValue parseUpdateAssignmentValue(
     const nlohmann::json& expression, const Schema& schema,

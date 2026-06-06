@@ -22,8 +22,8 @@ std::size_t getNonNullFieldPayloadSize(const Column& column,
           value, "Expected Integer field value.");
       return sizeof(Column::IntegerType);
     case Column::Type::Double:
-      getFieldValueOrThrow<Column::DoubleType>(
-          value, "Expected Double field value.");
+      getFieldValueOrThrow<Column::DoubleType>(value,
+                                               "Expected Double field value.");
       return sizeof(Column::DoubleType);
     case Column::Type::Varchar:
       return getFieldValueOrThrow<Column::VarcharType>(

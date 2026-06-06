@@ -12,12 +12,12 @@
 #include <utility>
 #include <vector>
 
-#include "storage/buffer/bufferpool.h"
-#include "storage/page/cell.h"
 #include "index_key.h"
 #include "logging.h"
-#include "storage/page/page.h"
+#include "storage/buffer/bufferpool.h"
 #include "storage/index/index_page.h"
+#include "storage/page/cell.h"
+#include "storage/page/page.h"
 
 namespace {
 
@@ -36,8 +36,7 @@ void rewireLeafSiblingPredecessor(BufferPool& pool, File& index_file,
     }
 
     LeafIndexPage leaf(*page);
-    if (leaf.getRightSiblingPageId() ==
-        static_cast<uint16_t>(old_page_id)) {
+    if (leaf.getRightSiblingPageId() == static_cast<uint16_t>(old_page_id)) {
       leaf.setRightSiblingPageId(static_cast<uint16_t>(new_page_id));
       pool.unpinPage(page, index_file);
       return;
@@ -51,7 +50,7 @@ void dumpIndexPage(const Page& page, std::ostream& os) {
   os << "=== Page " << page.getPageID() << " ("
      << (page.isLeaf() ? "leaf" : "internal") << ") ===\n";
   os << "parent=" << page.getParentPageID()
-    << " slotCount=" << static_cast<int>(page.slotCount());
+     << " slotCount=" << static_cast<int>(page.slotCount());
   if (!page.isLeaf()) {
     os << " rightMostChild="
        << InternalIndexPage(const_cast<Page&>(page)).rightMostChildPageId();
@@ -68,10 +67,10 @@ void dumpIndexPage(const Page& page, std::ostream& os) {
       }
 
       LeafCell cell = leaf.cellAt(i);
-      os << "  [" << i << "] Leaf  key="
-        << index_key::formatForDebug(cell.key())
-         << " heapPage=" << cell.heap_page_id()
-         << " slot=" << cell.slot_id() << "\n";
+      os << "  [" << i
+         << "] Leaf  key=" << index_key::formatForDebug(cell.key())
+         << " heapPage=" << cell.heap_page_id() << " slot=" << cell.slot_id()
+         << "\n";
     }
   } else {
     InternalIndexPage internal(const_cast<Page&>(page));
@@ -83,8 +82,8 @@ void dumpIndexPage(const Page& page, std::ostream& os) {
       }
 
       IntermediateCell cell = internal.cellAt(i);
-    os << "  [" << i << "] Inter key="
-      << index_key::formatForDebug(cell.key())
+      os << "  [" << i
+         << "] Inter key=" << index_key::formatForDebug(cell.key())
          << " childPage=" << cell.page_id() << "\n";
     }
   }
@@ -137,19 +136,20 @@ std::optional<int> insertCellWithCompaction(Page& page, const Cell& cell) {
  * later split handling.
  */
 int BTreeCursor::findLeafPageID(BufferPool& pool, File& indexFile,
-                               const std::string& key) {
+                                const std::string& key) {
   int page_id = indexFile.getRootPageID();
   int parent_page_id = Page::HAS_NO_PARENT;
   while (true) {
     dbfs_log::index().debug(
-      "Traversing to find leaf page for key {}: currently at page ID {} in "
-      "index file {}.",
-      index_key::formatForDebug(key), page_id, indexFile.getFilePath());
+        "Traversing to find leaf page for key {}: currently at page ID {} in "
+        "index file {}.",
+        index_key::formatForDebug(key), page_id, indexFile.getFilePath());
     Page* page = pool.pinPage(page_id, indexFile);
     page->setParentPageID(parent_page_id);
     if (page->isLeaf()) {
-      dbfs_log::index().debug("Found leaf page ID {} for key {} in index {}", page_id,
-               index_key::formatForDebug(key), indexFile.getFilePath());
+      dbfs_log::index().debug("Found leaf page ID {} for key {} in index {}",
+                              page_id, index_key::formatForDebug(key),
+                              indexFile.getFilePath());
       pool.unpinPage(page, indexFile);
       break;
     }
@@ -157,8 +157,9 @@ int BTreeCursor::findLeafPageID(BufferPool& pool, File& indexFile,
     InternalIndexPage internal(*page);
     int child_page_id = internal.findChildPage(key);
     pool.unpinPage(page, indexFile);
-    dbfs_log::index().debug("The child page ID of page ID {} for key {} is {}", page_id,
-          index_key::formatForDebug(key), child_page_id);
+    dbfs_log::index().debug("The child page ID of page ID {} for key {} is {}",
+                            page_id, index_key::formatForDebug(key),
+                            child_page_id);
     parent_page_id = page_id;
     page_id = child_page_id;
   }
@@ -169,7 +170,8 @@ int BTreeCursor::findLeafPageID(BufferPool& pool, File& indexFile,
  * Traverses the B-tree to find all index entries inside the given boundaries.
  * @param pool Buffer pool used to pin and unpin index pages during traversal.
  * @param indexFile Index file whose root page seeds the traversal.
- * @param do_invalidate If true, invalidates the slots of the found RIDs in the leaf pages.
+ * @param do_invalidate If true, invalidates the slots of the found RIDs in the
+ * leaf pages.
  * @return A vector of index entries inside the given boundaries.
  */
 std::vector<IndexEntry> BTreeCursor::findEntries(
@@ -180,12 +182,12 @@ std::vector<IndexEntry> BTreeCursor::findEntries(
 
   // NOTE: we decided not to invalidate intermediate nodes during traversal for
   // now. we will come back to this when we start to support concurrency.
-    
+
   // find traversal start point based on left boundary.
   int page_id;
-  if(left_boundary.composite_key.empty()) {
+  if (left_boundary.composite_key.empty()) {
     page_id = findLeafPageID(pool, indexFile, "");
-  }else{
+  } else {
     page_id = findLeafPageID(pool, indexFile, left_boundary.composite_key);
   }
 
@@ -201,14 +203,14 @@ std::vector<IndexEntry> BTreeCursor::findEntries(
                             entries.end());
     page_id = next_page;
   }
-  
+
   return matching_entries;
 }
 
 void BTreeCursor::insertIntoIndex(BufferPool& pool, File& indexFile,
-                                  const std::string& key,
-                                  uint16_t heap_page_id, uint16_t slot_id) {
-    dbfs_log::index().debug(
+                                  const std::string& key, uint16_t heap_page_id,
+                                  uint16_t slot_id) {
+  dbfs_log::index().debug(
       "Inserting index entry for key {} pointing to heap page ID {}, slot ID "
       "{} into index file {}.",
       index_key::formatForDebug(key), heap_page_id, slot_id,
@@ -230,11 +232,15 @@ void BTreeCursor::insertIntoIndex(BufferPool& pool, File& indexFile,
     IntermediateCell separator_cell =
         splitPage(pool, indexFile, target_page, parent_page);
 
-    // find page to be inserted by comparing the separator key with the key to be inserted, and insert into the page. Note that the separator key is guaranteed to be greater than all keys in the old page, so if the key to be inserted is less than or equal to the separator key, it should be inserted into the old page instead of traversing the whole tree to find correct page to be inserted.
+    // find page to be inserted by comparing the separator key with the key to
+    // be inserted, and insert into the page. Note that the separator key is
+    // guaranteed to be greater than all keys in the old page, so if the key to
+    // be inserted is less than or equal to the separator key, it should be
+    // inserted into the old page instead of traversing the whole tree to find
+    // correct page to be inserted.
     Page* retry_page = target_page;
     Page* new_page = nullptr;
-    if (index_key::compare(cell_to_insert->key(), separator_cell.key()) <=
-        0) {
+    if (index_key::compare(cell_to_insert->key(), separator_cell.key()) <= 0) {
       new_page = pool.pinPage(separator_cell.page_id(), indexFile);
       retry_page = new_page;
     }
@@ -255,7 +261,7 @@ void BTreeCursor::insertIntoIndex(BufferPool& pool, File& indexFile,
     target_page = parent_page;
   }
 
-    dbfs_log::index().info(
+  dbfs_log::index().info(
       "Inserted index entry for key {} pointing to heap page ID {}, slot ID "
       "{}.",
       index_key::formatForDebug(key), heap_page_id, slot_id);
@@ -271,11 +277,11 @@ Page* BTreeCursor::ensureParentPage(BufferPool& pool, File& index_file,
   int parent_page_id;
   if (old_page.getParentPageID() == Page::HAS_NO_PARENT) {
     dbfs_log::index().debug(
-      "Initialized Parent Page for page ID {} because it has no parent but "
-      "root page.",
-      old_page.getPageID());
+        "Initialized Parent Page for page ID {} because it has no parent but "
+        "root page.",
+        old_page.getPageID());
     int new_root_page_id = pool.createPage(PageKind::InternalIndex, index_file,
-                         old_page.getPageID());
+                                           old_page.getPageID());
     index_file.setRootPageID(new_root_page_id);
     old_page.setParentPageID(new_root_page_id);
     parent_page_id = new_root_page_id;
@@ -289,7 +295,8 @@ Page* BTreeCursor::ensureParentPage(BufferPool& pool, File& index_file,
 
 /**
  * @brief splits the old_page
- * create new page and move half of the cells from old_page to the new page, then insert a separator cell into the parent page.
+ * create new page and move half of the cells from old_page to the new page,
+ * then insert a separator cell into the parent page.
  * @param pool Buffer pool used to pin and unpin index pages during split.
  * @param index_file Index file to which the pages belong.
  * @param old_page The page to split.
@@ -305,7 +312,6 @@ IntermediateCell BTreeCursor::splitLeafPage(BufferPool& pool, File& index_file,
   new_leaf.setRightSiblingPageId(old_page.getPageID());
   rewireLeafSiblingPredecessor(pool, index_file, old_page.getPageID(),
                                new_page_id);
-  
 
   LeafIndexPage old_leaf(old_page);
   old_leaf.transferAndCompactTo(new_leaf, separate_key);
@@ -314,10 +320,9 @@ IntermediateCell BTreeCursor::splitLeafPage(BufferPool& pool, File& index_file,
   return IntermediateCell(new_page_id, separate_key);
 }
 
-IntermediateCell BTreeCursor::splitInternalPage(BufferPool& pool,
-                                                File& index_file,
-                                                Page& old_page,
-                                                const std::string& separate_key) {
+IntermediateCell BTreeCursor::splitInternalPage(
+    BufferPool& pool, File& index_file, Page& old_page,
+    const std::string& separate_key) {
   int new_page_id = pool.createPage(PageKind::InternalIndex, index_file);
   Page* new_page = pool.pinPage(new_page_id, index_file);
 
@@ -330,7 +335,7 @@ IntermediateCell BTreeCursor::splitInternalPage(BufferPool& pool,
 }
 
 IntermediateCell BTreeCursor::splitPage(BufferPool& pool, File& index_file,
-                            Page* old_page, Page*parent_page) {
+                                        Page* old_page, Page* parent_page) {
   dbfs_log::index().debug("Split old page and rewire pointer.");
   if (old_page->isLeaf()) {
     const std::string separate_key =
@@ -358,11 +363,13 @@ void BTreeCursor::dumpTree(BufferPool& pool, File& indexFile,
 }
 
 /** check if key is inside the boundary */
-bool BTreeCursor::isInsideBoundary(std::string_view key, BTreeCursor::Boundary boundary, bool is_boundary_left) {
+bool BTreeCursor::isInsideBoundary(std::string_view key,
+                                   BTreeCursor::Boundary boundary,
+                                   bool is_boundary_left) {
   const std::string_view boundary_key = boundary.composite_key;
   const std::size_t compare_size = std::min(key.size(), boundary_key.size());
-  int result = key.substr(0, compare_size).compare(
-      boundary_key.substr(0, compare_size));
+  int result =
+      key.substr(0, compare_size).compare(boundary_key.substr(0, compare_size));
   if (result < 0) {
     result = -1;
   } else if (result > 0) {
@@ -370,15 +377,17 @@ bool BTreeCursor::isInsideBoundary(std::string_view key, BTreeCursor::Boundary b
   } else if (key.size() < boundary_key.size()) {
     result = -1;
   }
-  if(is_boundary_left) {
-    // For left boundary, we want keys that are greater than (or equal to, if inclusive) the boundary.
+  if (is_boundary_left) {
+    // For left boundary, we want keys that are greater than (or equal to, if
+    // inclusive) the boundary.
     if (boundary.is_inclusive) {
       return result >= 0;
     } else {
       return result > 0;
     }
   } else {
-    // For right boundary, we want keys that are less than (or equal to, if inclusive) the boundary.
+    // For right boundary, we want keys that are less than (or equal to, if
+    // inclusive) the boundary.
     if (boundary.is_inclusive) {
       return result <= 0;
     } else {

@@ -19,11 +19,11 @@ class FrameDirectoryTest : public ::testing::Test {
 
   void SetUp() override {
     page1 = std::make_unique<Page>(
-      Page::initializeNew(page_buffer1.data(), PageKind::Heap, 0, 1));
+        Page::initializeNew(page_buffer1.data(), PageKind::Heap, 0, 1));
     page2 = std::make_unique<Page>(
-      Page::initializeNew(page_buffer2.data(), PageKind::Heap, 0, 2));
+        Page::initializeNew(page_buffer2.data(), PageKind::Heap, 0, 2));
     page3 = std::make_unique<Page>(
-      Page::initializeNew(page_buffer3.data(), PageKind::Heap, 0, 3));
+        Page::initializeNew(page_buffer3.data(), PageKind::Heap, 0, 3));
   }
 };
 
@@ -145,7 +145,7 @@ TEST_F(FrameDirectoryTest, MultipleRegisterUnregisterCycles) {
       claimed_frames.push_back(frame_id);
 
       std::array<char, 4096> buffer;
-        auto page = std::make_unique<Page>(
+      auto page = std::make_unique<Page>(
           Page::initializeNew(buffer.data(), PageKind::Heap, 0, i));
       int page_id = cycle * 100 + i;
 
@@ -189,7 +189,7 @@ TEST_F(FrameDirectoryTest, FrameReuseAfterUnregister) {
 
     std::array<char, 4096> buffer;
     auto page = std::make_unique<Page>(
-      Page::initializeNew(buffer.data(), PageKind::Heap, 0, i));
+        Page::initializeNew(buffer.data(), PageKind::Heap, 0, i));
     directory.registerResidentPage(frame_id, i, "test.db", std::move(page));
   }
 
@@ -224,7 +224,7 @@ TEST_F(FrameDirectoryTest, FindVictimFrameWhenAllFramesFilled) {
 
     std::array<char, 4096> buffer;
     auto page = std::make_unique<Page>(
-      Page::initializeNew(buffer.data(), PageKind::Heap, 0, i));
+        Page::initializeNew(buffer.data(), PageKind::Heap, 0, i));
     directory.registerResidentPage(frame_opt.value(), i, "test.db",
                                    std::move(page));
   }

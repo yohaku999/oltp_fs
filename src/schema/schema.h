@@ -7,8 +7,7 @@
 
 class Schema {
  public:
-  explicit Schema(std::vector<Column> columns)
-    : columns_(std::move(columns)) {}
+  explicit Schema(std::vector<Column> columns) : columns_(std::move(columns)) {}
 
   const std::vector<Column>& columns() const { return columns_; }
 

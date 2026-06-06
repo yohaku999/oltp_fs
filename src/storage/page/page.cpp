@@ -10,14 +10,12 @@
 #include <utility>
 #include <vector>
 
+#include "logging.h"
 #include "storage/index/intermediate_cell.h"
 #include "storage/index/leaf_cell.h"
-#include "logging.h"
 #include "storage/record/record_cell.h"
 
-namespace {
-
-}  // namespace
+namespace {}  // namespace
 
 Page Page::initializeNew(char* page_buffer, PageKind kind,
                          uint16_t right_most_child_page_id, uint16_t page_id) {
@@ -40,7 +38,8 @@ Page::Page(char* page_buffer, PageKind kind, uint16_t right_most_child_page_id,
   if (kind == PageKind::InternalIndex) {
     setRightMostChildPageId(right_most_child_page_id);
   } else if (kind == PageKind::LeafIndex) {
-    // for leaf page, we use the right-most child pointer in the header to store the right sibling page id.
+    // for leaf page, we use the right-most child pointer in the header to store
+    // the right sibling page id.
     // TODO: fix method name to avoid confusion.
     setRightMostChildPageId(right_most_child_page_id);
   }
@@ -71,22 +70,26 @@ std::optional<int> Page::insertCell(
 
 std::optional<int> Page::insertCell(
     const std::vector<std::byte>& serialized_cell, const Cell* cell) {
-  dbfs_log::storage().debug("Attempting to insert serialized cell into page ID {}", getPageID());
+  dbfs_log::storage().debug(
+      "Attempting to insert serialized cell into page ID {}", getPageID());
 
   const size_t cell_content_start_offset = getSlotDirectoryOffset();
   const size_t existing_slot_end_offset =
       Page::HEADDER_SIZE_BYTE +
       Page::CELL_POINTER_SIZE * (static_cast<size_t>(getSlotCount()));
 
-  if (cell_content_start_offset < existing_slot_end_offset + Page::CELL_POINTER_SIZE + serialized_cell.size()) {
+  if (cell_content_start_offset < existing_slot_end_offset +
+                                      Page::CELL_POINTER_SIZE +
+                                      serialized_cell.size()) {
     dbfs_log::storage().debug(
-      "This page does not have enough space to insert the cell anymore.");
+        "This page does not have enough space to insert the cell anymore.");
     return std::nullopt;
   }
 
-  if(serialized_cell.size() > cell_content_start_offset) {
+  if (serialized_cell.size() > cell_content_start_offset) {
     dbfs_log::storage().debug(
-        "The size of the serialized cell is larger than the available space in the page.");
+        "The size of the serialized cell is larger than the available space in "
+        "the page.");
     return std::nullopt;
   }
 
@@ -96,13 +99,13 @@ std::optional<int> Page::insertCell(
 
   std::memcpy(cell_data_start, serialized_cell.data(), serialized_cell.size());
 
-  // For internal index page, we need to keep the cell pointers sorted by key in ascending order,
-  // so we need to find the correct position to insert the new cell pointer and shift the existing cell pointers if necessary.
+  // For internal index page, we need to keep the cell pointers sorted by key in
+  // ascending order, so we need to find the correct position to insert the new
+  // cell pointer and shift the existing cell pointers if necessary.
   char* insert_slot_pointer = page_buffer_ + existing_slot_end_offset;
   int inserted_slot_id = getSlotCount();
-  if(cell != nullptr &&
-     (cell->kind() == CellKind::Intermediate || cell->kind() == CellKind::Leaf)) {
-    
+  if (cell != nullptr && (cell->kind() == CellKind::Intermediate ||
+                          cell->kind() == CellKind::Leaf)) {
     int slot_count = getSlotCount();
     int insert_position = 0;
     while (insert_position < slot_count) {
@@ -126,13 +129,17 @@ std::optional<int> Page::insertCell(
       insert_position++;
     }
     if (insert_position < slot_count) {
-      // shift the existing cell pointers to the right to make space for the new cell pointer.
-      char* src = page_buffer_ + Page::HEADDER_SIZE_BYTE + Page::CELL_POINTER_SIZE * insert_position;
+      // shift the existing cell pointers to the right to make space for the new
+      // cell pointer.
+      char* src = page_buffer_ + Page::HEADDER_SIZE_BYTE +
+                  Page::CELL_POINTER_SIZE * insert_position;
       char* dst = src + Page::CELL_POINTER_SIZE;
-      size_t num_bytes_to_move = (slot_count - insert_position) * Page::CELL_POINTER_SIZE;
+      size_t num_bytes_to_move =
+          (slot_count - insert_position) * Page::CELL_POINTER_SIZE;
       std::memmove(dst, src, num_bytes_to_move);
     }
-    insert_slot_pointer = page_buffer_ + Page::HEADDER_SIZE_BYTE + Page::CELL_POINTER_SIZE * insert_position;
+    insert_slot_pointer = page_buffer_ + Page::HEADDER_SIZE_BYTE +
+                          Page::CELL_POINTER_SIZE * insert_position;
     inserted_slot_id = insert_position;
   }
   std::memcpy(insert_slot_pointer, &new_cell_start_offset, sizeof(uint16_t));
@@ -143,7 +150,7 @@ std::optional<int> Page::insertCell(
 
   this->markDirty();
 
-    dbfs_log::storage().debug(
+  dbfs_log::storage().debug(
       "Inserted a new cell into page. New slot count: {}, new slot directory "
       "offset: {}",
       getSlotCount(), getSlotDirectoryOffset());
@@ -152,7 +159,7 @@ std::optional<int> Page::insertCell(
 
 std::optional<int> Page::insertCell(const Cell& cell) {
   dbfs_log::storage().debug("Attempting to insert {} cell into page ID {}",
-            static_cast<int>(cell.kind()), getPageID());
+                            static_cast<int>(cell.kind()), getPageID());
   std::vector<std::byte> serialized_data = cell.serialize();
   return insertCell(serialized_data, &cell);
 }
@@ -173,8 +180,10 @@ char* Page::getSlotCellStart(int slot_id) {
 }
 
 /**
- * This method is used for page splitting. It returns the cell that should be used as the split key.
- * The split key is typically the middle key of the page, but if the middle key is invalid, we will try to find the next valid key until we find one or we reach the end of the page.
+ * This method is used for page splitting. It returns the cell that should be
+ * used as the split key. The split key is typically the middle key of the page,
+ * but if the middle key is invalid, we will try to find the next valid key
+ * until we find one or we reach the end of the page.
  * @return pointer to the cell to be used for page separation.
  */
 char* Page::getSplitKeyCellStart() {
@@ -245,8 +254,9 @@ char* Page::slotCellStartUnchecked(int slot_id) {
 }
 
 const char* Page::slotCellStartUnchecked(int slot_id) const {
-  return page_buffer_ + readValue<uint16_t>(page_buffer_ + Page::HEADDER_SIZE_BYTE +
-                                            Page::CELL_POINTER_SIZE * slot_id);
+  return page_buffer_ +
+         readValue<uint16_t>(page_buffer_ + Page::HEADDER_SIZE_BYTE +
+                             Page::CELL_POINTER_SIZE * slot_id);
 }
 
 uint16_t Page::rightMostChildPageId() const {
