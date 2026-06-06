@@ -318,16 +318,15 @@ std::size_t removeMatchingRows(BufferPool& pool, Table& table,
   std::size_t removed_count = 0;
 
   for (const RID& rid : rids) {
-    Page* page = pool.pinPage(rid.heap_page_id, table.heapFile().rawFile());
-    char* cell_start = page->slotCellStartUnchecked(rid.slot_id);
-    if (!Cell::isValid(cell_start)) {
-      pool.unpinPage(page, table.heapFile().rawFile());
+    std::optional<TypedRow> row =
+        table.heapFile().withCell(pool, rid, [&](RecordCellView cell) {
+          return cell.getTypedRow(table.schema());
+        });
+    if (!row.has_value()) {
       continue;
     }
 
-    TypedRow row = RecordCellView(cell_start).getTypedRow(table.schema());
-    if (!passesPredicates(row, bound_predicates)) {
-      pool.unpinPage(page, table.heapFile().rawFile());
+    if (!passesPredicates(*row, bound_predicates)) {
       continue;
     }
 
@@ -337,7 +336,7 @@ std::size_t removeMatchingRows(BufferPool& pool, Table& table,
       // create index key predicates from row, since index search result can have redundant RIDs by its nature.
       // OPTIMIZE : Even if we are doing an online delete, we can still use the original values to construct index key predicates and delete the index entry, instead of leaving the index entry dangling and cleaning it up later by a separate process.
       const std::vector<BoundComparisonPredicate> index_key_predicates =
-          buildIndexKeyEqualityPredicates(table, row);
+          buildIndexKeyEqualityPredicates(table, *row);
       const std::vector<std::vector<BoundComparisonPredicate>> ordered_predicates =
           prepareIndexKeyPredicates(index_key_predicates,
                                       table.indexedColumnIndexes());
@@ -347,6 +346,7 @@ std::size_t removeMatchingRows(BufferPool& pool, Table& table,
 
     wal.write(WALRecord::RecordType::DELETE, rid.heap_page_id,
               DeleteRedoBody(rid.slot_id).encode());
+    Page* page = pool.pinPage(rid.heap_page_id, table.heapFile().rawFile());
     page->invalidateSlot(rid.slot_id);
     pool.unpinPage(page, table.heapFile().rawFile());
     ++removed_count;
@@ -426,21 +426,20 @@ std::size_t updateMatchingRows(BufferPool& pool, Table& table,
   std::vector<TypedRow> updated_rows;
 
   for (const RID& rid : rids) {
-    Page* page = pool.pinPage(rid.heap_page_id, table.heapFile().rawFile());
-    char* cell_start = page->slotCellStartUnchecked(rid.slot_id);
-    if (!Cell::isValid(cell_start)) {
-      pool.unpinPage(page, table.heapFile().rawFile());
+    std::optional<TypedRow> original_row =
+        table.heapFile().withCell(pool, rid, [&](RecordCellView cell) {
+          return cell.getTypedRow(table.schema());
+        });
+    if (!original_row.has_value()) {
       continue;
     }
 
-    TypedRow original_row = RecordCellView(cell_start).getTypedRow(table.schema());
-    pool.unpinPage(page, table.heapFile().rawFile());
-    if (!passesPredicates(original_row, bound_predicates)) {
+    if (!passesPredicates(*original_row, bound_predicates)) {
       continue;
     }
 
     updated_rows.push_back(
-        applyUpdateAssignments(original_row, bound_assignments, table.schema()));
+        applyUpdateAssignments(*original_row, bound_assignments, table.schema()));
   }
 
   const std::size_t removed_count = removeMatchingRows(pool, table, predicates, wal);
