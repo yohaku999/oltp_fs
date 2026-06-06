@@ -240,3 +240,30 @@ TEST_F(FrameDirectoryTest, FindVictimFrameWhenAllFramesFilled) {
   int victim_frame_id = victim_opt.value();
   EXPECT_FALSE(directory.isPinned(victim_frame_id));
 }
+
+TEST_F(FrameDirectoryTest, FindVictimFramePrefersCleanFrame) {
+  auto dirty_frame_opt = directory.reserveFreeFrame();
+  ASSERT_TRUE(dirty_frame_opt.has_value());
+  const int dirty_frame_id = dirty_frame_opt.value();
+
+  std::array<char, 4096> dirty_buffer;
+  auto dirty_page = std::make_unique<Page>(
+      Page::initializeNew(dirty_buffer.data(), PageKind::Heap, 0, 1));
+  dirty_page->markDirty();
+  directory.registerResidentPage(dirty_frame_id, 1, "test.db",
+                                 std::move(dirty_page));
+
+  auto clean_frame_opt = directory.reserveFreeFrame();
+  ASSERT_TRUE(clean_frame_opt.has_value());
+  const int clean_frame_id = clean_frame_opt.value();
+
+  std::array<char, 4096> clean_buffer;
+  auto clean_page =
+      std::make_unique<Page>(Page::wrapExisting(clean_buffer.data(), 2));
+  directory.registerResidentPage(clean_frame_id, 2, "test.db",
+                                 std::move(clean_page));
+
+  auto victim_opt = directory.findVictimFrame();
+  ASSERT_TRUE(victim_opt.has_value());
+  EXPECT_EQ(clean_frame_id, victim_opt.value());
+}
