@@ -112,9 +112,7 @@ void Table::createIndex(const std::vector<std::string>& column_names) {
 }
 
 Table Table::getTable(const std::string& table_name) {
-  if (!isPersisted(table_name)) {
-    throw std::runtime_error("Table does not exist: " + table_name);
-  }
+
   PersistedTableMetadata metadata = TableMetadataStore::read(table_name);
   std::optional<std::string> index_path;
   std::vector<std::string> indexed_column_names;
