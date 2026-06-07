@@ -33,6 +33,19 @@ final class InMemoryDbfsClient implements DbfsClient {
     }
 
     @Override
+    public int[] executeBatchUpdate(String sql, List<List<Object>> parameterSets) throws SQLException {
+        if (parameterSets == null || parameterSets.isEmpty()) {
+            return new int[0];
+        }
+
+        int[] counts = new int[parameterSets.size()];
+        for (int index = 0; index < parameterSets.size(); index += 1) {
+            counts[index] = database.executeUpdate(sql, parameterSets.get(index));
+        }
+        return counts;
+    }
+
+    @Override
     public void close() {
     }
 

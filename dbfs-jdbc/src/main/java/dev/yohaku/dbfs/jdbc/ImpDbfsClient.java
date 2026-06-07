@@ -66,6 +66,28 @@ final class ImplDbfsClient implements DbfsClient {
     }
 
     @Override
+    public int[] executeBatchUpdate(String sql, List<List<Object>> parameterSets) throws SQLException {
+        if (parameterSets == null || parameterSets.isEmpty()) {
+            return new int[0];
+        }
+
+        RemoteResponse response = sendBatch("batchUpdate", sql, parameterSets);
+        ensureSuccess(response);
+        if (response.updateCounts == null) {
+            throw new SQLException("dbfs server response did not include updateCounts");
+        }
+        if (response.updateCounts.size() != parameterSets.size()) {
+            throw new SQLException("dbfs server response updateCounts length mismatch");
+        }
+
+        int[] counts = new int[response.updateCounts.size()];
+        for (int index = 0; index < response.updateCounts.size(); index += 1) {
+            counts[index] = response.updateCounts.get(index);
+        }
+        return counts;
+    }
+
+    @Override
     public synchronized void close() {
         closeConnection();
     }
@@ -75,6 +97,32 @@ final class ImplDbfsClient implements DbfsClient {
         try {
             ensureConnected();
             byte[] requestBytes = encodeRequest(operation, database, sql, parameters);
+            output.writeInt(requestBytes.length);
+            output.write(requestBytes);
+            output.flush();
+
+            int responseLength = input.readInt();
+            if (responseLength < 0 || responseLength > MAX_RESPONSE_BYTES) {
+                throw new SQLException("Invalid dbfs server response length: " + responseLength);
+            }
+
+            byte[] responseBytes = new byte[responseLength];
+            input.readFully(responseBytes);
+            return OBJECT_MAPPER.readValue(responseBytes, RemoteResponse.class);
+        } catch (EOFException exception) {
+            closeConnection();
+            throw new SQLException("dbfs server closed the connection unexpectedly", exception);
+        } catch (IOException exception) {
+            closeConnection();
+            throw new SQLException("Failed to communicate with dbfs server at " + host + ":" + port, exception);
+        }
+    }
+
+    private synchronized RemoteResponse sendBatch(String operation, String sql, List<List<Object>> parameterSets)
+            throws SQLException {
+        try {
+            ensureConnected();
+            byte[] requestBytes = encodeBatchRequest(operation, database, sql, parameterSets);
             output.writeInt(requestBytes.length);
             output.write(requestBytes);
             output.flush();
@@ -143,6 +191,28 @@ final class ImplDbfsClient implements DbfsClient {
         return OBJECT_MAPPER.writeValueAsBytes(request);
     }
 
+    static byte[] encodeBatchRequest(String operation, String database, String sql, List<List<Object>> parameterSets)
+            throws IOException {
+        Map<String, Object> request = new LinkedHashMap<>();
+        request.put("operation", operation);
+        request.put("database", database);
+        request.put("sql", sql);
+        request.put("parameterSets", normalizeParameterSets(parameterSets));
+        return OBJECT_MAPPER.writeValueAsBytes(request);
+    }
+
+    private static List<List<Object>> normalizeParameterSets(List<List<Object>> parameterSets) {
+        if (parameterSets == null || parameterSets.isEmpty()) {
+            return List.of();
+        }
+
+        List<List<Object>> normalized = new ArrayList<>(parameterSets.size());
+        for (List<Object> parameters : parameterSets) {
+            normalized.add(normalizeParameters(parameters));
+        }
+        return normalized;
+    }
+
     private static List<Object> normalizeParameters(List<Object> parameters) {
         if (parameters == null || parameters.isEmpty()) {
             return List.of();
@@ -195,6 +265,7 @@ final class ImplDbfsClient implements DbfsClient {
         public List<String> columns;
         public List<List<Object>> rows;
         public Integer updateCount;
+        public List<Integer> updateCounts;
     }
 
 }

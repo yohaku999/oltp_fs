@@ -201,4 +201,28 @@ class DbfsDriverTest {
         assertNull(root.get("parameters").get(1).textValue());
         assertTrue(root.get("parameters").get(1).isNull());
     }
+
+    @Test
+    void remoteBatchRequestSerializesParameterSets() throws Exception {
+        Timestamp timestamp = Timestamp.valueOf("2026-05-15 04:12:33.456");
+
+        byte[] encoded = ImplDbfsClient.encodeBatchRequest(
+                "batchUpdate",
+                "benchbase",
+                "INSERT INTO history VALUES (?, ?)",
+                List.of(
+                        Arrays.asList(1, timestamp),
+                        Arrays.asList(2, null)));
+
+        JsonNode root = OBJECT_MAPPER.readTree(new String(encoded, StandardCharsets.UTF_8));
+        assertEquals("batchUpdate", root.get("operation").asText());
+        assertEquals("benchbase", root.get("database").asText());
+        assertEquals("INSERT INTO history VALUES (?, ?)", root.get("sql").asText());
+        assertEquals(2, root.get("parameterSets").size());
+        assertEquals(1, root.get("parameterSets").get(0).get(0).asInt());
+        assertEquals("2026-05-15 04:12:33.456", root.get("parameterSets").get(0).get(1).asText());
+        assertTrue(root.get("parameterSets").get(0).get(1).isTextual());
+        assertEquals(2, root.get("parameterSets").get(1).get(0).asInt());
+        assertTrue(root.get("parameterSets").get(1).get(1).isNull());
+    }
 }

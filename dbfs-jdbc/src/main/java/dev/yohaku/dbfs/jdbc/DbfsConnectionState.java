@@ -38,6 +38,8 @@ interface DbfsClient extends AutoCloseable {
 
     int executeUpdate(String sql, List<Object> parameters) throws SQLException;
 
+    int[] executeBatchUpdate(String sql, List<List<Object>> parameterSets) throws SQLException;
+
     @Override
     void close() throws SQLException;
 }
@@ -51,6 +53,11 @@ final class NoopDbfsClient implements DbfsClient {
     @Override
     public int executeUpdate(String sql, List<Object> parameters) {
         return 0;
+    }
+
+    @Override
+    public int[] executeBatchUpdate(String sql, List<List<Object>> parameterSets) {
+        return new int[parameterSets == null ? 0 : parameterSets.size()];
     }
 
     @Override

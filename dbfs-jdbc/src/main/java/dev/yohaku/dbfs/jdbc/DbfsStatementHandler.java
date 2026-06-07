@@ -391,15 +391,8 @@ final class DbfsPreparedStatementHandler extends DbfsStatementHandler {
         }
         if (name.equals("executeBatch")) {
             ensureOpen();
-            int[] updateCounts = new int[batchParameters.size()];
-            for (int index = 0; index < batchParameters.size(); index += 1) {
-                List<Object> batch = batchParameters.get(index);
-                updateCounts[index] = executeWithTrace(
-                        "UPDATE",
-                        sql,
-                        () -> SqlLiteralRenderer.render(sql, batch),
-                        () -> state.client().executeUpdate(sql, batch));
-            }
+            List<List<Object>> batches = List.copyOf(batchParameters);
+            int[] updateCounts = executePreparedBatch(batches);
             batchParameters.clear();
             setCurrentResultSet(null);
             setUpdateCount(updateCounts.length == 0 ? 0 : updateCounts[updateCounts.length - 1]);
@@ -407,14 +400,11 @@ final class DbfsPreparedStatementHandler extends DbfsStatementHandler {
         }
         if (name.equals("executeLargeBatch")) {
             ensureOpen();
-            long[] updateCounts = new long[batchParameters.size()];
-            for (int index = 0; index < batchParameters.size(); index += 1) {
-                List<Object> batch = batchParameters.get(index);
-                updateCounts[index] = executeWithTrace(
-                        "UPDATE",
-                        sql,
-                        () -> SqlLiteralRenderer.render(sql, batch),
-                        () -> state.client().executeUpdate(sql, batch));
+            List<List<Object>> batches = List.copyOf(batchParameters);
+            int[] intCounts = executePreparedBatch(batches);
+            long[] updateCounts = new long[intCounts.length];
+            for (int index = 0; index < intCounts.length; index += 1) {
+                updateCounts[index] = intCounts[index];
             }
             batchParameters.clear();
             setCurrentResultSet(null);
@@ -426,6 +416,38 @@ final class DbfsPreparedStatementHandler extends DbfsStatementHandler {
         }
 
         return super.invokeJdbc(proxy, method, args);
+    }
+
+    private int[] executePreparedBatch(List<List<Object>> batches) throws SQLException {
+        if (batches.isEmpty()) {
+            return new int[0];
+        }
+
+        if (looksLikeInsert(sql)) {
+            return executeWithTrace(
+                    "BATCH_UPDATE",
+                    sql,
+                    () -> SqlLiteralRenderer.render(sql, batches.get(0)),
+                    () -> state.client().executeBatchUpdate(sql, batches));
+        }
+
+        // Minimal TPC-C optimization: only INSERT batches use the dbfs batchUpdate
+        // protocol. Runtime transactions also call executeBatch for non-INSERT
+        // statements; keep those on the existing one-statement-at-a-time path.
+        int[] updateCounts = new int[batches.size()];
+        for (int index = 0; index < batches.size(); index += 1) {
+            List<Object> ordered = batches.get(index);
+            updateCounts[index] = executeWithTrace(
+                    "UPDATE",
+                    sql,
+                    () -> SqlLiteralRenderer.render(sql, ordered),
+                    () -> state.client().executeUpdate(sql, ordered));
+        }
+        return updateCounts;
+    }
+
+    private boolean looksLikeInsert(String sql) {
+        return sql != null && sql.trim().toLowerCase(Locale.ROOT).startsWith("insert");
     }
 
     private Object normalizeParameterValue(String methodName, Object[] args) throws SQLException {

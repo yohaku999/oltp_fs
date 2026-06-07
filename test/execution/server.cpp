@@ -104,10 +104,8 @@ void recvAllWithTimeout(int fd, void* buffer, std::size_t length) {
   }
 }
 
-nlohmann::json sendRequest(int port, const std::string& operation,
-                           const std::string& sql,
-                           const nlohmann::json& parameters,
-                           int read_timeout_ms) {
+nlohmann::json sendJsonRequest(int port, const nlohmann::json& request,
+                               int read_timeout_ms) {
   int fd = ::socket(AF_INET, SOCK_STREAM, 0);
   if (fd < 0) {
     throw std::system_error(errno, std::generic_category(), "socket failed");
@@ -134,12 +132,6 @@ nlohmann::json sendRequest(int port, const std::string& operation,
     throw std::system_error(error, std::generic_category(), "connect failed");
   }
 
-  nlohmann::json request = {
-      {"operation", operation},
-      {"database", "benchbase"},
-      {"sql", sql},
-      {"parameters", parameters},
-  };
   const std::string payload = request.dump();
   const std::uint32_t payload_size =
       htonl(static_cast<uint32_t>(payload.size()));
@@ -161,6 +153,31 @@ nlohmann::json sendRequest(int port, const std::string& operation,
   }
   ::close(fd);
   return nlohmann::json::parse(response);
+}
+
+nlohmann::json sendRequest(int port, const std::string& operation,
+                           const std::string& sql,
+                           const nlohmann::json& parameters,
+                           int read_timeout_ms) {
+  nlohmann::json request = {
+      {"operation", operation},
+      {"database", "benchbase"},
+      {"sql", sql},
+      {"parameters", parameters},
+  };
+  return sendJsonRequest(port, request, read_timeout_ms);
+}
+
+nlohmann::json sendBatchRequest(int port, const std::string& sql,
+                                const nlohmann::json& parameter_sets,
+                                int read_timeout_ms) {
+  nlohmann::json request = {
+      {"operation", "batchUpdate"},
+      {"database", "benchbase"},
+      {"sql", sql},
+      {"parameterSets", parameter_sets},
+  };
+  return sendJsonRequest(port, request, read_timeout_ms);
 }
 
 void waitForServerReady(int port) {
@@ -328,3 +345,34 @@ class ServerTest : public ::testing::Test {
 std::filesystem::path ServerTest::temp_dir_;
 
 }  // namespace
+
+TEST_F(ServerTest, BatchUpdateInsertsPreparedStatementRows) {
+  nlohmann::json create_response =
+      sendRequest(port_, "update",
+                  "CREATE TABLE batch_probe (id int NOT NULL, value varchar, "
+                  "PRIMARY KEY (id))",
+                  nlohmann::json::array(), kConcurrentStockLevelTimeoutMs);
+  ASSERT_TRUE(create_response.value("ok", false));
+
+  nlohmann::json batch_response =
+      sendBatchRequest(port_, "INSERT INTO batch_probe VALUES (?, ?)",
+                       nlohmann::json::array({nlohmann::json::array({1, "a"}),
+                                              nlohmann::json::array({2, "b"}),
+                                              nlohmann::json::array({3, "c"})}),
+                       kConcurrentStockLevelTimeoutMs);
+  ASSERT_TRUE(batch_response.value("ok", false));
+  EXPECT_EQ(3, batch_response.at("updateCount").get<int>());
+  ASSERT_TRUE(batch_response.at("updateCounts").is_array());
+  EXPECT_EQ(3, batch_response.at("updateCounts").size());
+  EXPECT_EQ(1, batch_response.at("updateCounts").at(0).get<int>());
+  EXPECT_EQ(1, batch_response.at("updateCounts").at(1).get<int>());
+  EXPECT_EQ(1, batch_response.at("updateCounts").at(2).get<int>());
+
+  nlohmann::json query_response =
+      sendRequest(port_, "query", "SELECT value FROM batch_probe WHERE id = ?",
+                  nlohmann::json::array({2}), kConcurrentStockLevelTimeoutMs);
+  ASSERT_TRUE(query_response.value("ok", false));
+  ASSERT_EQ(1, query_response.at("rows").size());
+  ASSERT_EQ(1, query_response.at("rows").at(0).size());
+  EXPECT_EQ("b", query_response.at("rows").at(0).at(0).get<std::string>());
+}

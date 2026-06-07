@@ -360,17 +360,61 @@ std::string Server::handleRequest(const std::string& request) {
   nlohmann::json req = nlohmann::json::parse(request);
 
   const std::string operation = req.value("operation", "");
-  const std::string sql =
-      renderSqlWithParameters(req.at("sql").get<std::string>(),
-                              req.value("parameters", nlohmann::json::array()));
+  const std::string sql_template = req.at("sql").get<std::string>();
   const nlohmann::json parameters =
       req.value("parameters", nlohmann::json::array());
+  const std::string sql =
+      operation == "batchUpdate"
+          ? sql_template
+          : renderSqlWithParameters(sql_template, parameters);
 
   dbfs_log::server().debug("parsed SQL: {}", sql);
   nlohmann::json res;
   res["ok"] = true;
 
-  if (operation == "query" || leadingKeyword(sql) == "SELECT") {
+  if (operation == "batchUpdate") {
+    const nlohmann::json parameter_sets =
+        req.value("parameterSets", nlohmann::json::array());
+    if (!parameter_sets.is_array()) {
+      res["ok"] = false;
+      res["sqlState"] = "22023";
+      res["errorMessage"] = "batchUpdate requires parameterSets array";
+    } else if (parameter_sets.empty()) {
+      res["updateCounts"] = nlohmann::json::array();
+      res["updateCount"] = 0;
+    } else {
+      const std::string first_sql =
+          renderSqlWithParameters(sql_template, parameter_sets.front());
+      if (leadingKeyword(first_sql) != "INSERT") {
+        res["ok"] = false;
+        res["sqlState"] = "0A000";
+        res["errorMessage"] =
+            "batchUpdate currently supports INSERT statements only";
+      } else {
+        InsertParser first_parser(first_sql);
+        Table table = Table::getTable(first_parser.extractTableName());
+        nlohmann::json update_counts = nlohmann::json::array();
+
+        // Minimal TPC-C-oriented batch path. This reduces JDBC/server round
+        // trips and metadata lookup, but does not provide transactional
+        // rollback for partial batch failures yet.
+        for (const nlohmann::json& parameter_set : parameter_sets) {
+          if (!parameter_set.is_array()) {
+            throw std::runtime_error(
+                "batchUpdate parameterSets must contain arrays");
+          }
+          const std::string rendered_sql =
+              renderSqlWithParameters(sql_template, parameter_set);
+          InsertParser parser(rendered_sql);
+          executor::insert(*pool_, table, parser, *wal_);
+          update_counts.push_back(1);
+        }
+
+        res["updateCounts"] = std::move(update_counts);
+        res["updateCount"] = parameter_sets.size();
+      }
+    }
+  } else if (operation == "query" || leadingKeyword(sql) == "SELECT") {
     SelectParser parser(sql);
     const std::vector<TypedRow> rows = executor::read(*pool_, parser);
     res["columns"] = selectColumnNames(parser);
