@@ -41,7 +41,10 @@ log "resetting compose services"
 cleanup
 
 log "starting dbfs benchmark"
-DBFS_OPERATOR_LOG_ROWS=1 \
+DBFS_LOG_LEVEL="${DBFS_LOG_LEVEL:-warn}" \
+DBFS_SERVER_LOG_LEVEL="${DBFS_SERVER_LOG_LEVEL:-warn}" \
+DBFS_INDEX_LOG_LEVEL="${DBFS_INDEX_LOG_LEVEL:-warn}" \
+DBFS_OPERATOR_LOG_ROWS="${DBFS_OPERATOR_LOG_ROWS:-0}" \
 RUN_LABEL="${RUN_LABEL}" \
   "${RUNNER}" \
   -c "${DBFS_CONFIG}" \
