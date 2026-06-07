@@ -46,10 +46,9 @@ Table::Table(std::string name, Schema schema,
       schema_(std::move(schema)),
       indexed_column_names_(std::move(indexed_column_names)),
       index_file_(index_path.has_value()
-                      ? std::optional<File>(std::in_place,
-                                            preparePath(index_path.value()))
+                      ? std::optional<File>(std::in_place, index_path.value())
                       : std::nullopt),
-      heap_file_(preparePath(defaultHeapPath(name_))) {}
+      heap_file_(defaultHeapPath(name_)) {}
 
 Table Table::initialize(const std::string& table_name, const Schema& schema) {
   if (anyBackingFileExists(table_name)) {
@@ -89,7 +88,7 @@ void Table::createIndex(const std::vector<std::string>& column_names) {
   }
 
   const std::string index_path = defaultIndexPath(name_, column_names);
-  index_file_.emplace(preparePath(index_path));
+  index_file_.emplace(index_path);
   indexed_column_names_ = column_names;
 
   try {
@@ -112,7 +111,6 @@ void Table::createIndex(const std::vector<std::string>& column_names) {
 }
 
 Table Table::getTable(const std::string& table_name) {
-
   PersistedTableMetadata metadata = TableMetadataStore::read(table_name);
   std::optional<std::string> index_path;
   std::vector<std::string> indexed_column_names;
@@ -160,14 +158,6 @@ std::string Table::defaultIndexPath(
 
 std::string Table::defaultHeapPath(const std::string& table_name) {
   return (std::filesystem::path("data") / (table_name + ".db")).string();
-}
-
-std::string Table::preparePath(const std::string& path) {
-  std::filesystem::path filesystem_path(path);
-  if (filesystem_path.has_parent_path()) {
-    std::filesystem::create_directories(filesystem_path.parent_path());
-  }
-  return filesystem_path.string();
 }
 
 void Table::removeFileIfExists(const std::string& path) {

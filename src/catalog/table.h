@@ -59,8 +59,6 @@ class Table {
 
   static std::string defaultHeapPath(const std::string& table_name);
 
-  static std::string preparePath(const std::string& path);
-
   static void removeFileIfExists(const std::string& path);
 
   static bool anyBackingFileExists(const std::string& table_name);

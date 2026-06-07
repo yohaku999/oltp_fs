@@ -4,6 +4,7 @@
 
 #include <array>
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <memory>
 #include <nlohmann/json.hpp>
@@ -25,6 +26,7 @@ class TableTest : public ::testing::Test {
   std::unique_ptr<WAL> wal_;
 
   void SetUp() override {
+    std::filesystem::create_directories("data");
     Table::removeBackingFilesFor(kTableName);
     std::remove(kWalPath);
     wal_ = WAL::initializeNew(kWalPath);
@@ -153,6 +155,21 @@ TEST_F(TableTest, InitializeCreatesReadableTableBootstrap) {
   Page index_root = Page::wrapExisting(index_page_buffer.data(), 0);
   EXPECT_TRUE(index_root.isLeaf());
   EXPECT_EQ(index_root.getPageLSN(), 0u);
+}
+
+TEST_F(TableTest, GetTableDoesNotCreateMissingDataDirectory) {
+  {
+    Schema schema(std::vector<Column>{
+        Column("id", Column::Type::Integer),
+        Column("value", Column::Type::Varchar),
+    });
+    Table table = Table::initialize(kTableName, schema);
+  }
+
+  std::filesystem::remove_all("data");
+
+  EXPECT_THROW(Table::getTable(kTableName), std::runtime_error);
+  EXPECT_FALSE(std::filesystem::exists("data"));
 }
 
 TEST_F(TableTest, InsertIndexFindRIDAndReadRowRoundTrip) {
