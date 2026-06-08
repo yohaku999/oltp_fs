@@ -157,14 +157,13 @@ TEST_F(BTreeCursorTest, InsertIntoIndexAndFindRecordLocation) {
 
 TEST_F(BTreeCursorTest, InsertManyKeysTriggersSplitAndIsSearchable) {
   const uint16_t heap_page_id = 7;
-  const uint16_t slot_id = 9;
 
   const int initial_max_page = index_file_->getMaxPageID();
 
   const int num_keys = 500;
   for (int key = 0; key < num_keys; ++key) {
     BTreeCursor::insertIntoIndex(*pool_, *index_file_, encodeIntKey(key),
-                                 heap_page_id, slot_id);
+                                 heap_page_id, static_cast<uint16_t>(key));
   }
 
   const int max_page_after = index_file_->getMaxPageID();
@@ -175,7 +174,17 @@ TEST_F(BTreeCursorTest, InsertManyKeysTriggersSplitAndIsSearchable) {
     auto rids = findIntRIDs(*pool_, *index_file_, key);
     ASSERT_FALSE(rids.empty()) << "missing index entry for key=" << key;
     EXPECT_EQ(rids.front().heap_page_id, heap_page_id);
-    EXPECT_EQ(rids.front().slot_id, slot_id);
+    EXPECT_EQ(rids.front().slot_id, key);
+  }
+
+  std::vector<IndexEntry> entries = BTreeCursor::findEntries(
+      *pool_, *index_file_, boundaries("", true, "", true), false);
+  ASSERT_EQ(entries.size(), static_cast<std::size_t>(num_keys));
+  for (int key = 0; key < num_keys; ++key) {
+    EXPECT_EQ(entries[static_cast<std::size_t>(key)].key, encodeIntKey(key));
+    EXPECT_EQ(entries[static_cast<std::size_t>(key)].rid.heap_page_id,
+              heap_page_id);
+    EXPECT_EQ(entries[static_cast<std::size_t>(key)].rid.slot_id, key);
   }
 }
 

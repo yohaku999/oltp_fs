@@ -107,22 +107,22 @@ TEST(PageTest, TransferCellsToCompactsSourcePage) {
       dst_leaf,
       LeafCell::getKey(reinterpret_cast<char*>(separate_serialized.data())));
 
-  EXPECT_TRUE(dst_leaf.hasKey(encodeIntKey(1)));
-  EXPECT_TRUE(dst_leaf.hasKey(encodeIntKey(2)));
-  EXPECT_TRUE(dst_leaf.hasKey(encodeIntKey(3)));
-  EXPECT_FALSE(dst_leaf.hasKey(encodeIntKey(4)));
+  EXPECT_FALSE(dst_leaf.hasKey(encodeIntKey(1)));
+  EXPECT_FALSE(dst_leaf.hasKey(encodeIntKey(2)));
+  EXPECT_FALSE(dst_leaf.hasKey(encodeIntKey(3)));
+  EXPECT_TRUE(dst_leaf.hasKey(encodeIntKey(4)));
 
-  EXPECT_FALSE(src_leaf.hasKey(encodeIntKey(1)));
-  EXPECT_FALSE(src_leaf.hasKey(encodeIntKey(2)));
-  EXPECT_FALSE(src_leaf.hasKey(encodeIntKey(3)));
-  EXPECT_TRUE(src_leaf.hasKey(encodeIntKey(4)));
+  EXPECT_TRUE(src_leaf.hasKey(encodeIntKey(1)));
+  EXPECT_TRUE(src_leaf.hasKey(encodeIntKey(2)));
+  EXPECT_TRUE(src_leaf.hasKey(encodeIntKey(3)));
+  EXPECT_FALSE(src_leaf.hasKey(encodeIntKey(4)));
 
   // Layout: byte 0 = node type, byte 1 = slot count.
   uint8_t src_slot_count = static_cast<uint8_t>(src_data[1]);
-  EXPECT_EQ(1, src_slot_count);
+  EXPECT_EQ(3, src_slot_count);
 
   uint8_t dst_slot_count = static_cast<uint8_t>(dst_data[1]);
-  EXPECT_EQ(3, dst_slot_count);
+  EXPECT_EQ(1, dst_slot_count);
 
   EXPECT_TRUE(src_page->isDirty());
   EXPECT_TRUE(dst_page->isDirty());
@@ -218,6 +218,12 @@ TEST(PageTest, InsertIntermediatePageAndFind) {
   uint16_t child_page_for_largest_key =
       internal.findChildPage(encodeIntKey(entries[1].key + 1));
   EXPECT_EQ(right_most_child_page_id, child_page_for_largest_key);
+
+  ASSERT_TRUE(internal.replaceChildPageId(entries[2].page_id, 77));
+  EXPECT_EQ(77, internal.findChildPage(encodeIntKey(entries[2].key - 1)));
+
+  ASSERT_TRUE(internal.replaceChildPageId(right_most_child_page_id, 88));
+  EXPECT_EQ(88, internal.findChildPage(encodeIntKey(entries[1].key + 1)));
 }
 
 TEST(PageTest, InvalidateSlotSetsFlag) {

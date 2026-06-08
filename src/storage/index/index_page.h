@@ -43,6 +43,7 @@ class LeafIndexPage {
   }
   void setRightSiblingPageId(uint16_t page_id) {
     this->page_.setRightMostChildPageId(page_id);
+    this->page_.markDirty();
   }
 
  private:
@@ -63,6 +64,7 @@ class InternalIndexPage {
   IntermediateCell cellAt(int slot_id) const;
   uint16_t rightMostChildPageId() const;
   uint16_t findChildPage(const std::string& key);
+  bool replaceChildPageId(uint16_t old_page_id, uint16_t new_page_id);
   void compact();
   void transferAndCompactTo(InternalIndexPage& dst,
                             const std::string& separate_key);

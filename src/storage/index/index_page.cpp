@@ -108,7 +108,7 @@ void LeafIndexPage::transferAndCompactTo(LeafIndexPage& dst,
     }
 
     const std::string cell_key = LeafCell::getKey(cell_data);
-    if (index_key::compare(cell_key, separate_key) <= 0) {
+    if (index_key::compare(cell_key, separate_key) > 0) {
       dst.page_.insertCell(LeafCell::decodeCell(cell_data));
       page_.invalidateSlot(idx);
     }
@@ -198,6 +198,36 @@ uint16_t InternalIndexPage::findChildPage(const std::string& key) {
       "InternalIndexPage::findChildPage: Going to right most child {}.",
       rightMostChildPageId());
   return rightMostChildPageId();
+}
+
+/**
+ * Replace Cell which points to old_page_id from new_page_id
+ */
+bool InternalIndexPage::replaceChildPageId(uint16_t old_page_id,
+                                           uint16_t new_page_id) {
+  if (page_.rightMostChildPageId() == old_page_id) {
+    page_.setRightMostChildPageId(new_page_id);
+    page_.markDirty();
+    return true;
+  }
+
+  for (int idx = 0; idx < page_.getSlotCount(); ++idx) {
+    char* cell_data = page_.data() + page_.getCellOffsetOnXthPointer(idx);
+    if (!Cell::isValid(cell_data)) {
+      continue;
+    }
+
+    char* page_id_data = cell_data + Cell::FLAG_FIELD_SIZE + sizeof(uint16_t);
+    if (readValue<uint16_t>(page_id_data) != old_page_id) {
+      continue;
+    }
+
+    std::memcpy(page_id_data, &new_page_id, sizeof(uint16_t));
+    page_.markDirty();
+    return true;
+  }
+
+  return false;
 }
 
 void InternalIndexPage::compact() {

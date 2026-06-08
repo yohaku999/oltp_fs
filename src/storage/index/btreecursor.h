@@ -6,9 +6,8 @@
 #include <vector>
 
 #include "storage/buffer/bufferpool.h"
+#include "storage/index/intermediate_cell.h"
 #include "storage/index/rid.h"
-
-class IntermediateCell;
 
 /**
  * BTreeCursor is an arbitration layer that coordinates BufferPool and File to
@@ -26,22 +25,26 @@ class BTreeCursor {
     std::string composite_key;
     bool is_inclusive;
   };
+  struct SplitResult {
+    IntermediateCell separator_cell;
+    uint16_t right_page_id;
+  };
   static std::vector<IndexEntry> findEntries(
       BufferPool& pool, File& indexFile,
       std::pair<Boundary, Boundary> boundaries, bool do_invalidate);
   static int findLeafPageID(BufferPool& pool, File& indexFile,
                             const std::string& key);
-  static IntermediateCell splitPage(BufferPool& pool, File& indexFile,
-                                    Page* old_page, Page* parent_page);
+  static SplitResult splitPage(BufferPool& pool, File& indexFile,
+                               Page* old_page, Page* parent_page);
   static void insertIntoIndex(BufferPool& pool, File& indexFile,
                               const std::string& key, uint16_t heap_page_id,
                               uint16_t slot_id);
-  static IntermediateCell splitLeafPage(BufferPool& pool, File& index_file,
-                                        Page& old_page,
-                                        const std::string& separate_key);
-  static IntermediateCell splitInternalPage(BufferPool& pool, File& index_file,
-                                            Page& old_page,
-                                            const std::string& separate_key);
+  static SplitResult splitLeafPage(BufferPool& pool, File& index_file,
+                                   Page& old_page,
+                                   const std::string& separate_key);
+  static SplitResult splitInternalPage(BufferPool& pool, File& index_file,
+                                       Page& old_page,
+                                       const std::string& separate_key);
   static Page* ensureParentPage(BufferPool& pool, File& index_file,
                                 Page& old_page);
   static bool isInsideBoundary(std::string_view key, Boundary boundary,
