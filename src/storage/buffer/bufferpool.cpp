@@ -2,6 +2,7 @@
 
 #include <spdlog/spdlog.h>
 
+#include <cstdlib>
 #include <fstream>
 #include <string>
 
@@ -129,6 +130,7 @@ void BufferPool::evictOnePage() {
   frame_directory_.unregisterResidentPage(victim_frame_id);
   dbfs_log::storage().debug("Evicted page ID {} from frame ID {}",
                             evict_page_id, victim_frame_id);
+  maybeLogBufferPoolStats();
 };
 
 void BufferPool::zeroOutFrame(int frame_id) {
@@ -163,4 +165,31 @@ std::pair<int, char*> BufferPool::acquireFrame(bool zero_frame) {
   char* frame_buffer =
       static_cast<char*>(buffer_) + frame_id * BufferPool::FRAME_SIZE_BYTE;
   return {frame_id, frame_buffer};
+}
+
+void BufferPool::maybeLogBufferPoolStats() const {
+  std::uint64_t log_interval = 0;
+  const char* log_interval_env =
+      std::getenv("DBFS_BUFFER_POOL_LOG_STATS_EVERY");
+  if (log_interval_env != nullptr && *log_interval_env != '\0') {
+    try {
+      log_interval = std::stoull(log_interval_env);
+    } catch (...) {
+      log_interval = 0;
+    }
+  }
+
+  if (log_interval == 0 || stats_.evictions == 0 ||
+      stats_.evictions % log_interval != 0) {
+    return;
+  }
+
+  dbfs_log::storage().info(
+      "buffer_pool_stats pin_page_calls={} resident_hits={} misses={} "
+      "evictions={} dirty_evictions={} reads={} writes={} find_victim_calls={} "
+      "zero_outs={}",
+      stats_.pin_page_calls, stats_.resident_hits, stats_.misses,
+      stats_.evictions, stats_.dirty_evictions,
+      stats_.read_page_into_buffer_calls, stats_.write_page_from_buffer_calls,
+      stats_.find_victim_frame_calls, stats_.zero_out_frame_calls);
 }

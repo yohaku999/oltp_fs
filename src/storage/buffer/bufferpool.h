@@ -44,6 +44,7 @@ class BufferPool {
   BufferPoolStats stats_;
   void evictOnePage();
   void zeroOutFrame(int frame_id);
+  void maybeLogBufferPoolStats() const;
   // Design Intent:
   // BufferPool and FrameDirectory are tightly coupled (1:1, same lifetime).
   // FrameDirectory is held by value (not pointer) because:
