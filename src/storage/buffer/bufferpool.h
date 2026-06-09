@@ -18,8 +18,6 @@ struct BufferPoolStats {
   std::uint64_t evictions = 0;
   std::uint64_t dirty_evictions = 0;
   std::uint64_t read_page_into_buffer_calls = 0;
-  std::uint64_t write_page_from_buffer_calls = 0;
-  std::uint64_t find_victim_frame_calls = 0;
   std::uint64_t zero_out_frame_calls = 0;
 };
 

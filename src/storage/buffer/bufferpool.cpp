@@ -100,7 +100,6 @@ bool BufferPool::isPageFlushable(const Page& page) const {
 }
 
 void BufferPool::evictOnePage() {
-  stats_.find_victim_frame_calls++;
   auto victim_opt = frame_directory_.findVictimFrame();
   if (!victim_opt.has_value()) {
     // TODO: we should sleep or kill queries.
@@ -108,7 +107,6 @@ void BufferPool::evictOnePage() {
         "No victim frame found for eviction. All frames are pinned.");
   }
   int victim_frame_id = victim_opt.value();
-  stats_.evictions++;
   auto& victim_frame = frame_directory_.getFrame(victim_frame_id);
   int evict_page_id = victim_frame.page_id;
   if (victim_frame.page->isDirty()) {
@@ -124,9 +122,9 @@ void BufferPool::evictOnePage() {
       }
     }
     File file(victim_frame.file_path);
-    stats_.write_page_from_buffer_calls++;
     file.writePageFromBuffer(evict_page_id, victim_frame.page->data());
   }
+  stats_.evictions++;
   frame_directory_.unregisterResidentPage(victim_frame_id);
   dbfs_log::storage().debug("Evicted page ID {} from frame ID {}",
                             evict_page_id, victim_frame_id);
@@ -186,10 +184,8 @@ void BufferPool::maybeLogBufferPoolStats() const {
 
   dbfs_log::storage().info(
       "buffer_pool_stats pin_page_calls={} resident_hits={} misses={} "
-      "evictions={} dirty_evictions={} reads={} writes={} find_victim_calls={} "
-      "zero_outs={}",
+      "evictions={} dirty_evictions={} reads={} zero_outs={}",
       stats_.pin_page_calls, stats_.resident_hits, stats_.misses,
       stats_.evictions, stats_.dirty_evictions,
-      stats_.read_page_into_buffer_calls, stats_.write_page_from_buffer_calls,
-      stats_.find_victim_frame_calls, stats_.zero_out_frame_calls);
+      stats_.read_page_into_buffer_calls, stats_.zero_out_frame_calls);
 }
