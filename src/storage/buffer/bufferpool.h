@@ -1,4 +1,5 @@
 #pragma once
+#include <chrono>
 #include <cstdint>
 #include <map>
 #include <set>
@@ -40,9 +41,11 @@ class BufferPool {
   void* buffer_;
   WAL& wal_;
   BufferPoolStats stats_;
+  std::uint64_t buffer_pool_stats_log_interval_ms_;
+  std::chrono::steady_clock::time_point last_buffer_pool_stats_log_at_;
   void evictOnePage();
   void zeroOutFrame(int frame_id);
-  void maybeLogBufferPoolStats() const;
+  void logBufferPoolStatsIfDue();
   // Design Intent:
   // BufferPool and FrameDirectory are tightly coupled (1:1, same lifetime).
   // FrameDirectory is held by value (not pointer) because:

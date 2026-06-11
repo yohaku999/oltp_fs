@@ -2,6 +2,7 @@
 
 #include <spdlog/spdlog.h>
 
+#include <chrono>
 #include <cstdlib>
 #include <fstream>
 #include <string>
@@ -12,7 +13,20 @@
 #include "storage/wal/wal.h"
 
 BufferPool::BufferPool(WAL& wal)
-    : buffer_(operator new(BUFFER_SIZE_BYTE)), wal_(wal) {};
+    : buffer_(operator new(BUFFER_SIZE_BYTE)),
+      wal_(wal),
+      buffer_pool_stats_log_interval_ms_(0),
+      last_buffer_pool_stats_log_at_() {
+  const char* log_interval_env =
+      std::getenv("DBFS_BUFFER_POOL_LOG_STATS_EVERY_MS");
+  if (log_interval_env != nullptr && *log_interval_env != '\0') {
+    try {
+      buffer_pool_stats_log_interval_ms_ = std::stoull(log_interval_env);
+    } catch (...) {
+      buffer_pool_stats_log_interval_ms_ = 0;
+    }
+  }
+};
 
 uint16_t BufferPool::createPage(PageKind kind, File& file,
                                 uint16_t right_most_child_page_id) {
@@ -37,6 +51,7 @@ uint16_t BufferPool::createPage(PageKind kind, File& file,
   }
   dbfs_log::storage().debug("Created new page ID {} as {} page in frame ID {}",
                             page_id, kind_label, frame_id);
+  logBufferPoolStatsIfDue();
   return page_id;
 }
 
@@ -57,7 +72,9 @@ Page* BufferPool::pinPage(int page_id, File& file) {
     stats_.resident_hits++;
     int frame_id = resident_frame_id.value();
     frame_directory_.pin(frame_id);
-    return frame_directory_.getFrame(frame_id).page.get();
+    Page* resident_page = frame_directory_.getFrame(frame_id).page.get();
+    logBufferPoolStatsIfDue();
+    return resident_page;
   } else {
     stats_.misses++;
     auto [frame_id, frame_buffer] = acquireFrame(false);
@@ -71,6 +88,7 @@ Page* BufferPool::pinPage(int page_id, File& file) {
     frame_directory_.pin(frame_id);
     dbfs_log::storage().debug("Loaded page ID {} into frame ID {}", page_id,
                               frame_id);
+    logBufferPoolStatsIfDue();
     return loaded_page;
   }
 };
@@ -128,7 +146,6 @@ void BufferPool::evictOnePage() {
   frame_directory_.unregisterResidentPage(victim_frame_id);
   dbfs_log::storage().debug("Evicted page ID {} from frame ID {}",
                             evict_page_id, victim_frame_id);
-  maybeLogBufferPoolStats();
 };
 
 void BufferPool::zeroOutFrame(int frame_id) {
@@ -165,22 +182,19 @@ std::pair<int, char*> BufferPool::acquireFrame(bool zero_frame) {
   return {frame_id, frame_buffer};
 }
 
-void BufferPool::maybeLogBufferPoolStats() const {
-  std::uint64_t log_interval = 0;
-  const char* log_interval_env =
-      std::getenv("DBFS_BUFFER_POOL_LOG_STATS_EVERY");
-  if (log_interval_env != nullptr && *log_interval_env != '\0') {
-    try {
-      log_interval = std::stoull(log_interval_env);
-    } catch (...) {
-      log_interval = 0;
-    }
-  }
-
-  if (log_interval == 0 || stats_.evictions == 0 ||
-      stats_.evictions % log_interval != 0) {
+void BufferPool::logBufferPoolStatsIfDue() {
+  if (buffer_pool_stats_log_interval_ms_ == 0) {
     return;
   }
+
+  auto now = std::chrono::steady_clock::now();
+  if (last_buffer_pool_stats_log_at_ !=
+          std::chrono::steady_clock::time_point() &&
+      now - last_buffer_pool_stats_log_at_ <
+          std::chrono::milliseconds(buffer_pool_stats_log_interval_ms_)) {
+    return;
+  }
+  last_buffer_pool_stats_log_at_ = now;
 
   dbfs_log::storage().info(
       "buffer_pool_stats pin_page_calls={} resident_hits={} misses={} "
