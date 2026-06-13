@@ -1,6 +1,7 @@
 #pragma once
 #include <chrono>
 #include <cstdint>
+#include <fstream>
 #include <map>
 #include <set>
 #include <string>
@@ -42,10 +43,21 @@ class BufferPool {
   WAL& wal_;
   BufferPoolStats stats_;
   std::uint64_t buffer_pool_stats_log_interval_ms_;
+  bool buffer_pool_event_log_enabled_;
+  bool buffer_pool_event_file_log_enabled_;
+  std::ofstream buffer_pool_event_log_file_;
+  std::uint64_t buffer_pool_event_id_;
   std::chrono::steady_clock::time_point last_buffer_pool_stats_log_at_;
   void evictOnePage();
   void zeroOutFrame(int frame_id);
   void logBufferPoolStatsIfDue();
+  void logBufferPoolPinEvent(const File& file, int page_id, int frame_id,
+                             const Page& page, bool hit);
+  void logBufferPoolReadEvent(const File& file, int page_id, int frame_id,
+                              const Page& page);
+  void logBufferPoolEvictEvent(const std::string& file_path, int page_id,
+                               int frame_id, const Page& page, bool dirty);
+  void writeBufferPoolEvent(const std::string& event);
   // Design Intent:
   // BufferPool and FrameDirectory are tightly coupled (1:1, same lifetime).
   // FrameDirectory is held by value (not pointer) because:

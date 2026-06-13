@@ -121,6 +121,56 @@ std::optional<int> FrameDirectory::findVictimFrame() {
   return std::nullopt;
 }
 
+FrameDirectoryStats FrameDirectory::collectStats() const {
+  FrameDirectoryStats stats;
+
+  for (const auto& frame : frames_) {
+    if (frame.page == nullptr) {
+      stats.frames_free++;
+      continue;
+    }
+
+    stats.frames_resident++;
+    if (frame.pin_count > 0) {
+      stats.frames_pinned++;
+    } else {
+      stats.frames_evictable++;
+    }
+
+    switch (frame.page->kind()) {
+      case PageKind::Heap:
+        stats.resident_heap_pages++;
+        if (frame.pin_count > 0) {
+          stats.pinned_heap_pages++;
+        }
+        if (frame.page->isDirty()) {
+          stats.dirty_heap_pages++;
+        }
+        break;
+      case PageKind::LeafIndex:
+        stats.resident_leaf_index_pages++;
+        if (frame.pin_count > 0) {
+          stats.pinned_leaf_index_pages++;
+        }
+        if (frame.page->isDirty()) {
+          stats.dirty_leaf_index_pages++;
+        }
+        break;
+      case PageKind::InternalIndex:
+        stats.resident_internal_index_pages++;
+        if (frame.pin_count > 0) {
+          stats.pinned_internal_index_pages++;
+        }
+        if (frame.page->isDirty()) {
+          stats.dirty_internal_index_pages++;
+        }
+        break;
+    }
+  }
+
+  return stats;
+}
+
 const FrameDirectory::Frame& FrameDirectory::getFrame(int frame_id) const {
   return frames_[frame_id];
 }

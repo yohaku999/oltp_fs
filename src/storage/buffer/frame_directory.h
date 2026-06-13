@@ -9,6 +9,25 @@
 
 #include "storage/page/page.h"
 
+struct FrameDirectoryStats {
+  std::uint64_t frames_free = 0;
+  std::uint64_t frames_resident = 0;
+  std::uint64_t frames_pinned = 0;
+  std::uint64_t frames_evictable = 0;
+
+  std::uint64_t resident_heap_pages = 0;
+  std::uint64_t resident_leaf_index_pages = 0;
+  std::uint64_t resident_internal_index_pages = 0;
+
+  std::uint64_t pinned_heap_pages = 0;
+  std::uint64_t pinned_leaf_index_pages = 0;
+  std::uint64_t pinned_internal_index_pages = 0;
+
+  std::uint64_t dirty_heap_pages = 0;
+  std::uint64_t dirty_leaf_index_pages = 0;
+  std::uint64_t dirty_internal_index_pages = 0;
+};
+
 class FrameDirectory {
  public:
   static constexpr size_t MAX_FRAME_COUNT = 16384;
@@ -53,6 +72,7 @@ class FrameDirectory {
   bool isPinned(int frame_id) const;
 
   std::optional<int> findVictimFrame();
+  FrameDirectoryStats collectStats() const;
 
   const Frame& getFrame(int frame_id) const;
   Frame& getFrame(int frame_id);

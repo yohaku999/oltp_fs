@@ -14,7 +14,8 @@ enum class PageKind { Heap, LeafIndex, InternalIndex };
  * The structure of page is as follows:
  * | header (256 bytes) | cell pointer array (2 bytes per cell) | cells
  * (variable size) | The header contains the following information in order:
- * - node type flag (1 byte): 0 for intermediate page, 1 for leaf page.
+ * - node type flag (1 byte): 0 for internal index page, 1 for leaf index
+ *   page, 2 for heap page.
  * - slot count (2 bytes): the number of cells in the page.
  * - slot directory offset (2 bytes): the offset of the start of the cell area.
  * - intermediate pages : right-most child pointer (2 bytes): valid
@@ -61,13 +62,14 @@ class Page {
   static Page wrapExisting(char* page_buffer, uint16_t page_id);
   void markDirty() { is_dirty_ = true; };
   void clearDirty() { is_dirty_ = false; };
-  bool isDirty() { return is_dirty_; };
+  bool isDirty() const { return is_dirty_; };
   int getPageID() const { return page_id_; };
   int getParentPageID() const { return parent_page_id_; };
   // parent pageID will be collected on traversal (at least) for now.
   void setParentPageID(int parent_page_id) {
     parent_page_id_ = parent_page_id;
   };
+  PageKind kind() const;
   bool isLeaf() const;
   char* getSplitKeyCellStart();
   static constexpr size_t PAGE_SIZE_BYTE = 4096;

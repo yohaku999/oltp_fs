@@ -398,3 +398,28 @@ TEST(PageTest, NewPageInitializesPageLSNToZero) {
   EXPECT_EQ(page->getPageLSN(), 0u);
   EXPECT_TRUE(page->isDirty());
 }
+TEST(PageTest, KindRoundTripsForAllPageKinds) {
+  std::array<char, Page::PAGE_SIZE_BYTE> heap_data{};
+  std::array<char, Page::PAGE_SIZE_BYTE> leaf_data{};
+  std::array<char, Page::PAGE_SIZE_BYTE> internal_data{};
+
+  Page heap = Page::initializeNew(heap_data.data(), PageKind::Heap, 0, 1);
+  Page leaf = Page::initializeNew(leaf_data.data(), PageKind::LeafIndex, 0, 2);
+  Page internal =
+      Page::initializeNew(internal_data.data(), PageKind::InternalIndex, 0, 3);
+
+  EXPECT_EQ(heap.kind(), PageKind::Heap);
+  EXPECT_EQ(leaf.kind(), PageKind::LeafIndex);
+  EXPECT_EQ(internal.kind(), PageKind::InternalIndex);
+  EXPECT_TRUE(heap.isLeaf());
+  EXPECT_TRUE(leaf.isLeaf());
+  EXPECT_FALSE(internal.isLeaf());
+
+  Page wrapped_heap = Page::wrapExisting(heap_data.data(), 1);
+  Page wrapped_leaf = Page::wrapExisting(leaf_data.data(), 2);
+  Page wrapped_internal = Page::wrapExisting(internal_data.data(), 3);
+
+  EXPECT_EQ(wrapped_heap.kind(), PageKind::Heap);
+  EXPECT_EQ(wrapped_leaf.kind(), PageKind::LeafIndex);
+  EXPECT_EQ(wrapped_internal.kind(), PageKind::InternalIndex);
+}

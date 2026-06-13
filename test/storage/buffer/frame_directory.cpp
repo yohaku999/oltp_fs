@@ -131,6 +131,57 @@ TEST_F(FrameDirectoryTest, CheckOccupiedStatusBeforeAndAfterRegistration) {
   EXPECT_TRUE(directory.getFrame(frame_id).page == nullptr);
 }
 
+TEST_F(FrameDirectoryTest, CollectStatsCountsKindsPinnedAndDirtyPages) {
+  std::array<char, 4096> heap_buffer{};
+  std::array<char, 4096> leaf_buffer{};
+  std::array<char, 4096> internal_buffer{};
+
+  auto heap_page = std::make_unique<Page>(
+      Page::initializeNew(heap_buffer.data(), PageKind::Heap, 0, 1));
+  auto leaf_page = std::make_unique<Page>(
+      Page::initializeNew(leaf_buffer.data(), PageKind::LeafIndex, 0, 2));
+  auto internal_page = std::make_unique<Page>(Page::initializeNew(
+      internal_buffer.data(), PageKind::InternalIndex, 0, 3));
+
+  leaf_page->clearDirty();
+  internal_page->clearDirty();
+
+  auto heap_frame = directory.reserveFreeFrame();
+  auto leaf_frame = directory.reserveFreeFrame();
+  auto internal_frame = directory.reserveFreeFrame();
+  ASSERT_TRUE(heap_frame.has_value());
+  ASSERT_TRUE(leaf_frame.has_value());
+  ASSERT_TRUE(internal_frame.has_value());
+
+  directory.registerResidentPage(heap_frame.value(), 1, "heap.db",
+                                 std::move(heap_page));
+  directory.registerResidentPage(leaf_frame.value(), 2, "index.db",
+                                 std::move(leaf_page));
+  directory.registerResidentPage(internal_frame.value(), 3, "index.db",
+                                 std::move(internal_page));
+  directory.pin(heap_frame.value());
+  directory.pin(internal_frame.value());
+
+  const auto stats = directory.collectStats();
+
+  EXPECT_EQ(stats.frames_resident, 3u);
+  EXPECT_EQ(stats.frames_pinned, 2u);
+  EXPECT_EQ(stats.frames_evictable, 1u);
+  EXPECT_EQ(stats.frames_free, FrameDirectory::MAX_FRAME_COUNT - 3);
+
+  EXPECT_EQ(stats.resident_heap_pages, 1u);
+  EXPECT_EQ(stats.resident_leaf_index_pages, 1u);
+  EXPECT_EQ(stats.resident_internal_index_pages, 1u);
+
+  EXPECT_EQ(stats.pinned_heap_pages, 1u);
+  EXPECT_EQ(stats.pinned_leaf_index_pages, 0u);
+  EXPECT_EQ(stats.pinned_internal_index_pages, 1u);
+
+  EXPECT_EQ(stats.dirty_heap_pages, 1u);
+  EXPECT_EQ(stats.dirty_leaf_index_pages, 0u);
+  EXPECT_EQ(stats.dirty_internal_index_pages, 0u);
+}
+
 // Eviction-related frame reuse behavior.
 TEST_F(FrameDirectoryTest, MultipleRegisterUnregisterCycles) {
   // Repeated full-capacity churn should return every frame back to the free

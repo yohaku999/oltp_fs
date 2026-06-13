@@ -28,10 +28,10 @@ Page Page::wrapExisting(char* page_buffer, uint16_t page_id) {
 
 Page::Page(char* page_buffer, PageKind kind, uint16_t right_most_child_page_id,
            uint16_t page_id)
-    : page_buffer_(page_buffer),
+    : is_dirty_(false),
       page_id_(page_id),
       parent_page_id_(-1),
-      is_dirty_(false) {
+      page_buffer_(page_buffer) {
   updateNodeTypeFlag(kind);
   updateSlotCount(0);
   updateSlotDirectoryOffset(Page::PAGE_SIZE_BYTE);
@@ -48,10 +48,10 @@ Page::Page(char* page_buffer, PageKind kind, uint16_t right_most_child_page_id,
 }
 
 Page::Page(char* page_buffer, uint16_t page_id)
-    : page_buffer_(page_buffer),
+    : is_dirty_(false),
       page_id_(page_id),
       parent_page_id_(-1),
-      is_dirty_(false) {}
+      page_buffer_(page_buffer) {}
 
 /**
  * Attempts to append a serialized cell to this page.
@@ -231,6 +231,8 @@ void Page::updateNodeTypeFlag(PageKind kind) {
   uint8_t flag = 0;
   switch (kind) {
     case PageKind::Heap:
+      flag = 2;
+      break;
     case PageKind::LeafIndex:
       flag = 1;
       break;
@@ -241,8 +243,23 @@ void Page::updateNodeTypeFlag(PageKind kind) {
   std::memcpy(page_buffer_ + NODE_TYPE_FLAG_OFFSET, &flag, sizeof(uint8_t));
 }
 
+PageKind Page::kind() const {
+  const uint8_t flag = readValue<uint8_t>(page_buffer_ + NODE_TYPE_FLAG_OFFSET);
+  switch (flag) {
+    case 0:
+      return PageKind::InternalIndex;
+    case 1:
+      return PageKind::LeafIndex;
+    case 2:
+      return PageKind::Heap;
+    default:
+      throw std::runtime_error("Unknown page kind flag: " +
+                               std::to_string(flag));
+  }
+}
+
 bool Page::isLeaf() const {
-  return readValue<uint8_t>(page_buffer_ + NODE_TYPE_FLAG_OFFSET) == 1;
+  return kind() != PageKind::InternalIndex;
 }
 
 uint16_t Page::slotCount() const {
