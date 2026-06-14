@@ -1,5 +1,7 @@
 # Analysis
 
+**Baseline commit:** [`6a83eb9`](../../commit/6a83eb9945fca23bf215a3fb5c2b2c63b0dca7f8)
+
 ## Frame Analysis
 
 <img src="./images/2026-06-bufferpool_frame_stats.png" width="1000">
