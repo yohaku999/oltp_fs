@@ -1,5 +1,6 @@
 # Analysis
 
+This policy was initially implemented as a simple heuristic to avoid dirty write-backs.
 **Baseline commit:** [`6a83eb9`](../../commit/6a83eb9945fca23bf215a3fb5c2b2c63b0dca7f8)
 
 ## Frame Analysis
