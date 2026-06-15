@@ -150,6 +150,9 @@ target_link_libraries(table_test dbfs_src GTest::gtest_main)
 add_executable(frame_directory_test test/storage/buffer/frame_directory.cpp)
 target_link_libraries(frame_directory_test dbfs_src GTest::gtest_main)
 
+add_executable(arc_replacement_test test/storage/buffer/arc_replacement.cpp)
+target_link_libraries(arc_replacement_test dbfs_src GTest::gtest_main)
+
 add_executable(wal_body_test test/storage/wal/wal_body.cpp)
 target_link_libraries(wal_body_test dbfs_src GTest::gtest_main)
 
@@ -172,6 +175,7 @@ add_test(NAME FileTest COMMAND file_test)
 add_test(NAME BTreeCursorTest COMMAND btreecursor_test)
 add_test(NAME IndexKeyTest COMMAND index_key_test)
 add_test(NAME FrameDirectoryTest COMMAND frame_directory_test)
+add_test(NAME ARCReplacementTest COMMAND arc_replacement_test)
 add_test(NAME WALBodyTest COMMAND wal_body_test)
 add_test(NAME WALRecordTest COMMAND wal_record_test)
 add_test(NAME LSNAllocatorTest COMMAND lsn_allocator_test)
