@@ -173,6 +173,8 @@ class ARCReplacement {
         auto it = entries_.find(key);
         if (it != entries_.end()) {
             ArcEntry& entry = it->second;
+            // A hit in B1 indicates that recency should be favored. If |B1| is small relative to |B2|, then the recency component is demonstrating strong effectiveness despite its limited allocation.
+            // Consequently, ARC increases p by a larger amount, shifting cache capacity from T2 toward T1.
             if(entry.list == ArcList::B1){
                 const int adjustment = std::max(
                     1, static_cast<int>(b2_.size() / b1_.size()));

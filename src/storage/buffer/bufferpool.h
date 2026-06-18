@@ -3,10 +3,12 @@
 #include <cstdint>
 #include <fstream>
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
 #include <utility>
 
+#include "storage/buffer/arc_replacement.h"
 #include "frame_directory.h"
 #include "storage/disk/file.h"
 #include "storage/page/page.h"
@@ -48,7 +50,7 @@ class BufferPool {
   std::ofstream buffer_pool_event_log_file_;
   std::uint64_t buffer_pool_event_id_;
   std::chrono::steady_clock::time_point last_buffer_pool_stats_log_at_;
-  void evictOnePage();
+  void evictFrame(int frame_id);
   void zeroOutFrame(int frame_id);
   void logBufferPoolStatsIfDue();
   void logBufferPoolPinEvent(const File& file, int page_id, int frame_id,
@@ -67,6 +69,9 @@ class BufferPool {
   // Future: Eviction strategies (FIFO/LRU/Clock) will be injected into
   // FrameDirectory via Strategy pattern
   FrameDirectory frame_directory_;
-  std::pair<int, char*> acquireFrame(bool zero_frame);
-  bool isPageFlushable(const Page& page) const;
+  ARCReplacement replacement_policy;
+  std::pair<int, char*> acquireFrame(
+      bool zero_frame, std::optional<PageKey> page_key = std::nullopt);
+  bool isPageLSNDurable(const Page& page) const;
+  void flushPage(int page_id, const std::string& file_path, Page& page);
 };

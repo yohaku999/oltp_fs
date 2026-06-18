@@ -81,46 +81,6 @@ bool FrameDirectory::isEvictable(int frame_id) const {
   return frames_[frame_id].pin_count == 0 && frames_[frame_id].page != nullptr;
 }
 
-std::optional<int> FrameDirectory::findVictimFrame() {
-  std::optional<int> first_dirty_victim;
-
-  for (size_t scanned = 0; scanned < MAX_FRAME_COUNT; ++scanned) {
-    const int frame_id =
-        static_cast<int>((next_victim_frame_ + scanned) % MAX_FRAME_COUNT);
-    if (!isEvictable(frame_id)) {
-      continue;
-    }
-
-    if (frames_[frame_id].page->isDirty()) {
-      if (!first_dirty_victim.has_value()) {
-        first_dirty_victim = frame_id;
-      }
-      continue;
-    }
-
-    next_victim_frame_ = (static_cast<size_t>(frame_id) + 1) % MAX_FRAME_COUNT;
-    dbfs_log::storage().debug("Found clean victim frame {}", frame_id);
-    return frame_id;
-  }
-
-  if (first_dirty_victim.has_value()) {
-    const int frame_id = first_dirty_victim.value();
-    next_victim_frame_ = (static_cast<size_t>(frame_id) + 1) % MAX_FRAME_COUNT;
-    dbfs_log::storage().debug("Found dirty victim frame {}", frame_id);
-    return frame_id;
-  }
-
-  // Dump frame directory state to help debugging why no victim exists
-  std::string dump = "FrameDirectory dump: ";
-  for (size_t i = 0; i < MAX_FRAME_COUNT; ++i) {
-    dump += fmt::format("[id={} pin={} has_page={}] ", i, frames_[i].pin_count,
-                        frames_[i].page != nullptr);
-  }
-  dbfs_log::storage().warn(
-      "No evictable frames found (all pinned or empty). {}", dump);
-  return std::nullopt;
-}
-
 FrameDirectoryStats FrameDirectory::collectStats() const {
   FrameDirectoryStats stats;
 

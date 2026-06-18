@@ -99,6 +99,10 @@ endif()
 add_executable(bufferpool_test test/storage/buffer/bufferpool.cpp)
 target_link_libraries(bufferpool_test dbfs_src GTest::gtest_main)
 
+add_executable(bufferpool_replacement_test
+    test/storage/buffer/bufferpool_replacement.cpp)
+target_link_libraries(bufferpool_replacement_test dbfs_src GTest::gtest_main)
+
 add_executable(cell_test test/storage/page/cell.cpp)
 target_link_libraries(cell_test dbfs_src GTest::gtest_main)
 
@@ -169,6 +173,7 @@ target_link_libraries(dbfs_server dbfs_src)
 
 enable_testing()
 add_test(NAME BufferPoolTest COMMAND bufferpool_test)
+add_test(NAME BufferPoolReplacementTest COMMAND bufferpool_replacement_test)
 add_test(NAME CellTest COMMAND cell_test)
 add_test(NAME PageTest COMMAND page_test)
 add_test(NAME FileTest COMMAND file_test)

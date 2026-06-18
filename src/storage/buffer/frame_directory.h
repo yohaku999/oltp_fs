@@ -47,9 +47,8 @@ class FrameDirectory {
   std::unordered_set<int> free_frames_;
   size_t next_victim_frame_ = 0;
 
-  bool isEvictable(int frame_id) const;
-
  public:
+  bool isEvictable(int frame_id) const;
   FrameDirectory();
 
   std::optional<int> reserveFreeFrame();
@@ -71,7 +70,6 @@ class FrameDirectory {
   void unpin(int frame_id);
   bool isPinned(int frame_id) const;
 
-  std::optional<int> findVictimFrame();
   FrameDirectoryStats collectStats() const;
 
   const Frame& getFrame(int frame_id) const;
