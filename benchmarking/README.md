@@ -106,6 +106,38 @@ The PostgreSQL TPCC config in this repository uses:
 
 Those values match the compose services defined in `docker-compose.yaml`.
 
+### Throughput and statistics runs
+
+Use `take_benchmark.sh` to run dbfs and PostgreSQL with one shared result
+label. Throughput runs disable buffer-pool logging and enable perf profiling
+for dbfs so the same run produces a flamegraph:
+
+```bash
+./benchmarking/scripts/take_benchmark.sh --throughput arc-throughput
+```
+
+Select one database with `--target`; the default is `both`:
+
+```bash
+./benchmarking/scripts/take_benchmark.sh --throughput --target dbfs arc-dbfs
+./benchmarking/scripts/take_benchmark.sh --throughput --target postgres arc-postgres
+```
+
+Statistics runs enable one-second aggregate buffer-pool statistics and
+per-operation buffer-pool events while leaving perf profiling disabled:
+
+```bash
+./benchmarking/scripts/take_benchmark.sh --stats arc-stats
+```
+
+The default mode is `--stats` for compatibility with existing invocations.
+Use throughput runs for performance numbers and flamegraphs, and statistics
+runs for explaining their behavior. The throughput result includes the small
+but non-zero overhead of perf sampling. Environment variables such as
+`DBFS_BUFFER_POOL_EVENT_LOG` and `DBFS_BUFFER_POOL_LOG_STATS_EVERY_MS` can still
+override a mode's defaults. Flamegraphs are generated only for dbfs; PostgreSQL
+throughput runs do not use perf profiling.
+
 ## 4. perf + FlameGraph
 
 The compose-based dbfs flow can capture `perf record` data inside the `dbfs`

@@ -10,7 +10,10 @@ DBFS_CONFIG="${BENCHMARKING_DIR}/benchbase-config/dbfs_tpcc_docker.xml"
 POSTGRES_CONFIG="${BENCHMARKING_DIR}/benchbase-config/postgres_tpcc_docker.xml"
 
 usage() {
-  echo "Usage: $0 [exp-name]" >&2
+  echo "Usage: $0 [--throughput|--stats] [--target dbfs|postgres|both] [exp-name]" >&2
+  echo "  --throughput  Disable buffer-pool logging and generate a dbfs flamegraph." >&2
+  echo "  --stats       Enable buffer-pool statistics and events (default)." >&2
+  echo "  --target      Select the database to benchmark (default: both)." >&2
 }
 
 cleanup() {
@@ -21,12 +24,73 @@ log() {
   echo "[take_benchmark] $*"
 }
 
-if [[ $# -gt 1 ]]; then
-  usage
-  exit 1
+MODE="stats"
+TARGET="both"
+EXP_NAME=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --throughput)
+      MODE="throughput"
+      ;;
+    --stats)
+      MODE="stats"
+      ;;
+    --target)
+      if [[ $# -lt 2 ]]; then
+        echo "--target requires dbfs, postgres, or both." >&2
+        usage
+        exit 1
+      fi
+      TARGET="$2"
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    -*)
+      echo "Unknown option: $1" >&2
+      usage
+      exit 1
+      ;;
+    *)
+      if [[ -n "${EXP_NAME}" ]]; then
+        echo "Only one experiment name may be specified." >&2
+        usage
+        exit 1
+      fi
+      EXP_NAME="$1"
+      ;;
+  esac
+  shift
+done
+
+case "${TARGET}" in
+  dbfs|postgres|both)
+    ;;
+  *)
+    echo "Invalid target: ${TARGET}" >&2
+    usage
+    exit 1
+    ;;
+esac
+
+if [[ "${MODE}" == "throughput" ]]; then
+  DEFAULT_STORAGE_LOG_LEVEL="warn"
+  DEFAULT_BUFFER_POOL_STATS_INTERVAL_MS="0"
+  DEFAULT_BUFFER_POOL_EVENT_LOG="0"
+else
+  DEFAULT_STORAGE_LOG_LEVEL="info"
+  DEFAULT_BUFFER_POOL_STATS_INTERVAL_MS="1000"
+  DEFAULT_BUFFER_POOL_EVENT_LOG="1"
 fi
 
-EXP_NAME="${1:-}"
+DBFS_RUNNER_COMMAND=("${RUNNER}" -c "${DBFS_CONFIG}")
+if [[ "${MODE}" == "throughput" ]]; then
+  DBFS_RUNNER_COMMAND+=(--profile-perf)
+fi
+
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 RUN_LABEL="${TIMESTAMP}"
 
@@ -37,25 +101,29 @@ fi
 trap cleanup EXIT
 
 log "run_label=${RUN_LABEL}"
+log "mode=${MODE}"
+log "target=${TARGET}"
 log "resetting compose services"
 cleanup
 
-log "starting dbfs benchmark"
-DBFS_LOG_LEVEL="${DBFS_LOG_LEVEL:-warn}" \
-DBFS_SERVER_LOG_LEVEL="${DBFS_SERVER_LOG_LEVEL:-warn}" \
-DBFS_INDEX_LOG_LEVEL="${DBFS_INDEX_LOG_LEVEL:-warn}" \
-DBFS_STORAGE_LOG_LEVEL="${DBFS_STORAGE_LOG_LEVEL:-info}" \
-DBFS_BUFFER_POOL_LOG_STATS_EVERY_MS="${DBFS_BUFFER_POOL_LOG_STATS_EVERY_MS:-1000}" \
-DBFS_BUFFER_POOL_EVENT_LOG="${DBFS_BUFFER_POOL_EVENT_LOG:-1}" \
-DBFS_OPERATOR_LOG_ROWS="${DBFS_OPERATOR_LOG_ROWS:-0}" \
-RUN_LABEL="${RUN_LABEL}" \
-  "${RUNNER}" \
-  -c "${DBFS_CONFIG}" \
-  --profile-perf
+if [[ "${TARGET}" == "dbfs" || "${TARGET}" == "both" ]]; then
+  log "starting dbfs benchmark"
+  DBFS_LOG_LEVEL="${DBFS_LOG_LEVEL:-warn}" \
+  DBFS_SERVER_LOG_LEVEL="${DBFS_SERVER_LOG_LEVEL:-warn}" \
+  DBFS_INDEX_LOG_LEVEL="${DBFS_INDEX_LOG_LEVEL:-warn}" \
+  DBFS_STORAGE_LOG_LEVEL="${DBFS_STORAGE_LOG_LEVEL:-${DEFAULT_STORAGE_LOG_LEVEL}}" \
+  DBFS_BUFFER_POOL_LOG_STATS_EVERY_MS="${DBFS_BUFFER_POOL_LOG_STATS_EVERY_MS:-${DEFAULT_BUFFER_POOL_STATS_INTERVAL_MS}}" \
+  DBFS_BUFFER_POOL_EVENT_LOG="${DBFS_BUFFER_POOL_EVENT_LOG:-${DEFAULT_BUFFER_POOL_EVENT_LOG}}" \
+  DBFS_OPERATOR_LOG_ROWS="${DBFS_OPERATOR_LOG_ROWS:-0}" \
+  RUN_LABEL="${RUN_LABEL}" \
+    "${DBFS_RUNNER_COMMAND[@]}"
+fi
 
-log "starting postgres benchmark"
-RUN_LABEL="${RUN_LABEL}" \
-  "${RUNNER}" \
-  -c "${POSTGRES_CONFIG}"
+if [[ "${TARGET}" == "postgres" || "${TARGET}" == "both" ]]; then
+  log "starting postgres benchmark"
+  RUN_LABEL="${RUN_LABEL}" \
+    "${RUNNER}" \
+    -c "${POSTGRES_CONFIG}"
+fi
 
 log "completed run_label=${RUN_LABEL}"
