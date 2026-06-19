@@ -130,6 +130,12 @@ per-operation buffer-pool events while leaving perf profiling disabled:
 ./benchmarking/scripts/take_benchmark.sh --stats arc-stats
 ```
 
+The dbfs statistics mode uses a controlled workload from
+`dbfs_tpcc_controlled_stats.xml`: one terminal, random seed 42, a 60-second
+warmup, a 600-second measurement interval, and a regular target rate of two
+requests per second. Throughput mode uses `dbfs_tpcc_throughput.xml`: the same
+seed and warmup, followed by a 300-second saturated measurement interval.
+
 The default mode is `--stats` for compatibility with existing invocations.
 Use throughput runs for performance numbers and flamegraphs, and statistics
 runs for explaining their behavior. The throughput result includes the small

@@ -6,7 +6,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BENCHMARKING_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 RUNNER="${SCRIPT_DIR}/run_postgres_tpcc_docker.sh"
 COMPOSE_FILE="${BENCHMARKING_DIR}/docker-compose.yaml"
-DBFS_CONFIG="${BENCHMARKING_DIR}/benchbase-config/dbfs_tpcc_docker.xml"
+DBFS_STATS_CONFIG="${BENCHMARKING_DIR}/benchbase-config/dbfs_tpcc_controlled_stats.xml"
+DBFS_THROUGHPUT_CONFIG="${BENCHMARKING_DIR}/benchbase-config/dbfs_tpcc_throughput.xml"
 POSTGRES_CONFIG="${BENCHMARKING_DIR}/benchbase-config/postgres_tpcc_docker.xml"
 
 usage() {
@@ -17,6 +18,9 @@ usage() {
 }
 
 cleanup() {
+  if [[ -z "$(docker ps -aq --filter label=com.docker.compose.project=benchmarking 2>/dev/null)" ]]; then
+    return
+  fi
   docker compose -f "${COMPOSE_FILE}" down >/dev/null 2>&1 || true
 }
 
@@ -77,10 +81,12 @@ case "${TARGET}" in
 esac
 
 if [[ "${MODE}" == "throughput" ]]; then
+  DBFS_CONFIG="${DBFS_THROUGHPUT_CONFIG}"
   DEFAULT_STORAGE_LOG_LEVEL="warn"
   DEFAULT_BUFFER_POOL_STATS_INTERVAL_MS="0"
   DEFAULT_BUFFER_POOL_EVENT_LOG="0"
 else
+  DBFS_CONFIG="${DBFS_STATS_CONFIG}"
   DEFAULT_STORAGE_LOG_LEVEL="info"
   DEFAULT_BUFFER_POOL_STATS_INTERVAL_MS="1000"
   DEFAULT_BUFFER_POOL_EVENT_LOG="1"
@@ -103,6 +109,9 @@ trap cleanup EXIT
 log "run_label=${RUN_LABEL}"
 log "mode=${MODE}"
 log "target=${TARGET}"
+if [[ "${TARGET}" == "dbfs" || "${TARGET}" == "both" ]]; then
+  log "dbfs_config=${DBFS_CONFIG}"
+fi
 log "resetting compose services"
 cleanup
 
