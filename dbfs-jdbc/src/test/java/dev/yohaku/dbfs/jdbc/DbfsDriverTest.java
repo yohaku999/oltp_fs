@@ -11,6 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
+import java.sql.DatabaseMetaData;
 import java.sql.Driver;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -63,6 +64,23 @@ class DbfsDriverTest {
                     assertFalse(resultSet.next());
                 }
             }
+        }
+    }
+
+    @Test
+    void databaseMetadataIncludesYcsbUsertable() throws SQLException {
+        try (Connection connection = DriverManager.getConnection("jdbc:dbfs:local");
+             ResultSet columns = connection.getMetaData().getColumns(
+                     null, null, "USERTABLE", "%")) {
+            int columnCount = 0;
+            while (columns.next()) {
+                columnCount += 1;
+                if (columnCount == 1) {
+                    assertEquals("YCSB_KEY", columns.getString("COLUMN_NAME"));
+                    assertEquals(DatabaseMetaData.columnNoNulls, columns.getInt("NULLABLE"));
+                }
+            }
+            assertEquals(11, columnCount);
         }
     }
 

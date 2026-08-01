@@ -2,7 +2,8 @@
 
 This directory contains helper configuration, scripts, results, and notebooks
 for benchmarking **dbfs** and comparing it against **PostgreSQL** using
-[BenchBase](https://github.com/cmu-db/benchbase), focusing on the **TPC-C** workload.
+[BenchBase](https://github.com/cmu-db/benchbase). The repository includes
+**TPC-C** and a Zipfian **YCSB A** workload.
 
 The PostgreSQL baseline flow is docker compose based. PostgreSQL and BenchBase
 both run in containers, and BenchBase reaches PostgreSQL through the compose
@@ -44,20 +45,23 @@ Java benchmark / JDBC process
   - Example:
     - `postgres_tpcc_docker.xml` – repo-managed TPCC config for the
       compose-based PostgreSQL baseline.
-    - `dbfs_tpcc_docker.xml` – future config for the compose-based dbfs flow.
+    - `dbfs_tpcc_docker.xml` – TPCC config for the compose-based dbfs flow.
+    - `dbfs_ycsb_zipf_*.xml` and `postgres_ycsb_zipf_*.xml` – matching
+      Zipfian YCSB A configs for statistics and throughput runs.
 - `scripts/`
   - Shell wrappers around the benchmark flow.
   - Example:
-    - `run_postgres_tpcc_docker.sh` – start PostgreSQL with docker compose,
-      wait for readiness, and run BenchBase TPCC. You must pass the
-      benchmark target config with `-c <path>`.
-    - `run_dbfs_tpcc.sh` – run TPC-C against dbfs once a dbfs
-      server/JDBC driver is available.
+    - `run_benchbase_docker.sh` – start the selected database with docker
+      compose, wait for readiness, and run BenchBase. You must pass the
+      benchmark target config with `-c <path>`; use `--workload ycsb` for
+      YCSB because the backward-compatible default is `tpcc`.
+    - `run_postgres_tpcc_docker.sh` – backward-compatible alias for
+      `run_benchbase_docker.sh`.
 - `results/`
   - Raw outputs produced by BenchBase runs.
   - Recommended structure:
-    - `results/<compare-label>/tpcc/postgres/...`
-    - `results/<compare-label>/tpcc/dbfs/...`
+    - `results/<compare-label>/<workload>/postgres/...`
+    - `results/<compare-label>/<workload>/dbfs/...`
   - The compose wrapper also saves BenchBase stdout/stderr in the run result
     directory as `benchbase.log`, or `benchbase_setup.log` and
     `benchbase_execute.log` when `--profile-perf` splits the phases.
@@ -76,7 +80,8 @@ Java benchmark / JDBC process
 
 1. Ensure Docker is available.
 2. Choose a shared compare label and run both targets with the same `RUN_LABEL`.
-3. Inspect results under `results/<compare-label>/tpcc/<engine>/`.
+3. Inspect results under
+   `results/<compare-label>/<workload>/<engine>/`.
 4. Open notebooks as needed to visualize throughput and latency.
 5. Inspect `dbfs_query_trace.csv` and `postgres_query_trace.csv`, or use the
    comparison notebook to rank query shapes by total time, mean latency, and
@@ -92,9 +97,12 @@ config file, place another XML file under `benchbase-config/` and run:
 
 ```bash
 RUN_LABEL=20260503-compare \
-  ./benchmarking/scripts/run_postgres_tpcc_docker.sh \
+  ./benchmarking/scripts/run_benchbase_docker.sh \
   -c benchmarking/benchbase-config/your_config.xml
 ```
+
+Pass `--workload ycsb` as well when the config contains YCSB transaction
+types.
 
 The PostgreSQL TPCC config in this repository uses:
 
@@ -130,7 +138,40 @@ per-operation buffer-pool events while leaving perf profiling disabled:
 ./benchmarking/scripts/take_benchmark.sh --stats arc-stats
 ```
 
-The dbfs statistics mode uses a controlled workload from
+### Zipfian YCSB
+
+Run the supplied YCSB A workload against dbfs with:
+
+```bash
+./benchmarking/scripts/take_benchmark.sh \
+  --throughput \
+  --workload ycsb \
+  --target dbfs \
+  ycsb-zipf-099
+```
+
+Use `--stats` instead of `--throughput` for the controlled run at two requests
+per second, or omit `--target` to compare dbfs and PostgreSQL using matching
+YCSB settings.
+
+The supplied YCSB configs load 20,000 rows (`scalefactor` 20), use ten
+100-character fields, fix the random seed at 42, and run YCSB A with 50% reads
+and 50% updates. Record keys for both operations are selected by BenchBase's
+Zipfian generator. The default `skewFactor` is 0.99:
+
+```xml
+<skewFactor>0.99</skewFactor>
+```
+
+The valid range is greater than zero and less than one. Values nearer one put
+more traffic on a small hot set. To compare skew levels, copy both engine
+configs for the selected mode, change only `skewFactor`, and keep the scale,
+seed, phase timing, rate, and transaction weights identical.
+
+BenchBase's YCSB generator clusters the hottest records at the low end of the
+integer key range; it does not scramble hot records across the key space.
+
+For TPC-C, the dbfs statistics mode uses a controlled workload from
 `dbfs_tpcc_controlled_stats.xml`: one terminal, random seed 42, a 60-second
 warmup, a 600-second measurement interval, and a regular target rate of two
 requests per second. Throughput mode uses `dbfs_tpcc_throughput.xml`: the same
@@ -154,7 +195,7 @@ Example:
 
 ```bash
 RUN_LABEL=20260515-perf \
-  ./benchmarking/scripts/run_postgres_tpcc_docker.sh \
+  ./benchmarking/scripts/run_benchbase_docker.sh \
   -c benchmarking/benchbase-config/dbfs_tpcc_docker.xml \
   --profile-perf \
   --perf-frequency 199
@@ -170,17 +211,17 @@ steady-state benchmark phase instead of the bulk load phase.
 
 Profiling outputs are written alongside the normal BenchBase results:
 
-- `results/<compare-label>/tpcc/dbfs/dbfs.perf.data`
-- `results/<compare-label>/tpcc/dbfs/dbfs.perf.script`
-- `results/<compare-label>/tpcc/dbfs/dbfs.perf.folded`
-- `results/<compare-label>/tpcc/dbfs/dbfs_flamegraph.svg`
-- `results/<compare-label>/tpcc/dbfs/benchbase_setup.log`
-- `results/<compare-label>/tpcc/dbfs/benchbase_execute.log`
-- `results/<compare-label>/tpcc/dbfs/dbfs.compose.log`
+- `results/<compare-label>/<workload>/dbfs/dbfs.perf.data`
+- `results/<compare-label>/<workload>/dbfs/dbfs.perf.script`
+- `results/<compare-label>/<workload>/dbfs/dbfs.perf.folded`
+- `results/<compare-label>/<workload>/dbfs/dbfs_flamegraph.svg`
+- `results/<compare-label>/<workload>/dbfs/benchbase_setup.log`
+- `results/<compare-label>/<workload>/dbfs/benchbase_execute.log`
+- `results/<compare-label>/<workload>/dbfs/dbfs.compose.log`
 
 The setup-only BenchBase outputs, if any, are written under:
 
-- `results/<compare-label>/tpcc/dbfs/setup/`
+- `results/<compare-label>/<workload>/dbfs/setup/`
 
 Notes:
 

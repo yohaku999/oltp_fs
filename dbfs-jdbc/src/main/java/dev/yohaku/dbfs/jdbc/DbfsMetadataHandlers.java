@@ -196,11 +196,11 @@ final class DbfsDatabaseMetaDataHandler extends DbfsProxyHandler {
 
         String catalog = catalogName();
         List<List<Object>> rows = new ArrayList<>();
-    for (TableDefinition table : tpccTables()) {
+        for (TableDefinition table : knownTables()) {
             rows.add(List.<Object>of(
                     catalog,
                     "",
-            table.name,
+                    table.name,
                     "TABLE",
                     "",
                     "",
@@ -241,7 +241,7 @@ final class DbfsDatabaseMetaDataHandler extends DbfsProxyHandler {
 
         String catalog = catalogName();
         List<List<Object>> rows = new ArrayList<>();
-        for (TableDefinition table : tpccTables()) {
+        for (TableDefinition table : knownTables()) {
             if (!matchesPattern(table.name, tableNamePattern)) {
                 continue;
             }
@@ -474,6 +474,23 @@ final class DbfsDatabaseMetaDataHandler extends DbfsProxyHandler {
                         col("C_SINCE", Types.TIMESTAMP, "TIMESTAMP", 29, 0, true, 19),
                         col("C_MIDDLE", Types.VARCHAR, "VARCHAR", 2, 0, false, 20),
                         col("C_DATA", Types.VARCHAR, "VARCHAR", 500, 0, false, 21))));
+    }
+
+    private List<TableDefinition> knownTables() {
+        List<TableDefinition> tables = new ArrayList<>(tpccTables());
+        tables.add(new TableDefinition("usertable", List.of(
+                col("YCSB_KEY", Types.INTEGER, "INTEGER", 10, 0, false, 1),
+                col("FIELD1", Types.VARCHAR, "VARCHAR", 100, 0, true, 2),
+                col("FIELD2", Types.VARCHAR, "VARCHAR", 100, 0, true, 3),
+                col("FIELD3", Types.VARCHAR, "VARCHAR", 100, 0, true, 4),
+                col("FIELD4", Types.VARCHAR, "VARCHAR", 100, 0, true, 5),
+                col("FIELD5", Types.VARCHAR, "VARCHAR", 100, 0, true, 6),
+                col("FIELD6", Types.VARCHAR, "VARCHAR", 100, 0, true, 7),
+                col("FIELD7", Types.VARCHAR, "VARCHAR", 100, 0, true, 8),
+                col("FIELD8", Types.VARCHAR, "VARCHAR", 100, 0, true, 9),
+                col("FIELD9", Types.VARCHAR, "VARCHAR", 100, 0, true, 10),
+                col("FIELD10", Types.VARCHAR, "VARCHAR", 100, 0, true, 11))));
+        return tables;
     }
 
     private List<ForeignKeyDefinition> tpccForeignKeys() {

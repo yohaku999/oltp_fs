@@ -173,8 +173,18 @@ std::vector<std::string> selectColumnNames(const SelectParser& parser) {
     }
 
     const auto& aggregate = std::get<UnboundAggregateCall>(item);
-    std::string name =
-        aggregate.function == AggregateFunction::Count ? "count" : "sum";
+    std::string name;
+    switch (aggregate.function) {
+      case AggregateFunction::Count:
+        name = "count";
+        break;
+      case AggregateFunction::Sum:
+        name = "sum";
+        break;
+      case AggregateFunction::Max:
+        name = "max";
+        break;
+    }
     if (const auto* column_ref = std::get_if<ColumnRef>(&aggregate.argument)) {
       name += "(" + column_ref->column_name + ")";
     } else {

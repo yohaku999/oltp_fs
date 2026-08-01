@@ -66,6 +66,19 @@ std::vector<UnboundSelectItem> SelectParser::extractSelectItems() const {
         continue;
       }
 
+      if (function_name == "max") {
+        if (is_distinct) {
+          throw std::runtime_error(
+              "DISTINCT is not supported for aggregate function: max");
+        }
+
+        const auto& args = func_call.at("args");
+        select_items.push_back(UnboundAggregateCall{
+            AggregateFunction::Max, parseColumnRef(args.at(0).at("ColumnRef")),
+            false});
+        continue;
+      }
+
       if (function_name == "count") {
         if (func_call.value("agg_star", false)) {
           if (is_distinct) {

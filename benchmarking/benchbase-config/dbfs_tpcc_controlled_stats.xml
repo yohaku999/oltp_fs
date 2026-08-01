@@ -7,7 +7,7 @@
     <password>password</password>
     <reconnectOnConnectionFailure>true</reconnectOnConnectionFailure>
     <isolation>TRANSACTION_SERIALIZABLE</isolation>
-    <batchsize>128</batchsize>
+    <batchsize>256</batchsize>
     <randomSeed>42</randomSeed>
 
     <scalefactor>1</scalefactor>

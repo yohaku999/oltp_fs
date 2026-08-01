@@ -41,7 +41,8 @@ Schema CreateTableParser::extractSchema() const {
     } else if (type_name == "numeric" || type_name == "float4" ||
                type_name == "float8") {
       column_type = Column::Type::Double;
-    } else if (type_name == "varchar" || type_name == "bpchar" ||
+    } else if (type_name == "varchar" || type_name == "text" ||
+               type_name == "bpchar" ||
                type_name == "timestamp") {
       column_type = Column::Type::Varchar;
     } else {
@@ -57,12 +58,28 @@ Schema CreateTableParser::extractSchema() const {
 std::vector<std::string> CreateTableParser::extractPrimaryKeyColumnNames()
     const {
   const auto& table_elements = statementNode().at("CreateStmt").at("tableElts");
+  std::vector<std::string> inline_primary_key_columns;
 
   for (const auto& table_element : table_elements) {
-    if (!table_element.contains("Constraint")) {
+    if (table_element.contains("ColumnDef")) {
+      const auto& column = table_element.at("ColumnDef");
+      if (!column.contains("constraints")) {
+        continue;
+      }
+      for (const auto& column_constraint : column.at("constraints")) {
+        if (column_constraint.contains("Constraint") &&
+            column_constraint.at("Constraint").value("contype", "") ==
+                "CONSTR_PRIMARY") {
+          inline_primary_key_columns.push_back(
+              column.at("colname").get<std::string>());
+        }
+      }
       continue;
     }
 
+    if (!table_element.contains("Constraint")) {
+      continue;
+    }
     const auto& constraint = table_element.at("Constraint");
     if (constraint.value("contype", "") != "CONSTR_PRIMARY") {
       continue;
@@ -76,5 +93,5 @@ std::vector<std::string> CreateTableParser::extractPrimaryKeyColumnNames()
     return primary_key_columns;
   }
 
-  return {};
+  return inline_primary_key_columns;
 }

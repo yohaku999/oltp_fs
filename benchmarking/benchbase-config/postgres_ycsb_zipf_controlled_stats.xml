@@ -1,0 +1,36 @@
+<?xml version="1.0"?>
+<parameters>
+    <type>POSTGRES</type>
+    <driver>dev.yohaku.dbfs.jdbc.TracingPostgresDriver</driver>
+    <url>jdbc:trace:postgresql://postgres:5432/benchbase?sslmode=disable&amp;ApplicationName=ycsb&amp;reWriteBatchedInserts=true</url>
+    <username>admin</username>
+    <password>password</password>
+    <reconnectOnConnectionFailure>true</reconnectOnConnectionFailure>
+    <isolation>TRANSACTION_SERIALIZABLE</isolation>
+    <batchsize>128</batchsize>
+    <randomSeed>42</randomSeed>
+
+    <scalefactor>20</scalefactor>
+    <fieldSize>100</fieldSize>
+    <skewFactor>0.99</skewFactor>
+
+    <terminals>1</terminals>
+    <works>
+        <work>
+            <warmup>60</warmup>
+            <time>600</time>
+            <rate>2</rate>
+            <arrival>REGULAR</arrival>
+            <weights>50,0,0,50,0,0</weights>
+        </work>
+    </works>
+
+    <transactiontypes>
+        <transactiontype><name>ReadRecord</name></transactiontype>
+        <transactiontype><name>InsertRecord</name></transactiontype>
+        <transactiontype><name>ScanRecord</name></transactiontype>
+        <transactiontype><name>UpdateRecord</name></transactiontype>
+        <transactiontype><name>DeleteRecord</name></transactiontype>
+        <transactiontype><name>ReadModifyWriteRecord</name></transactiontype>
+    </transactiontypes>
+</parameters>
