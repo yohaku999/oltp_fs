@@ -9,6 +9,7 @@
 enum class AggregateFunction {
   Sum,
   Count,
+  Max,
 };
 
 struct SelectAllItem {};

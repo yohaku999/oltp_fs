@@ -142,6 +142,31 @@ class AggregateOperator : public TypedRowOperator {
     bool saw_double_ = false;
   };
 
+  class MaxAccumulator : public AggregateAccumulator {
+   public:
+    explicit MaxAccumulator(BoundColumnRef argument)
+        : argument_(std::move(argument)) {}
+
+    void accumulate(const TypedRow& row) override {
+      const FieldValue& value = row.values[argument_.column_index];
+      if (std::holds_alternative<std::monostate>(value)) {
+        return;
+      }
+
+      if (!max_.has_value() || value > max_.value()) {
+        max_ = value;
+      }
+    }
+
+    FieldValue finalize() const override {
+      return max_.value_or(FieldValue{std::monostate{}});
+    }
+
+   private:
+    BoundColumnRef argument_;
+    std::optional<FieldValue> max_;
+  };
+
   static std::unique_ptr<AggregateAccumulator> createAccumulator(
       const BoundAggregateCall& aggregate_call) {
     switch (aggregate_call.function) {
@@ -153,6 +178,9 @@ class AggregateOperator : public TypedRowOperator {
         return std::make_unique<CountAccumulator>(aggregate_call.argument);
       case AggregateFunction::Sum:
         return std::make_unique<SumAccumulator>(
+            std::get<BoundColumnRef>(aggregate_call.argument));
+      case AggregateFunction::Max:
+        return std::make_unique<MaxAccumulator>(
             std::get<BoundColumnRef>(aggregate_call.argument));
     }
 

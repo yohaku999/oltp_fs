@@ -274,6 +274,15 @@ TEST_F(ExecutorTest, ReadSelectReturnsFilteredSumForIntegerColumn) {
   EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[0]), 211);
 }
 
+TEST_F(ExecutorTest, ReadSelectReturnsMaxForIntegerColumn) {
+  std::vector<TypedRow> rows = executor::read(
+      *pool_, SelectParser("SELECT MAX(id) FROM executor_test_table"));
+
+  ASSERT_EQ(rows.size(), 1u);
+  ASSERT_EQ(rows[0].values.size(), 1u);
+  EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[0]), 107);
+}
+
 TEST_F(ExecutorTest, ReadSelectReturnsSumForDoubleColumn) {
   const std::string table_name = uniqueTableName("sum_double_test");
 
@@ -858,7 +867,8 @@ TEST_F(ExecutorTest, InsertPageOverflow) {
 TEST_F(ExecutorTest, CreateAndDropTable) {
   const std::string new_table_name = "new_table";
   Table::removeBackingFilesFor(new_table_name);
-  CreateTableParser parser("CREATE TABLE new_table (id INTEGER, name VARCHAR)");
+  CreateTableParser parser(
+      "CREATE TABLE new_table (id INTEGER, name VARCHAR, notes TEXT)");
   executor::create_table(parser);
   executor::create_index(
       CreateIndexParser("CREATE INDEX idx_new_table_id ON new_table (id)"));
@@ -868,11 +878,13 @@ TEST_F(ExecutorTest, CreateAndDropTable) {
   {
     Table new_table = Table::getTable(new_table_name);
     ASSERT_EQ(new_table.name(), new_table_name);
-    ASSERT_EQ(new_table.schema().columns().size(), 2u);
+    ASSERT_EQ(new_table.schema().columns().size(), 3u);
     EXPECT_EQ(new_table.schema().columns()[0].getName(), "id");
     EXPECT_EQ(new_table.schema().columns()[0].getType(), Column::Type::Integer);
     EXPECT_EQ(new_table.schema().columns()[1].getName(), "name");
     EXPECT_EQ(new_table.schema().columns()[1].getType(), Column::Type::Varchar);
+    EXPECT_EQ(new_table.schema().columns()[2].getName(), "notes");
+    EXPECT_EQ(new_table.schema().columns()[2].getType(), Column::Type::Varchar);
     EXPECT_EQ(new_table.indexedColumnNames(), (std::vector<std::string>{"id"}));
   }
 
@@ -893,6 +905,25 @@ TEST_F(ExecutorTest, CreateTableBuildsIndexFromSingleColumnPrimaryKey) {
     Table new_table = Table::getTable(new_table_name);
     EXPECT_EQ(new_table.indexedColumnNames(), (std::vector<std::string>{"id"}));
     ASSERT_TRUE(new_table.indexFile().has_value());
+  }
+
+  executor::drop_table(DropTableParser("DROP TABLE " + new_table_name));
+  EXPECT_FALSE(Table::isPersisted(new_table_name));
+}
+
+TEST_F(ExecutorTest, CreateTableBuildsIndexFromInlinePrimaryKey) {
+  const std::string new_table_name =
+      uniqueTableName("inline_primary_key_index_test");
+
+  executor::create_table(CreateTableParser(
+      "CREATE TABLE " + new_table_name +
+      " (id int PRIMARY KEY, name text)"));
+
+  {
+    Table new_table = Table::getTable(new_table_name);
+    EXPECT_EQ(new_table.indexedColumnNames(),
+              (std::vector<std::string>{"id"}));
+    EXPECT_TRUE(new_table.indexFile().has_value());
   }
 
   executor::drop_table(DropTableParser("DROP TABLE " + new_table_name));
