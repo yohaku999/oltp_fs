@@ -4,3 +4,6 @@ dbfs-jdbc/target
 .vscode/
 benchmarking/results/
 data/
+tmp/
+Testing/
+benchmarking/notebooks/__pycache__/
