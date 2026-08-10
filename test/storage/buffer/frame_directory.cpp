@@ -131,6 +131,26 @@ TEST_F(FrameDirectoryTest, CheckOccupiedStatusBeforeAndAfterRegistration) {
   EXPECT_TRUE(directory.getFrame(frame_id).page == nullptr);
 }
 
+TEST_F(FrameDirectoryTest, ResetClearsResidentsPinsAndLookupState) {
+  auto frame = directory.reserveFreeFrame();
+  ASSERT_TRUE(frame.has_value());
+  directory.registerResidentPage(frame.value(), 100, "test.db",
+                                 std::move(page1));
+  directory.pin(frame.value());
+
+  directory.reset();
+
+  EXPECT_FALSE(directory.findResidentFrame(100, "test.db").has_value());
+  const auto stats = directory.collectStats();
+  EXPECT_EQ(FrameDirectory::MAX_FRAME_COUNT, stats.frames_free);
+  EXPECT_EQ(0u, stats.frames_resident);
+  EXPECT_EQ(0u, stats.frames_pinned);
+  for (size_t i = 0; i < FrameDirectory::MAX_FRAME_COUNT; ++i) {
+    EXPECT_TRUE(directory.reserveFreeFrame().has_value());
+  }
+  EXPECT_FALSE(directory.reserveFreeFrame().has_value());
+}
+
 TEST_F(FrameDirectoryTest, CollectStatsCountsKindsPinnedAndDirtyPages) {
   std::array<char, 4096> heap_buffer{};
   std::array<char, 4096> leaf_buffer{};

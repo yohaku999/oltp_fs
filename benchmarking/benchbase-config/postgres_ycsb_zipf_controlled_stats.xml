@@ -10,18 +10,19 @@
     <batchsize>128</batchsize>
     <randomSeed>42</randomSeed>
 
-    <scalefactor>20</scalefactor>
+    <scalefactor>50</scalefactor>
     <fieldSize>100</fieldSize>
     <skewFactor>0.99</skewFactor>
 
     <terminals>1</terminals>
     <works>
         <work>
-            <warmup>60</warmup>
+            <warmup>180</warmup>
             <time>600</time>
-            <rate>2</rate>
+            <rate>100</rate>
             <arrival>REGULAR</arrival>
-            <weights>50,0,0,50,0,0</weights>
+            <!-- Read-heavy YCSB with scans to expose cache-pollution behavior. -->
+            <weights>90,0,10,0,0,0</weights>
         </work>
     </works>
 

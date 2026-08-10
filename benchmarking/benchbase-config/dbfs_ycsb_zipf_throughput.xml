@@ -11,7 +11,7 @@
     <randomSeed>42</randomSeed>
 
     <!-- YCSB scale factor is multiplied by 1,000 records. -->
-    <scalefactor>20</scalefactor>
+    <scalefactor>50</scalefactor>
     <fieldSize>100</fieldSize>
     <skewFactor>0.99</skewFactor>
 
@@ -22,8 +22,8 @@
             <time>300</time>
             <rate>10000</rate>
             <arrival>REGULAR</arrival>
-            <!-- YCSB A: 50% reads and 50% updates. -->
-            <weights>50,0,0,50,0,0</weights>
+            <!-- Match the stats workload without its instrumentation rate cap. -->
+            <weights>90,0,10,0,0,0</weights>
         </work>
     </works>
 

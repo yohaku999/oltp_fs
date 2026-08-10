@@ -10,7 +10,7 @@
     <batchsize>128</batchsize>
     <randomSeed>42</randomSeed>
 
-    <scalefactor>20</scalefactor>
+    <scalefactor>50</scalefactor>
     <fieldSize>100</fieldSize>
     <skewFactor>0.99</skewFactor>
 
@@ -21,7 +21,8 @@
             <time>300</time>
             <rate>10000</rate>
             <arrival>REGULAR</arrival>
-            <weights>50,0,0,50,0,0</weights>
+            <!-- Match the stats workload without its instrumentation rate cap. -->
+            <weights>90,0,10,0,0,0</weights>
         </work>
     </works>
 

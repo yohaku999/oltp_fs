@@ -7,14 +7,16 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 
 #include "logging.h"
+#include "page_key.h"
 #include "storage/disk/file.h"
 #include "storage/page/page.h"
 #include "storage/wal/wal.h"
-#include "page_key.h"
 
 namespace {
 
@@ -39,14 +41,15 @@ BufferPool::BufferPool(WAL& wal)
       buffer_pool_event_log_enabled_(false),
       buffer_pool_event_file_log_enabled_(false),
       buffer_pool_event_id_(0),
+      buffer_pool_reset_generation_(0),
       last_buffer_pool_stats_log_at_(),
       replacement_policy(MAX_FRAME_COUNT) {
   const char* event_log_env = std::getenv("DBFS_BUFFER_POOL_EVENT_LOG");
-  buffer_pool_event_log_enabled_ =
-      event_log_env != nullptr && *event_log_env != '\0' &&
-      std::strcmp(event_log_env, "0") != 0 &&
-      std::strcmp(event_log_env, "false") != 0 &&
-      std::strcmp(event_log_env, "FALSE") != 0;
+  buffer_pool_event_log_enabled_ = event_log_env != nullptr &&
+                                   *event_log_env != '\0' &&
+                                   std::strcmp(event_log_env, "0") != 0 &&
+                                   std::strcmp(event_log_env, "false") != 0 &&
+                                   std::strcmp(event_log_env, "FALSE") != 0;
 
   const char* event_log_file_env =
       std::getenv("DBFS_BUFFER_POOL_EVENT_LOG_FILE");
@@ -167,6 +170,56 @@ void BufferPool::unpinPage(Page* page, File& file) {
 
 BufferPool::~BufferPool() { operator delete(buffer_); }
 
+BufferPoolResetResult BufferPool::resetForBenchmark() {
+  BufferPoolResetResult result;
+
+  // Validate the entire pool before writing or clearing anything so a failed
+  // reset cannot leave the directory and replacement policy out of sync.
+  for (size_t frame_id = 0; frame_id < MAX_FRAME_COUNT; ++frame_id) {
+    const auto& frame = frame_directory_.getFrame(static_cast<int>(frame_id));
+    if (frame.page == nullptr) {
+      continue;
+    }
+    if (frame.pin_count > 0) {
+      throw std::runtime_error(fmt::format(
+          "cannot reset buffer pool while frame {} is pinned", frame_id));
+    }
+    ++result.resident_frames_cleared;
+    if (frame.page->isDirty()) {
+      ++result.dirty_frames_flushed;
+    }
+  }
+
+  if (result.dirty_frames_flushed > 0) {
+    wal_.flush();
+    std::unordered_map<std::string, std::unique_ptr<File>> files;
+    for (size_t frame_id = 0; frame_id < MAX_FRAME_COUNT; ++frame_id) {
+      auto& frame = frame_directory_.getFrame(static_cast<int>(frame_id));
+      if (frame.page != nullptr && frame.page->isDirty()) {
+        auto [file_it, inserted] = files.try_emplace(frame.file_path, nullptr);
+        if (inserted) {
+          file_it->second = std::make_unique<File>(frame.file_path);
+        }
+        persistPage(frame.page_id, *file_it->second, *frame.page);
+      }
+    }
+  }
+
+  frame_directory_.reset();
+  replacement_policy.reset();
+  stats_ = {};
+  last_buffer_pool_stats_log_at_ = {};
+
+  result.generation = ++buffer_pool_reset_generation_;
+  writeBufferPoolEvent(
+      fmt::format("buffer_pool_reset reason=benchmark_post_load generation={} "
+                  "resident_frames_cleared={} dirty_frames_flushed={}",
+                  result.generation, result.resident_frames_cleared,
+                  result.dirty_frames_flushed));
+  logBufferPoolStatsIfDue();
+  return result;
+}
+
 // private methods
 bool BufferPool::isPageLSNDurable(const Page& page) const {
   std::uint64_t page_lsn = page.getPageLSN();
@@ -181,7 +234,9 @@ void BufferPool::evictFrame(int victim_frame_id) {
   logBufferPoolEvictEvent(victim_frame.file_path, evict_page_id,
                           victim_frame_id, *victim_frame.page, dirty);
   if (dirty) {
-    flushPage(evict_page_id, victim_frame.file_path, *victim_frame.page);
+    stats_.dirty_evictions++;
+    File file(victim_frame.file_path);
+    persistPage(evict_page_id, file, *victim_frame.page);
   }
   stats_.evictions++;
   const PageKey key{victim_frame.file_path, evict_page_id};
@@ -191,20 +246,16 @@ void BufferPool::evictFrame(int victim_frame_id) {
                             evict_page_id, victim_frame_id);
 };
 
-void BufferPool::flushPage(int page_id, const std::string& file_path,
-                           Page& page) {
-  stats_.dirty_evictions++;
+void BufferPool::persistPage(int page_id, File& file, Page& page) {
   if (!isPageLSNDurable(page)) {
     wal_.flush();
     if (!isPageLSNDurable(page)) {
       // TODO: fix for multithreading later.
-      throw std::runtime_error("Victim page ID " +
-                                std::to_string(page_id) +
-                                " is dirty and not flushable. This should not "
-                                "happen in single-threaded execution.");
+      throw std::runtime_error("Victim page ID " + std::to_string(page_id) +
+                               " is dirty and not flushable. This should not "
+                               "happen in single-threaded execution.");
     }
   }
-  File file(file_path);
   file.writePageFromBuffer(page_id, page.data());
 }
 
@@ -242,11 +293,11 @@ void BufferPool::logBufferPoolEvictEvent(const std::string& file_path,
     return;
   }
 
-  writeBufferPoolEvent(fmt::format(
-      "buffer_pool_event type=evict event_id={} file={} page_id={} "
-      "frame_id={} page_kind={} dirty={}",
-      ++buffer_pool_event_id_, file_path, page_id, frame_id,
-      pageKindLabel(page.kind()), dirty ? 1 : 0));
+  writeBufferPoolEvent(
+      fmt::format("buffer_pool_event type=evict event_id={} file={} page_id={} "
+                  "frame_id={} page_kind={} dirty={}",
+                  ++buffer_pool_event_id_, file_path, page_id, frame_id,
+                  pageKindLabel(page.kind()), dirty ? 1 : 0));
 }
 
 void BufferPool::writeBufferPoolEvent(const std::string& event) {
@@ -271,31 +322,27 @@ void BufferPool::zeroOutFrame(int frame_id) {
   std::memset(frame_buffer, 0, BufferPool::FRAME_SIZE_BYTE);
 };
 
-std::pair<int, char*> BufferPool::acquireFrame(
-    bool zero_frame, std::optional<PageKey> page_key) {
+std::pair<int, char*> BufferPool::acquireFrame(bool zero_frame,
+                                               const PageKey& page_key) {
+  replacement_policy.onNonResidentPageRequest(page_key);
+
   auto free_frame = frame_directory_.reserveFreeFrame();
   int target_frame_id = -1;
   if (!free_frame.has_value()) {
     dbfs_log::storage().debug("No free frame available, attempting eviction");
-    if (!page_key.has_value()) {
-      throw std::logic_error(
-          "PageKey is required when selecting an eviction victim.");
-    }
-    auto victim_frame_id = replacement_policy.selectVictimFrame(
-        *page_key, [this](int frame_id) {
+    auto victim_frame_id =
+        replacement_policy.selectVictimFrame(page_key, [this](int frame_id) {
           return frame_directory_.isEvictable(frame_id);
         });
-    if(!victim_frame_id.has_value()){
-      throw std::runtime_error(
-          "All frame might be inevictable.");
+    if (!victim_frame_id.has_value()) {
+      throw std::runtime_error("All frame might be inevictable.");
     }
     target_frame_id = victim_frame_id.value();
     evictFrame(target_frame_id);
     auto reclaimed_frame = frame_directory_.reserveFreeFrame();
     if (!reclaimed_frame.has_value() ||
         reclaimed_frame.value() != target_frame_id) {
-      throw std::runtime_error(
-          "Evicted frame was not available for reuse.");
+      throw std::runtime_error("Evicted frame was not available for reuse.");
     }
   } else {
     target_frame_id = free_frame.value();
@@ -304,8 +351,8 @@ std::pair<int, char*> BufferPool::acquireFrame(
   if (zero_frame) {
     zeroOutFrame(target_frame_id);
   }
-  char* frame_buffer =
-      static_cast<char*>(buffer_) + target_frame_id * BufferPool::FRAME_SIZE_BYTE;
+  char* frame_buffer = static_cast<char*>(buffer_) +
+                       target_frame_id * BufferPool::FRAME_SIZE_BYTE;
   return {target_frame_id, frame_buffer};
 }
 
@@ -327,6 +374,9 @@ void BufferPool::logBufferPoolStatsIfDue() {
   dbfs_log::storage().info(
       "buffer_pool_stats pin_page_calls={} resident_hits={} misses={} "
       "evictions={} dirty_evictions={} reads={} zero_outs={} "
+      "buffer_pool_generation={} "
+      "arc_t1={} arc_t2={} arc_b1={} arc_b2={} arc_t1_target={} "
+      "arc_b1_hits={} arc_b2_hits={} arc_cold_misses={} "
       "frames_free={} frames_resident={} frames_pinned={} "
       "frames_evictable={} resident_heap_pages={} "
       "resident_leaf_index_pages={} resident_internal_index_pages={} "
@@ -336,6 +386,11 @@ void BufferPool::logBufferPoolStatsIfDue() {
       stats_.pin_page_calls, stats_.resident_hits, stats_.misses,
       stats_.evictions, stats_.dirty_evictions,
       stats_.read_page_into_buffer_calls, stats_.zero_out_frame_calls,
+      buffer_pool_reset_generation_,
+      replacement_policy.t1Size(), replacement_policy.t2Size(),
+      replacement_policy.b1Size(), replacement_policy.b2Size(),
+      replacement_policy.t1Target(), replacement_policy.b1Hits(),
+      replacement_policy.b2Hits(), replacement_policy.coldMisses(),
       frame_stats.frames_free, frame_stats.frames_resident,
       frame_stats.frames_pinned, frame_stats.frames_evictable,
       frame_stats.resident_heap_pages, frame_stats.resident_leaf_index_pages,

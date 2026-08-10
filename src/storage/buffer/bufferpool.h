@@ -3,13 +3,12 @@
 #include <cstdint>
 #include <fstream>
 #include <map>
-#include <optional>
 #include <set>
 #include <string>
 #include <utility>
 
-#include "storage/buffer/arc_replacement.h"
 #include "frame_directory.h"
+#include "storage/buffer/arc_replacement.h"
 #include "storage/disk/file.h"
 #include "storage/page/page.h"
 
@@ -25,22 +24,29 @@ struct BufferPoolStats {
   std::uint64_t zero_out_frame_calls = 0;
 };
 
+struct BufferPoolResetResult {
+  std::uint64_t resident_frames_cleared = 0;
+  std::uint64_t dirty_frames_flushed = 0;
+  std::uint64_t generation = 0;
+};
+
 class BufferPool {
  public:
-  static constexpr size_t MAX_FRAME_COUNT = 16384;
+  static constexpr size_t MAX_FRAME_COUNT = FrameDirectory::MAX_FRAME_COUNT;
   static constexpr uint16_t HAS_NO_CHILD = -1;
   explicit BufferPool(WAL& wal);
   Page* pinPage(int page_id, File& file);
   void unpinPage(Page* page, File& file);
   uint16_t createPage(PageKind kind, File& file,
                       uint16_t right_most_child_page_id = HAS_NO_CHILD);
+  BufferPoolResetResult resetForBenchmark();
   const BufferPoolStats& stats() const { return stats_; }
   ~BufferPool();
 
  private:
-  static constexpr size_t BUFFER_SIZE_BYTE = 4096 * 2 * 16384;
-  static constexpr size_t FRAME_SIZE_BYTE = 4096 * 2;
-  static constexpr size_t MAX_PAGE_COUNT = 16384;
+  static constexpr size_t BUFFER_SIZE_BYTE = 2048 * 2 * MAX_FRAME_COUNT;
+  static constexpr size_t FRAME_SIZE_BYTE = 2048 * 2;
+  static constexpr size_t MAX_PAGE_COUNT = 2048;
   void* buffer_;
   WAL& wal_;
   BufferPoolStats stats_;
@@ -49,6 +55,7 @@ class BufferPool {
   bool buffer_pool_event_file_log_enabled_;
   std::ofstream buffer_pool_event_log_file_;
   std::uint64_t buffer_pool_event_id_;
+  std::uint64_t buffer_pool_reset_generation_;
   std::chrono::steady_clock::time_point last_buffer_pool_stats_log_at_;
   void evictFrame(int frame_id);
   void zeroOutFrame(int frame_id);
@@ -70,8 +77,7 @@ class BufferPool {
   // FrameDirectory via Strategy pattern
   FrameDirectory frame_directory_;
   ARCReplacement replacement_policy;
-  std::pair<int, char*> acquireFrame(
-      bool zero_frame, std::optional<PageKey> page_key = std::nullopt);
+  std::pair<int, char*> acquireFrame(bool zero_frame, const PageKey& page_key);
   bool isPageLSNDurable(const Page& page) const;
-  void flushPage(int page_id, const std::string& file_path, Page& page);
+  void persistPage(int page_id, File& file, Page& page);
 };

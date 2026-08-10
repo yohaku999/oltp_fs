@@ -3,7 +3,7 @@
 This directory contains helper configuration, scripts, results, and notebooks
 for benchmarking **dbfs** and comparing it against **PostgreSQL** using
 [BenchBase](https://github.com/cmu-db/benchbase). The repository includes
-**TPC-C** and a Zipfian **YCSB A** workload.
+**TPC-C** and Zipfian **YCSB** workloads.
 
 The PostgreSQL baseline flow is docker compose based. PostgreSQL and BenchBase
 both run in containers, and BenchBase reaches PostgreSQL through the compose
@@ -47,7 +47,7 @@ Java benchmark / JDBC process
       compose-based PostgreSQL baseline.
     - `dbfs_tpcc_docker.xml` – TPCC config for the compose-based dbfs flow.
     - `dbfs_ycsb_zipf_*.xml` and `postgres_ycsb_zipf_*.xml` – matching
-      Zipfian YCSB A configs for statistics and throughput runs.
+      Zipfian YCSB configs for statistics and throughput runs.
 - `scripts/`
   - Shell wrappers around the benchmark flow.
   - Example:
@@ -62,9 +62,9 @@ Java benchmark / JDBC process
   - Recommended structure:
     - `results/<compare-label>/<workload>/postgres/...`
     - `results/<compare-label>/<workload>/dbfs/...`
-  - The compose wrapper also saves BenchBase stdout/stderr in the run result
-    directory as `benchbase.log`, or `benchbase_setup.log` and
-    `benchbase_execute.log` when `--profile-perf` splits the phases.
+  - The compose wrapper saves BenchBase stdout/stderr as
+    `benchbase_setup.log` and `benchbase_execute.log`. Setup and execution are
+    separate so dbfs can reset its buffer pool before workload warmup.
   - The wrapper also snapshots compose service logs into the same directory as
     `dbfs.compose.log` or `postgres.compose.log` so SQLExceptions can be traced
     back to server-side messages.
@@ -140,7 +140,7 @@ per-operation buffer-pool events while leaving perf profiling disabled:
 
 ### Zipfian YCSB
 
-Run the supplied YCSB A workload against dbfs with:
+Run the supplied read/scan YCSB workload against dbfs with:
 
 ```bash
 ./benchmarking/scripts/take_benchmark.sh \
@@ -150,14 +150,17 @@ Run the supplied YCSB A workload against dbfs with:
   ycsb-zipf-099
 ```
 
-Use `--stats` instead of `--throughput` for the controlled run at two requests
-per second, or omit `--target` to compare dbfs and PostgreSQL using matching
-YCSB settings.
+Use `--stats` instead of `--throughput` for the controlled run with a
+180-second warmup followed by a 600-second measurement interval at 100
+requests per second. Omit `--target` to compare dbfs and PostgreSQL using
+matching YCSB settings. Both modes use 90% point reads and 10% scans so a
+repeatedly accessed hot set competes with scan pages without introducing page
+creation or dirty-page write-back. Throughput mode removes the controlled
+rate cap while keeping the workload mix identical.
 
-The supplied YCSB configs load 20,000 rows (`scalefactor` 20), use ten
-100-character fields, fix the random seed at 42, and run YCSB A with 50% reads
-and 50% updates. Record keys for both operations are selected by BenchBase's
-Zipfian generator. The default `skewFactor` is 0.99:
+The supplied YCSB configs load 50,000 rows (`scalefactor` 50), use ten
+100-character fields, and fix the random seed at 42. Record keys are selected
+by BenchBase's Zipfian generator. The default `skewFactor` is 0.99:
 
 ```xml
 <skewFactor>0.99</skewFactor>
@@ -185,6 +188,28 @@ but non-zero overhead of perf sampling. Environment variables such as
 override a mode's defaults. Flamegraphs are generated only for dbfs; PostgreSQL
 throughput runs do not use perf profiling.
 
+### Buffer-pool state at the benchmark boundary
+
+The wrapper runs `create + load` separately from `execute`. For dbfs, it
+watches `benchbase_execute.log` for BenchBase's `PHASE START` marker and then
+sends the server's `resetBufferPool` management operation. Waiting until this
+marker also excludes execute-initialization queries such as YCSB's
+`SELECT MAX(...)` from the initial ARC state.
+
+The reset flushes WAL and dirty resident pages, clears every buffer-pool frame,
+and resets ARC and the aggregate buffer-pool counters. BenchBase then uses the
+remaining warmup interval to train ARC from the workload itself. ARC is not
+reset at `MEASURE`, because doing so would discard the warmup state; notebooks
+instead subtract the last pre-measure counter sample.
+
+The reset response and timestamp are saved as `dbfs.buffer_pool_reset.log`.
+Aggregate stats also include `buffer_pool_generation`, which becomes `1` after
+the reset, so a result can be rejected if the phase hook did not run.
+
+This reset intentionally leaves the operating-system page cache intact. It
+isolates dbfs buffer-replacement behavior without turning every run into a
+cold-storage benchmark.
+
 ## 4. perf + FlameGraph
 
 The compose-based dbfs flow can capture `perf record` data inside the `dbfs`
@@ -201,13 +226,14 @@ RUN_LABEL=20260515-perf \
   --perf-frequency 199
 ```
 
-When `--profile-perf` is enabled, the wrapper runs BenchBase in two steps:
+The wrapper runs BenchBase in two steps:
 
 - `create + load` first, without `perf` or JDBC query tracing
 - `execute` second, with `perf` and query tracing enabled
 
-This keeps the generated flamegraph and `dbfs_query_trace.csv` focused on the
-steady-state benchmark phase instead of the bulk load phase.
+For dbfs, `perf` starts only after the warmup-start buffer-pool reset. This
+keeps the generated flamegraph and `dbfs_query_trace.csv` focused on execution
+instead of bulk load, and keeps reset flushing out of the profile.
 
 Profiling outputs are written alongside the normal BenchBase results:
 

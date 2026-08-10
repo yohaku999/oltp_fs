@@ -30,7 +30,7 @@ struct FrameDirectoryStats {
 
 class FrameDirectory {
  public:
-  static constexpr size_t MAX_FRAME_COUNT = 16384;
+  static constexpr size_t MAX_FRAME_COUNT = 2048;
 
  private:
   struct Frame {
@@ -59,6 +59,7 @@ class FrameDirectory {
                             const std::string& file_path,
                             std::unique_ptr<Page> page);
   void unregisterResidentPage(int frame_id);
+  void reset();
   /**
    * We use explicit pin/unpin.
    * Although Intuitively, for a buffer pool, eviction depends on "safe to reuse

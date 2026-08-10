@@ -142,3 +142,42 @@ TEST_F(BufferPoolTest, EvictionFlushesWALUpToPageLSN) {
 
   EXPECT_EQ(wal->getFlushedLSN(), kRecordLsn);
 }
+
+TEST_F(BufferPoolTest, ResetFlushesDirtyPagesAndStartsWithColdBuffer) {
+  uint16_t page_id = pool->createPage(PageKind::Heap, *testFile);
+  Page* page = pool->pinPage(page_id, *testFile);
+  RecordSerializer cell = serializeSingleVarcharRecord("survives reset");
+  ASSERT_TRUE(page->insertCell(cell.serializedBytes()).has_value());
+  std::array<char, Page::PAGE_SIZE_BYTE> expected{};
+  std::memcpy(expected.data(), page->data(), expected.size());
+  pool->unpinPage(page, *testFile);
+
+  const BufferPoolResetResult result = pool->resetForBenchmark();
+
+  EXPECT_EQ(1u, result.resident_frames_cleared);
+  EXPECT_EQ(1u, result.dirty_frames_flushed);
+  EXPECT_EQ(1u, result.generation);
+  EXPECT_EQ(0u, pool->stats().pin_page_calls);
+  EXPECT_EQ(0u, pool->stats().misses);
+  EXPECT_EQ(0u, pool->stats().dirty_evictions);
+
+  Page* reloaded = pool->pinPage(page_id, *testFile);
+  ASSERT_NE(nullptr, reloaded);
+  EXPECT_EQ(0, std::memcmp(expected.data(), reloaded->data(), expected.size()));
+  EXPECT_EQ(1u, pool->stats().pin_page_calls);
+  EXPECT_EQ(1u, pool->stats().misses);
+  EXPECT_EQ(0u, pool->stats().resident_hits);
+  pool->unpinPage(reloaded, *testFile);
+}
+
+TEST_F(BufferPoolTest, ResetRejectsPinnedFramesWithoutChangingPool) {
+  uint16_t page_id = pool->createPage(PageKind::Heap, *testFile);
+  Page* pinned = pool->pinPage(page_id, *testFile);
+
+  EXPECT_THROW(pool->resetForBenchmark(), std::runtime_error);
+  EXPECT_EQ(pinned, pool->pinPage(page_id, *testFile));
+
+  pool->unpinPage(pinned, *testFile);
+  pool->unpinPage(pinned, *testFile);
+  EXPECT_NO_THROW(pool->resetForBenchmark());
+}

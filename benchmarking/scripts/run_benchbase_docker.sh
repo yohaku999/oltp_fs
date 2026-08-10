@@ -12,6 +12,7 @@ RESULTS_ROOT="${BENCHMARKING_ROOT}/results"
 COMPOSE_FILE="${BENCHMARKING_ROOT}/docker-compose.yaml"
 CONFIG_ROOT="${BENCHMARKING_ROOT}/benchbase-config"
 DBFS_JDBC_ROOT="${REPO_ROOT}/dbfs-jdbc"
+DBFS_REPRODUCER="${BENCHMARKING_ROOT}/tools/dbfs_reproducer.py"
 BENCHBASE_CONFIG_PATH=""
 WORKLOAD="${BENCHBASE_WORKLOAD:-tpcc}"
 POSTGRES_DB_NAME="${POSTGRES_DB:-benchbase}"
@@ -168,6 +169,7 @@ HOST_DBFS_COMPOSE_LOG_FILE="${HOST_RESULTS_DIR}/dbfs.compose.log"
 HOST_DBFS_SERVER_LOG_FILE="${HOST_RESULTS_DIR}/dbfs_server.log"
 HOST_DBFS_OPERATOR_LOG_FILE="${HOST_RESULTS_DIR}/dbfs.operator_rows.log"
 HOST_DBFS_BUFFER_POOL_EVENT_LOG_FILE="${HOST_RESULTS_DIR}/dbfs.buffer_pool_events.log"
+HOST_DBFS_BUFFER_POOL_RESET_LOG_FILE="${HOST_RESULTS_DIR}/dbfs.buffer_pool_reset.log"
 HOST_POSTGRES_COMPOSE_LOG_FILE="${HOST_RESULTS_DIR}/postgres.compose.log"
 RUN_LOG_SINCE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
@@ -310,6 +312,76 @@ run_benchbase() {
   return "${cmd_status}"
 }
 
+send_dbfs_buffer_pool_reset() {
+  local reset_output
+  if ! reset_output="$(printf '%s\n' '{"operation":"resetBufferPool"}' | \
+      python3 "${DBFS_REPRODUCER}" --host localhost --port 25432 2>&1)"; then
+    echo "ERROR: failed to send the dbfs buffer-pool reset request." >&2
+    printf 'requested_at=%s\n%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+      "${reset_output}" | tee "${HOST_DBFS_BUFFER_POOL_RESET_LOG_FILE}" >&2
+    return 1
+  fi
+
+  printf 'requested_at=%s\n%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    "${reset_output}" | tee "${HOST_DBFS_BUFFER_POOL_RESET_LOG_FILE}"
+  if ! grep -q '"ok": true' <<<"${reset_output}"; then
+    echo "ERROR: dbfs rejected the buffer-pool reset request." >&2
+    return 1
+  fi
+}
+
+run_benchbase_with_buffer_pool_reset() {
+  local results_dir="$1"
+  local log_file="$2"
+  local benchbase_pid
+  local benchbase_status
+  local hook_status=0
+  local phase_started=0
+
+  set +e
+  run_benchbase false false true "${results_dir}" 1 "${log_file}" &
+  benchbase_pid=$!
+  set -e
+
+  # BenchBase performs initialization queries such as YCSB's SELECT MAX after
+  # the load phase. Reset at PHASE START so those queries cannot seed ARC. A
+  # few warmup requests may race with this hook; they are discarded by the
+  # reset and the remaining warmup interval trains the clean buffer pool.
+  while kill -0 "${benchbase_pid}" 2>/dev/null; do
+    if [[ -f "${log_file}" ]] && grep -q 'PHASE START' "${log_file}"; then
+      phase_started=1
+      break
+    fi
+    sleep 0.1
+  done
+  if [[ "${phase_started}" -eq 0 && -f "${log_file}" ]] && \
+      grep -q 'PHASE START' "${log_file}"; then
+    phase_started=1
+  fi
+
+  if [[ "${phase_started}" -eq 1 ]]; then
+    echo "BenchBase warmup started; resetting the dbfs buffer pool and ARC..."
+    if ! send_dbfs_buffer_pool_reset; then
+      hook_status=1
+    elif [[ "${ENABLE_PERF_PROFILE}" -eq 1 ]]; then
+      start_perf_profile || hook_status=$?
+    fi
+  else
+    echo "ERROR: BenchBase PHASE START was not observed; the dbfs buffer pool was not reset." >&2
+    hook_status=1
+  fi
+
+  set +e
+  wait "${benchbase_pid}"
+  benchbase_status=$?
+  set -e
+
+  if [[ "${hook_status}" -ne 0 ]]; then
+    return "${hook_status}"
+  fi
+  return "${benchbase_status}"
+}
+
 trap cleanup EXIT
 
 if [[ "${ENGINE}" == "dbfs" ]]; then
@@ -384,26 +456,28 @@ elif [[ "${ENGINE}" == "postgres" ]]; then
 fi
 
 benchbase_exit_code=0
-if [[ "${ENABLE_PERF_PROFILE}" -eq 1 || "${ENGINE}" == "postgres" ]]; then
+if [[ "${ENGINE}" == "dbfs" || "${ENGINE}" == "postgres" ]]; then
   echo "Preparing BenchBase dataset without perf..."
   if run_benchbase true true false "${SETUP_RESULTS_DIR_CONTAINER}" 0 "${HOST_BENCHBASE_SETUP_LOG_FILE}"; then
-    if [[ "${ENABLE_PERF_PROFILE}" -eq 1 ]]; then
-      start_perf_profile
-      echo "Running BenchBase execute phase with perf..."
+    if [[ "${ENGINE}" == "dbfs" ]]; then
+      if [[ "${ENABLE_PERF_PROFILE}" -eq 1 ]]; then
+        echo "Running BenchBase execute phase; perf starts after the buffer-pool reset..."
+      else
+        echo "Running BenchBase execute phase with a clean buffer pool..."
+      fi
+      if run_benchbase_with_buffer_pool_reset "${RESULTS_DIR_CONTAINER}" "${HOST_BENCHBASE_EXECUTE_LOG_FILE}"; then
+        benchbase_exit_code=0
+      else
+        benchbase_exit_code=$?
+      fi
     else
       echo "Running BenchBase execute phase..."
+      if run_benchbase false false true "${RESULTS_DIR_CONTAINER}" 1 "${HOST_BENCHBASE_EXECUTE_LOG_FILE}"; then
+        benchbase_exit_code=0
+      else
+        benchbase_exit_code=$?
+      fi
     fi
-    if run_benchbase false false true "${RESULTS_DIR_CONTAINER}" 1 "${HOST_BENCHBASE_EXECUTE_LOG_FILE}"; then
-      benchbase_exit_code=0
-    else
-      benchbase_exit_code=$?
-    fi
-  else
-    benchbase_exit_code=$?
-  fi
-else
-  if run_benchbase true true true "${RESULTS_DIR_CONTAINER}" 1 "${HOST_BENCHBASE_LOG_FILE}"; then
-    benchbase_exit_code=0
   else
     benchbase_exit_code=$?
   fi
@@ -419,14 +493,13 @@ collect_runtime_logs
 echo "BenchBase run completed. Results should be under:"
 echo "  ${HOST_RESULTS_DIR}"
 
+if [[ "${ENGINE}" == "dbfs" || "${ENGINE}" == "postgres" ]]; then
+  echo "  ${HOST_BENCHBASE_SETUP_LOG_FILE}"
+  echo "  ${HOST_BENCHBASE_EXECUTE_LOG_FILE}"
+fi
+
 if [[ "${ENABLE_PERF_PROFILE}" -eq 1 ]]; then
-  echo "  ${HOST_BENCHBASE_SETUP_LOG_FILE}"
-  echo "  ${HOST_BENCHBASE_EXECUTE_LOG_FILE}"
-elif [[ "${ENGINE}" == "postgres" ]]; then
-  echo "  ${HOST_BENCHBASE_SETUP_LOG_FILE}"
-  echo "  ${HOST_BENCHBASE_EXECUTE_LOG_FILE}"
-else
-  echo "  ${HOST_BENCHBASE_LOG_FILE}"
+  echo "  ${HOST_PERF_DATA_FILE}"
 fi
 
 if [[ "${ENGINE}" == "dbfs" ]]; then
@@ -434,6 +507,7 @@ if [[ "${ENGINE}" == "dbfs" ]]; then
   echo "  ${HOST_DBFS_SERVER_LOG_FILE}"
   echo "  ${HOST_DBFS_OPERATOR_LOG_FILE}"
   echo "  ${HOST_DBFS_BUFFER_POOL_EVENT_LOG_FILE}"
+  echo "  ${HOST_DBFS_BUFFER_POOL_RESET_LOG_FILE}"
 else
   echo "  ${HOST_POSTGRES_COMPOSE_LOG_FILE}"
 fi

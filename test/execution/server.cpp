@@ -376,3 +376,33 @@ TEST_F(ServerTest, BatchUpdateInsertsPreparedStatementRows) {
   ASSERT_EQ(1, query_response.at("rows").at(0).size());
   EXPECT_EQ("b", query_response.at("rows").at(0).at(0).get<std::string>());
 }
+
+TEST_F(ServerTest, ResetBufferPoolFlushesDataWithoutSqlPayload) {
+  nlohmann::json create_response =
+      sendRequest(port_, "update",
+                  "CREATE TABLE reset_probe (id int NOT NULL, value varchar, "
+                  "PRIMARY KEY (id))",
+                  nlohmann::json::array(), kConcurrentStockLevelTimeoutMs);
+  ASSERT_TRUE(create_response.value("ok", false));
+
+  nlohmann::json insert_response = sendRequest(
+      port_, "update", "INSERT INTO reset_probe VALUES (1, 'persisted')",
+      nlohmann::json::array(), kConcurrentStockLevelTimeoutMs);
+  ASSERT_TRUE(insert_response.value("ok", false));
+
+  nlohmann::json reset_response =
+      sendJsonRequest(port_, {{"operation", "resetBufferPool"}},
+                      kConcurrentStockLevelTimeoutMs);
+  ASSERT_TRUE(reset_response.value("ok", false));
+  EXPECT_GT(reset_response.at("residentFramesCleared").get<int>(), 0);
+  EXPECT_GT(reset_response.at("dirtyFramesFlushed").get<int>(), 0);
+  EXPECT_EQ(1, reset_response.at("generation").get<int>());
+
+  nlohmann::json query_response =
+      sendRequest(port_, "query", "SELECT value FROM reset_probe WHERE id = 1",
+                  nlohmann::json::array(), kConcurrentStockLevelTimeoutMs);
+  ASSERT_TRUE(query_response.value("ok", false));
+  ASSERT_EQ(1, query_response.at("rows").size());
+  EXPECT_EQ("persisted",
+            query_response.at("rows").at(0).at(0).get<std::string>());
+}

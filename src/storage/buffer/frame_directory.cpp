@@ -59,6 +59,16 @@ void FrameDirectory::unregisterResidentPage(int frame_id) {
                             frame_id);
 }
 
+void FrameDirectory::reset() {
+  page_to_frame_.clear();
+  free_frames_.clear();
+  for (size_t i = 0; i < frames_.size(); ++i) {
+    frames_[i].clear();
+    free_frames_.insert(static_cast<int>(i));
+  }
+  next_victim_frame_ = 0;
+}
+
 void FrameDirectory::pin(int frame_id) {
   frames_[frame_id].pin_count++;
   dbfs_log::storage().debug("Marked frame {} as pinned, count = {}", frame_id,

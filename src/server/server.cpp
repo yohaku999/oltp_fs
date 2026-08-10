@@ -370,6 +370,17 @@ std::string Server::handleRequest(const std::string& request) {
   nlohmann::json req = nlohmann::json::parse(request);
 
   const std::string operation = req.value("operation", "");
+  nlohmann::json res;
+  res["ok"] = true;
+
+  if (operation == "resetBufferPool") {
+    const BufferPoolResetResult result = pool_->resetForBenchmark();
+    res["residentFramesCleared"] = result.resident_frames_cleared;
+    res["dirtyFramesFlushed"] = result.dirty_frames_flushed;
+    res["generation"] = result.generation;
+    return res.dump();
+  }
+
   const std::string sql_template = req.at("sql").get<std::string>();
   const nlohmann::json parameters =
       req.value("parameters", nlohmann::json::array());
@@ -379,8 +390,6 @@ std::string Server::handleRequest(const std::string& request) {
           : renderSqlWithParameters(sql_template, parameters);
 
   dbfs_log::server().debug("parsed SQL: {}", sql);
-  nlohmann::json res;
-  res["ok"] = true;
 
   if (operation == "batchUpdate") {
     const nlohmann::json parameter_sets =
