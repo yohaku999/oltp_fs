@@ -44,9 +44,8 @@ std::pair<BTreeCursor::Boundary, BTreeCursor::Boundary> exactBoundaries(
 
 TEST(PageTest, InsertLeafPageAndFind) {
   std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
-  auto page = std::make_unique<Page>(
-      Page::initializeNew(page_data.data(), PageKind::LeafIndex,
-                          LeafIndexPage::NO_RIGHT_SIBLING, 1));
+  auto page = std::make_unique<Page>(page_data.data(), PageKind::LeafIndex,
+                                     LeafIndexPage::NO_RIGHT_SIBLING, 1);
   EXPECT_TRUE(page->isDirty());
   struct Entry {
     int key;
@@ -85,12 +84,10 @@ TEST(PageTest, TransferCellsToCompactsSourcePage) {
   std::array<char, Page::PAGE_SIZE_BYTE> src_data{};
   std::array<char, Page::PAGE_SIZE_BYTE> dst_data{};
 
-  auto src_page = std::make_unique<Page>(
-      Page::initializeNew(src_data.data(), PageKind::LeafIndex,
-                          LeafIndexPage::NO_RIGHT_SIBLING, 1));
-  auto dst_page = std::make_unique<Page>(
-      Page::initializeNew(dst_data.data(), PageKind::LeafIndex,
-                          LeafIndexPage::NO_RIGHT_SIBLING, 2));
+  auto src_page = std::make_unique<Page>(src_data.data(), PageKind::LeafIndex,
+                                         LeafIndexPage::NO_RIGHT_SIBLING, 1);
+  auto dst_page = std::make_unique<Page>(dst_data.data(), PageKind::LeafIndex,
+                                         LeafIndexPage::NO_RIGHT_SIBLING, 2);
 
   for (int key = 1; key <= 4; ++key) {
     auto slot_id_opt = src_page->insertCell(LeafCell(encodeIntKey(key), 0, 0));
@@ -132,9 +129,8 @@ TEST(PageTest, TransferCellsToCompactsSourcePage) {
 // the page.
 TEST(PageTest, InsertLeafPageRunsOutOfSpace) {
   std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
-  auto page = std::make_unique<Page>(
-      Page::initializeNew(page_data.data(), PageKind::LeafIndex,
-                          LeafIndexPage::NO_RIGHT_SIBLING, 1));
+  auto page = std::make_unique<Page>(page_data.data(), PageKind::LeafIndex,
+                                     LeafIndexPage::NO_RIGHT_SIBLING, 1);
   std::array<char, Page::PAGE_SIZE_BYTE> page_snapshot{};
 
   size_t successful_inserts = 0;
@@ -163,8 +159,7 @@ TEST(PageTest, InsertLeafPageRunsOutOfSpace) {
 
 TEST(PageTest, InsertOversizedHeapRecordDoesNotCorruptPage) {
   std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
-  auto page = std::make_unique<Page>(
-      Page::initializeNew(page_data.data(), PageKind::Heap, 0, 1));
+  auto page = std::make_unique<Page>(page_data.data(), PageKind::Heap, 0, 1);
   std::array<char, Page::PAGE_SIZE_BYTE> page_snapshot{};
 
   std::string oversized_payload(Page::PAGE_SIZE_BYTE, 'x');
@@ -181,8 +176,8 @@ TEST(PageTest, InsertOversizedHeapRecordDoesNotCorruptPage) {
 TEST(PageTest, InsertIntermediatePageAndFind) {
   std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
   uint16_t right_most_child_page_id = 999;
-  auto page = std::make_unique<Page>(Page::initializeNew(
-      page_data.data(), PageKind::InternalIndex, right_most_child_page_id, 1));
+  auto page = std::make_unique<Page>(page_data.data(), PageKind::InternalIndex,
+                                     right_most_child_page_id, 1);
   EXPECT_TRUE(page->isDirty());
   struct Entry {
     int key;
@@ -231,8 +226,7 @@ TEST(PageTest, InvalidateSlotSetsFlag) {
   // already-serialized record payloads.
   auto assertInvalidation = [](PageKind kind, const Cell& cell) {
     std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
-    auto page = std::make_unique<Page>(
-        Page::initializeNew(page_data.data(), kind, 0, 1));
+    auto page = std::make_unique<Page>(page_data.data(), kind, 0, 1);
     auto slot_id_opt = page->insertCell(cell);
     ASSERT_TRUE(slot_id_opt.has_value());
     uint16_t slot_id = slot_id_opt.value();
@@ -254,8 +248,7 @@ TEST(PageTest, InvalidateSlotSetsFlag) {
   auto assertSerializedInvalidation = [](PageKind kind,
                                          const std::vector<std::byte>& bytes) {
     std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
-    auto page = std::make_unique<Page>(
-        Page::initializeNew(page_data.data(), kind, 0, 1));
+    auto page = std::make_unique<Page>(page_data.data(), kind, 0, 1);
     auto slot_id_opt = page->insertCell(bytes);
     ASSERT_TRUE(slot_id_opt.has_value());
     uint16_t slot_id = slot_id_opt.value();
@@ -282,9 +275,8 @@ TEST(PageTest, InvalidateSlotSetsFlag) {
 
 TEST(PageTest, InvalidateSlotMarksPreviouslyCleanPageDirty) {
   std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
-  auto page = std::make_unique<Page>(
-      Page::initializeNew(page_data.data(), PageKind::LeafIndex,
-                          LeafIndexPage::NO_RIGHT_SIBLING, 1));
+  auto page = std::make_unique<Page>(page_data.data(), PageKind::LeafIndex,
+                                     LeafIndexPage::NO_RIGHT_SIBLING, 1);
 
   auto slot_id_opt = page->insertCell(LeafCell(encodeIntKey(123), 4, 5));
   ASSERT_TRUE(slot_id_opt.has_value());
@@ -307,9 +299,8 @@ TEST(PageTest, InvalidateSlotMarksPreviouslyCleanPageDirty) {
 
 TEST(PageTest, LeafSearchSkipsInvalidEntries) {
   std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
-  auto page = std::make_unique<Page>(
-      Page::initializeNew(page_data.data(), PageKind::LeafIndex,
-                          LeafIndexPage::NO_RIGHT_SIBLING, 1));
+  auto page = std::make_unique<Page>(page_data.data(), PageKind::LeafIndex,
+                                     LeafIndexPage::NO_RIGHT_SIBLING, 1);
 
   auto slot_id_opt = page->insertCell(LeafCell(encodeIntKey(123), 1, 1));
   page->invalidateSlot(slot_id_opt.value());
@@ -326,9 +317,8 @@ TEST(PageTest, LeafSearchSkipsInvalidEntries) {
 
 TEST(PageTest, LeafInsertInvalidateReuseSlot) {
   std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
-  auto page = std::make_unique<Page>(
-      Page::initializeNew(page_data.data(), PageKind::LeafIndex,
-                          LeafIndexPage::NO_RIGHT_SIBLING, 1));
+  auto page = std::make_unique<Page>(page_data.data(), PageKind::LeafIndex,
+                                     LeafIndexPage::NO_RIGHT_SIBLING, 1);
   EXPECT_TRUE(page->isDirty());
 
   auto first_slot = page->insertCell(LeafCell(encodeIntKey(1), 1, 1));
@@ -352,8 +342,7 @@ TEST(PageTest, LeafInsertInvalidateReuseSlot) {
 
 TEST(PageTest, HeapInsertInvalidateReuseSlot) {
   std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
-  auto page = std::make_unique<Page>(
-      Page::initializeNew(page_data.data(), PageKind::Heap, 0, 1));
+  auto page = std::make_unique<Page>(page_data.data(), PageKind::Heap, 0, 1);
 
   std::string payload = "heap-value";
   RecordSerializer first_record = serializeSingleVarcharRecord(payload);
@@ -377,8 +366,7 @@ TEST(PageTest, HeapInsertInvalidateReuseSlot) {
 
 TEST(PageTest, SetPageLSNUpdatesHeaderAndMarksDirty) {
   std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
-  auto page = std::make_unique<Page>(
-      Page::initializeNew(page_data.data(), PageKind::Heap, 0, 1));
+  auto page = std::make_unique<Page>(page_data.data(), PageKind::Heap, 0, 1);
 
   page->clearDirty();
   EXPECT_FALSE(page->isDirty());
@@ -392,8 +380,7 @@ TEST(PageTest, SetPageLSNUpdatesHeaderAndMarksDirty) {
 
 TEST(PageTest, NewPageInitializesPageLSNToZero) {
   std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
-  auto page = std::make_unique<Page>(
-      Page::initializeNew(page_data.data(), PageKind::Heap, 0, 1));
+  auto page = std::make_unique<Page>(page_data.data(), PageKind::Heap, 0, 1);
 
   EXPECT_EQ(page->getPageLSN(), 0u);
   EXPECT_TRUE(page->isDirty());
@@ -403,10 +390,9 @@ TEST(PageTest, KindRoundTripsForAllPageKinds) {
   std::array<char, Page::PAGE_SIZE_BYTE> leaf_data{};
   std::array<char, Page::PAGE_SIZE_BYTE> internal_data{};
 
-  Page heap = Page::initializeNew(heap_data.data(), PageKind::Heap, 0, 1);
-  Page leaf = Page::initializeNew(leaf_data.data(), PageKind::LeafIndex, 0, 2);
-  Page internal =
-      Page::initializeNew(internal_data.data(), PageKind::InternalIndex, 0, 3);
+  Page heap(heap_data.data(), PageKind::Heap, 0, 1);
+  Page leaf(leaf_data.data(), PageKind::LeafIndex, 0, 2);
+  Page internal(internal_data.data(), PageKind::InternalIndex, 0, 3);
 
   EXPECT_EQ(heap.kind(), PageKind::Heap);
   EXPECT_EQ(leaf.kind(), PageKind::LeafIndex);
@@ -415,9 +401,9 @@ TEST(PageTest, KindRoundTripsForAllPageKinds) {
   EXPECT_TRUE(leaf.isLeaf());
   EXPECT_FALSE(internal.isLeaf());
 
-  Page wrapped_heap = Page::wrapExisting(heap_data.data(), 1);
-  Page wrapped_leaf = Page::wrapExisting(leaf_data.data(), 2);
-  Page wrapped_internal = Page::wrapExisting(internal_data.data(), 3);
+  Page wrapped_heap(heap_data.data(), 1);
+  Page wrapped_leaf(leaf_data.data(), 2);
+  Page wrapped_internal(internal_data.data(), 3);
 
   EXPECT_EQ(wrapped_heap.kind(), PageKind::Heap);
   EXPECT_EQ(wrapped_leaf.kind(), PageKind::LeafIndex);

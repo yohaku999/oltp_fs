@@ -85,8 +85,8 @@ uint16_t BufferPool::createPage(PageKind kind, File& file,
   const PageKey page_key{file.getFilePath(), page_id};
   auto [frame_id, frame_ptr] = acquireFrame(true, page_key);
 
-  auto page = std::make_unique<Page>(
-      Page::initializeNew(frame_ptr, kind, right_most_child_page_id, page_id));
+  auto page = std::make_unique<Page>(frame_ptr, kind, right_most_child_page_id,
+                                     page_id);
   frame_directory_.registerResidentPage(frame_id, page_id, file.getFilePath(),
                                         std::move(page));
   replacement_policy.onNoneResidentPageAccess(frame_id, page_key);
@@ -137,8 +137,7 @@ Page* BufferPool::pinPage(int page_id, File& file) {
     auto [frame_id, frame_buffer] = acquireFrame(false, page_key);
     stats_.read_page_into_buffer_calls++;
     file.readPageIntoBuffer(page_id, frame_buffer);
-    auto page =
-        std::make_unique<Page>(Page::wrapExisting(frame_buffer, page_id));
+    auto page = std::make_unique<Page>(frame_buffer, page_id);
     Page* loaded_page = page.get();
     frame_directory_.registerResidentPage(frame_id, page_id, file.getFilePath(),
                                           std::move(page));

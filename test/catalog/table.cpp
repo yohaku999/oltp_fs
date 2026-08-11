@@ -152,7 +152,7 @@ TEST_F(TableTest, InitializeCreatesReadableTableBootstrap) {
   EXPECT_NO_THROW(
       table.indexFile()->get().readPageIntoBuffer(0, index_page_buffer.data()));
 
-  Page index_root = Page::wrapExisting(index_page_buffer.data(), 0);
+  Page index_root(index_page_buffer.data(), 0);
   EXPECT_TRUE(index_root.isLeaf());
   EXPECT_EQ(index_root.getPageLSN(), 0u);
 }

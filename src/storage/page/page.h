@@ -56,10 +56,9 @@ class Page {
  public:
   static constexpr int HAS_NO_PARENT = -1;
   static constexpr size_t HEADDER_SIZE_BYTE = 256;
-  static Page initializeNew(char* page_buffer, PageKind kind,
-                            uint16_t right_most_child_page_id,
-                            uint16_t page_id);
-  static Page wrapExisting(char* page_buffer, uint16_t page_id);
+  Page(char* page_buffer, PageKind kind, uint16_t right_most_child_page_id,
+       uint16_t page_id);
+  Page(char* page_buffer, uint16_t page_id);
   void markDirty() { is_dirty_ = true; };
   void clearDirty() { is_dirty_ = false; };
   bool isDirty() const { return is_dirty_; };
@@ -92,7 +91,4 @@ class Page {
 
  private:
   char* page_buffer_;
-  Page(char* page_buffer, PageKind kind, uint16_t right_most_child_page_id,
-       uint16_t page_id);
-  Page(char* page_buffer, uint16_t page_id);
 };

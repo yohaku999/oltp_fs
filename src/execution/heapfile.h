@@ -22,7 +22,7 @@ class HeapFile {
 
   void initialize() {
     std::array<char, Page::PAGE_SIZE_BYTE> buffer{};
-    Page::initializeNew(buffer.data(), PageKind::Heap, 0, 0);
+    Page(buffer.data(), PageKind::Heap, 0, 0);
     file_.writePageFromBuffer(0, buffer.data());
   }
 

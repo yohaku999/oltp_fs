@@ -15,17 +15,6 @@
 #include "storage/index/leaf_cell.h"
 #include "storage/record/record_cell.h"
 
-namespace {}  // namespace
-
-Page Page::initializeNew(char* page_buffer, PageKind kind,
-                         uint16_t right_most_child_page_id, uint16_t page_id) {
-  return Page(page_buffer, kind, right_most_child_page_id, page_id);
-}
-
-Page Page::wrapExisting(char* page_buffer, uint16_t page_id) {
-  return Page(page_buffer, page_id);
-}
-
 Page::Page(char* page_buffer, PageKind kind, uint16_t right_most_child_page_id,
            uint16_t page_id)
     : is_dirty_(false),

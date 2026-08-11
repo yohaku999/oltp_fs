@@ -93,8 +93,8 @@ void Table::createIndex(const std::vector<std::string>& column_names) {
 
   try {
     std::array<char, Page::PAGE_SIZE_BYTE> index_root_buffer{};
-    Page::initializeNew(index_root_buffer.data(), PageKind::LeafIndex,
-                        LeafIndexPage::NO_RIGHT_SIBLING, 0);
+    Page(index_root_buffer.data(), PageKind::LeafIndex,
+         LeafIndexPage::NO_RIGHT_SIBLING, 0);
     index_file_->writePageFromBuffer(0, index_root_buffer.data());
 
     TableMetadataStore::write(
