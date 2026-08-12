@@ -13,7 +13,6 @@
 #include "storage/index/index_page.h"
 #include "storage/page/page.h"
 #include "storage/record/record_cell.h"
-#include "storage/record/record_serializer.h"
 #include "storage/wal/wal.h"
 #include "storage/wal/wal_body.h"
 #include "storage/wal/wal_record.h"

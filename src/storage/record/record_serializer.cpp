@@ -2,6 +2,7 @@
 
 #include <cstring>
 #include <stdexcept>
+#include <utility>
 
 namespace {
 
@@ -58,7 +59,7 @@ void writeNonNullFieldValue(const Column& column, const FieldValue& value,
   throw std::runtime_error("Unsupported column type.");
 }
 
-uint32_t buildNullBitmap(const Schema& schema, const TypedRow& row) {
+uint32_t buildNullBitmap(const TypedRow& row) {
   uint32_t null_bitmap = 0;
   for (std::size_t index = 0; index < row.values.size(); ++index) {
     if (isNullFieldValue(row.values[index])) {
@@ -117,8 +118,8 @@ uint16_t writeVariableLengthValue(const Column& column, const FieldValue& value,
 
 }  // namespace
 
-RecordSerializer::RecordSerializer(const Schema& schema, const TypedRow& row)
-    : serialized_bytes_() {
+RecordCell RecordSerializer::serialize(const Schema& schema,
+                                       const TypedRow& row) {
   if (schema.columns_.size() != row.values.size()) {
     throw std::runtime_error(
         "Schema column count and TypedRow value count must match.");
@@ -133,11 +134,11 @@ RecordSerializer::RecordSerializer(const Schema& schema, const TypedRow& row)
   const uint16_t variable_length_payload_begin_offset = static_cast<uint16_t>(
       RecordCellLayout::HEADER_SIZE_BYTE + fixed_payload_size);
 
-  serialized_bytes_.resize(RecordCellLayout::HEADER_SIZE_BYTE +
-                           fixed_payload_size + variable_table_size +
-                           variable_payload_data_size);
+  std::vector<std::byte> serialized_bytes(
+      RecordCellLayout::HEADER_SIZE_BYTE + fixed_payload_size +
+      variable_table_size + variable_payload_data_size);
 
-  char* dst = reinterpret_cast<char*>(serialized_bytes_.data());
+  char* dst = reinterpret_cast<char*>(serialized_bytes.data());
 
   uint8_t flags = 0;
   std::memcpy(dst, &flags, Cell::FLAG_FIELD_SIZE);
@@ -146,12 +147,12 @@ RecordSerializer::RecordSerializer(const Schema& schema, const TypedRow& row)
   std::memcpy(dst, &variable_length_payload_begin_offset, sizeof(uint16_t));
   dst += sizeof(uint16_t);
 
-  const uint32_t null_bitmap = buildNullBitmap(schema, row);
+  const uint32_t null_bitmap = buildNullBitmap(row);
   std::memcpy(dst, &null_bitmap, sizeof(uint32_t));
   dst += sizeof(uint32_t);
 
   char* fixed_payload_dst = dst;
-  char* variable_table_dst = reinterpret_cast<char*>(serialized_bytes_.data()) +
+  char* variable_table_dst = reinterpret_cast<char*>(serialized_bytes.data()) +
                              variable_length_payload_begin_offset;
   char* variable_data_dst = variable_table_dst + variable_table_size;
 
@@ -174,4 +175,6 @@ RecordSerializer::RecordSerializer(const Schema& schema, const TypedRow& row)
       ++variable_column_index;
     }
   }
+
+  return RecordCell(std::move(serialized_bytes));
 }

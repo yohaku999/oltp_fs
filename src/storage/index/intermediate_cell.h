@@ -5,7 +5,7 @@
 
 #include "storage/page/cell.h"
 
-class IntermediateCell : public Cell {
+class IntermediateCell : public IndexCell {
  private:
   uint16_t key_size_;
   uint16_t page_id_;

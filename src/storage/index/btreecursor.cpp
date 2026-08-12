@@ -83,7 +83,7 @@ bool hasInvalidCell(const Page& page) {
   return false;
 }
 
-std::optional<int> insertCellWithCompaction(Page& page, const Cell& cell) {
+std::optional<int> insertCellWithCompaction(Page& page, const IndexCell& cell) {
   std::optional<int> inserted_slot_id = page.insertCell(cell);
   if (inserted_slot_id.has_value()) {
     return inserted_slot_id;
@@ -192,7 +192,7 @@ void BTreeCursor::insertIntoIndex(BufferPool& pool, File& indexFile,
       indexFile.getFilePath());
   int target_page_id = findLeafPageID(pool, indexFile, key);
   Page* target_page = pool.pinPage(target_page_id, indexFile);
-  std::unique_ptr<Cell> cell_to_insert =
+  std::unique_ptr<IndexCell> cell_to_insert =
       std::make_unique<LeafCell>(key, heap_page_id, slot_id);
 
   while (true) {
@@ -328,7 +328,8 @@ BTreeCursor::SplitResult BTreeCursor::splitPage(BufferPool& pool,
                 pool, index_file, *old_page,
                 IntermediateCell::getKey(old_page->getSplitKeyCellStart()));
 
-  // Since cell on internalindexpage points to the leaf page larger then its value, we have to replace child page ID
+  // Since cell on internalindexpage points to the leaf page larger then its
+  // value, we have to replace child page ID
   if (split_result.right_page_id != old_page->getPageID()) {
     InternalIndexPage parent(*parent_page);
     if (!parent.replaceChildPageId(static_cast<uint16_t>(old_page->getPageID()),

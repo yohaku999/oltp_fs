@@ -18,11 +18,11 @@
 
 namespace {
 
-RecordSerializer serializeSingleVarcharRecord(const std::string& value) {
+RecordCell makeSingleVarcharRecord(const std::string& value) {
   static const Schema schema{
       std::vector<Column>{Column("value", Column::Type::Varchar)}};
   TypedRow row{{value}};
-  return RecordSerializer(schema, row);
+  return RecordSerializer::serialize(schema, row);
 }
 
 std::string encodeIntKey(int value) {
@@ -163,10 +163,10 @@ TEST(PageTest, InsertOversizedHeapRecordDoesNotCorruptPage) {
   std::array<char, Page::PAGE_SIZE_BYTE> page_snapshot{};
 
   std::string oversized_payload(Page::PAGE_SIZE_BYTE, 'x');
-  RecordSerializer record = serializeSingleVarcharRecord(oversized_payload);
+  RecordCell record = makeSingleVarcharRecord(oversized_payload);
 
   std::memcpy(page_snapshot.data(), page->data(), Page::PAGE_SIZE_BYTE);
-  auto slot_id_opt = page->insertCell(record.serializedBytes());
+  auto slot_id_opt = page->insertCell(record);
 
   EXPECT_FALSE(slot_id_opt.has_value());
   EXPECT_EQ(
@@ -222,8 +222,7 @@ TEST(PageTest, InsertIntermediatePageAndFind) {
 }
 
 TEST(PageTest, InvalidateSlotSetsFlag) {
-  // Verify invalidation through the public Page API for both typed cells and
-  // already-serialized record payloads.
+  // Verify invalidation through the public Page API for index and record cells.
   auto assertInvalidation = [](PageKind kind, const Cell& cell) {
     std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
     auto page = std::make_unique<Page>(page_data.data(), kind, 0, 1);
@@ -245,32 +244,10 @@ TEST(PageTest, InvalidateSlotSetsFlag) {
     EXPECT_FALSE(Cell::isValid(cell_data));
   };
 
-  auto assertSerializedInvalidation = [](PageKind kind,
-                                         const std::vector<std::byte>& bytes) {
-    std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
-    auto page = std::make_unique<Page>(page_data.data(), kind, 0, 1);
-    auto slot_id_opt = page->insertCell(bytes);
-    ASSERT_TRUE(slot_id_opt.has_value());
-    uint16_t slot_id = slot_id_opt.value();
-
-    uint16_t cell_offset = 0;
-    std::memcpy(&cell_offset,
-                page_data.data() + Page::HEADDER_SIZE_BYTE +
-                    Page::CELL_POINTER_SIZE * slot_id,
-                sizeof(uint16_t));
-    char* cell_data = page_data.data() + cell_offset;
-    ASSERT_TRUE(Cell::isValid(cell_data));
-
-    page->invalidateSlot(slot_id);
-    EXPECT_TRUE(page->isDirty());
-
-    EXPECT_FALSE(Cell::isValid(cell_data));
-  };
-
   assertInvalidation(PageKind::LeafIndex, LeafCell(encodeIntKey(42), 100, 7));
   std::string payload = "page-record";
-  RecordSerializer record = serializeSingleVarcharRecord(payload);
-  assertSerializedInvalidation(PageKind::Heap, record.serializedBytes());
+  RecordCell record = makeSingleVarcharRecord(payload);
+  assertInvalidation(PageKind::Heap, record);
 }
 
 TEST(PageTest, InvalidateSlotMarksPreviouslyCleanPageDirty) {
@@ -345,13 +322,13 @@ TEST(PageTest, HeapInsertInvalidateReuseSlot) {
   auto page = std::make_unique<Page>(page_data.data(), PageKind::Heap, 0, 1);
 
   std::string payload = "heap-value";
-  RecordSerializer first_record = serializeSingleVarcharRecord(payload);
-  auto first_slot = page->insertCell(first_record.serializedBytes());
+  RecordCell first_record = makeSingleVarcharRecord(payload);
+  auto first_slot = page->insertCell(first_record);
   ASSERT_TRUE(first_slot.has_value());
   page->invalidateSlot(first_slot.value());
 
-  RecordSerializer second_record = serializeSingleVarcharRecord(payload);
-  auto second_slot = page->insertCell(second_record.serializedBytes());
+  RecordCell second_record = makeSingleVarcharRecord(payload);
+  auto second_slot = page->insertCell(second_record);
   ASSERT_TRUE(second_slot.has_value());
   EXPECT_NE(first_slot.value(), second_slot.value());
 

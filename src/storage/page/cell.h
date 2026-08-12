@@ -15,8 +15,8 @@ enum class CellKind { Leaf, Intermediate, Record };
  * Note:
  * - LeafCell and IntermediateCell are modeled as small value objects that can
  * be decoded from bytes and re-serialized.
- * - Heap records are split across RecordCellView for read-side interpretation
- * and RecordSerializer for write-side serialization.
+ * - Heap records use RecordSerializer to create a RecordCell before insertion
+ * and RecordCellView for read-side interpretation.
  * - Schema-dependent field interpretation must stay outside the storage layer.
  */
 class Cell {
@@ -35,9 +35,13 @@ class Cell {
   }
 
   virtual ~Cell() = default;
-  virtual size_t payloadSize() const = 0;
-  virtual std::vector<std::byte> serialize() const = 0;
   virtual CellKind kind() const = 0;
+  virtual std::vector<std::byte> serialize() const = 0;
+};
+
+class IndexCell : public Cell {
+ public:
+  virtual size_t payloadSize() const = 0;
   virtual const std::string& key() const = 0;
 };
 

@@ -5,7 +5,7 @@
 
 #include "storage/page/cell.h"
 
-class LeafCell : public Cell {
+class LeafCell : public IndexCell {
  private:
   uint16_t key_size_;
   uint16_t heap_page_id_;

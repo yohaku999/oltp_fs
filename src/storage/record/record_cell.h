@@ -25,10 +25,10 @@
 
 /**
  * Read/write responsibilities are intentionally split:
+ * - RecordCell owns serialized heap-record bytes before insertion
  * - RecordCellView is a non-owning view over heap-record bytes already stored
- * in a page
- * - RecordSerializer owns temporary bytes while serializing a record for
- * insertion
+ *   in a page
+ * - RecordSerializer converts a schema-aware row into a RecordCell
  * - column-level interpretation belongs to TypedRow/Schema-aware callers, not
  * this file
  */
@@ -36,6 +36,23 @@
 struct RecordCellLayout {
   static constexpr uint16_t HEADER_SIZE_BYTE =
       Cell::FLAG_FIELD_SIZE + sizeof(uint16_t) + sizeof(uint32_t);
+};
+
+class RecordCell : public Cell {
+ public:
+  explicit RecordCell(std::vector<std::byte> serialized_bytes)
+      : serialized_bytes_(std::move(serialized_bytes)) {}
+
+  CellKind kind() const override { return CellKind::Record; }
+  std::vector<std::byte> serialize() const override {
+    return serialized_bytes_;
+  }
+  const std::vector<std::byte>& serializedBytes() const {
+    return serialized_bytes_;
+  }
+
+ private:
+  std::vector<std::byte> serialized_bytes_;
 };
 
 class RecordCellView {

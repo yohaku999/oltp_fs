@@ -3,7 +3,8 @@
 - `Table`: table-level aggregate that owns schema metadata and the two backing files, and centralizes `data/<table>.{index,db,meta.json}` naming.
 - `Page`: physical slotted-page container that owns the header, slot pointer array, payload area, and per-cell invalidation flag.
 - `LeafCell` / `IntermediateCell`: logical index-cell value objects that decode from bytes and serialize back to bytes.
-- `RecordSerializer`: write-side helper that converts `Schema + TypedRow` into serialized record bytes.
+- `RecordSerializer`: write-side helper that converts `Schema + TypedRow` into a `RecordCell`.
+- `RecordCell`: storage-level value object that owns serialized heap-record bytes.
 - `RecordCellView`: read-side helper that interprets raw record bytes already stored in a page.
 
 # Page

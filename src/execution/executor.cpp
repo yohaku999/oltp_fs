@@ -388,18 +388,17 @@ void insertRow(BufferPool& pool, Table& table, const TypedRow& row, WAL& wal) {
                                 table.name());
   }
 
-  RecordSerializer cell(table.schema(), row);
-  const std::vector<std::byte>& serialized_cell = cell.serializedBytes();
+  RecordCell cell = RecordSerializer::serialize(table.schema(), row);
 
   File& heap_file = table.heapFile().rawFile();
   uint16_t target_page_id = heap_file.getMaxPageID();
   Page* heap_page = pool.pinPage(target_page_id, heap_file);
-  auto inserted_slot_id = heap_page->insertCell(serialized_cell);
+  auto inserted_slot_id = heap_page->insertCell(cell);
   if (!inserted_slot_id.has_value()) {
     pool.unpinPage(heap_page, heap_file);
     target_page_id = pool.createPage(PageKind::Heap, heap_file);
     heap_page = pool.pinPage(target_page_id, heap_file);
-    inserted_slot_id = heap_page->insertCell(serialized_cell);
+    inserted_slot_id = heap_page->insertCell(cell);
     if (!inserted_slot_id.has_value()) {
       pool.unpinPage(heap_page, heap_file);
       throw std::runtime_error(
@@ -412,8 +411,9 @@ void insertRow(BufferPool& pool, Table& table, const TypedRow& row, WAL& wal) {
   const RID inserted_rid{target_page_id,
                          static_cast<uint16_t>(inserted_slot_id.value())};
 
-  wal.write(WALRecord::RecordType::INSERT, inserted_rid.heap_page_id,
-            InsertRedoBody(inserted_rid.slot_id, serialized_cell).encode());
+  wal.write(
+      WALRecord::RecordType::INSERT, inserted_rid.heap_page_id,
+      InsertRedoBody(inserted_rid.slot_id, cell.serializedBytes()).encode());
 
   if (index_file.has_value()) {
     BTreeCursor::insertIntoIndex(pool, index_file->get(), key.value(),

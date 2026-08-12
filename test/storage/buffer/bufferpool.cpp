@@ -9,6 +9,7 @@
 #include <memory>
 #include <set>
 #include <stdexcept>
+#include <utility>
 
 #include "schema/schema.h"
 #include "storage/disk/file.h"
@@ -21,11 +22,11 @@
 
 namespace {
 
-RecordSerializer serializeSingleVarcharRecord(const std::string& value) {
+RecordCell makeSingleVarcharRecord(const std::string& value) {
   static const Schema schema{
       std::vector<Column>{Column("value", Column::Type::Varchar)}};
   TypedRow row{{value}};
-  return RecordSerializer(schema, row);
+  return RecordSerializer::serialize(schema, row);
 }
 
 }  // namespace
@@ -94,8 +95,8 @@ TEST_F(BufferPoolTest, createNewPageWithEviction) {
 
     char test_data[50];
     std::snprintf(test_data, sizeof(test_data), "test_data_page_%zu", i);
-    RecordSerializer cell = serializeSingleVarcharRecord(test_data);
-    page->insertCell(cell.serializedBytes());
+    RecordCell cell = makeSingleVarcharRecord(test_data);
+    page->insertCell(cell);
 
     std::memcpy(page_copies[i].data(), page->data(), Page::PAGE_SIZE_BYTE);
     pool->unpinPage(page, *testFile);
@@ -146,8 +147,8 @@ TEST_F(BufferPoolTest, EvictionFlushesWALUpToPageLSN) {
 TEST_F(BufferPoolTest, ResetFlushesDirtyPagesAndStartsWithColdBuffer) {
   uint16_t page_id = pool->createPage(PageKind::Heap, *testFile);
   Page* page = pool->pinPage(page_id, *testFile);
-  RecordSerializer cell = serializeSingleVarcharRecord("survives reset");
-  ASSERT_TRUE(page->insertCell(cell.serializedBytes()).has_value());
+  RecordCell cell = makeSingleVarcharRecord("survives reset");
+  ASSERT_TRUE(page->insertCell(cell).has_value());
   std::array<char, Page::PAGE_SIZE_BYTE> expected{};
   std::memcpy(expected.data(), page->data(), expected.size());
   pool->unpinPage(page, *testFile);
