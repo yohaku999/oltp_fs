@@ -366,7 +366,7 @@ std::size_t removeMatchingRows(
 
 RID insertRecordIntoHeap(BufferPool& pool, Table& table, const RecordCell& cell,
                          WAL& wal) {
-  File& heap_file = table.heapFile().rawFile();
+  PagedFile& heap_file = table.heapFile().rawFile();
   uint16_t target_page_id = heap_file.getMaxPageID();
   Page* heap_page = pool.pinPage(target_page_id, heap_file);
   auto inserted_slot_id = heap_page->insertCell(cell);
@@ -395,7 +395,7 @@ RID insertRecordIntoHeap(BufferPool& pool, Table& table, const RecordCell& cell,
 
 void invalidateHeapRecord(BufferPool& pool, Table& table, const RID& rid,
                           const RecordCell& before, WAL& wal) {
-  File& heap_file = table.heapFile().rawFile();
+  PagedFile& heap_file = table.heapFile().rawFile();
   Page* heap_page = pool.pinPage(rid.heap_page_id, heap_file);
   char* cell_start = heap_page->slotCellStartUnchecked(rid.slot_id);
   if (!Cell::isValid(cell_start)) {
@@ -500,7 +500,7 @@ std::size_t updateMatchingRows(
       index_key = old_key;
     }
 
-    File& heap_file = table.heapFile().rawFile();
+    PagedFile& heap_file = table.heapFile().rawFile();
     Page* heap_page = pool.pinPage(rid.heap_page_id, heap_file);
     const bool updated_in_place =
         heap_page->updateRecordCell(rid.slot_id, updated_cell);
@@ -731,7 +731,7 @@ std::optional<IndexLookupJoinPlan> findIndexLookupJoinPlanForTwoTableJoin(
 }  // namespace
 
 /**
- * - executor now operates on Table + TypedRow rather than raw File pairs
+ * - executor now operates on Table + TypedRow rather than raw PagedFile pairs
 - schema metadata is persisted in data/<table>.meta.json
 - multi-column records are supported by RecordSerializer and RecordCellView
 - E2E uses Table-backed fixtures

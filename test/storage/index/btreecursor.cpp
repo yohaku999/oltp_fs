@@ -9,7 +9,7 @@
 #include <vector>
 
 #include "storage/buffer/bufferpool.h"
-#include "storage/disk/file.h"
+#include "storage/disk/pagedfile.h"
 #include "storage/index/index_key.h"
 #include "storage/index/index_page.h"
 #include "storage/index/leaf_cell.h"
@@ -19,7 +19,7 @@
 class BTreeCursorTest : public ::testing::Test {
  protected:
   std::unique_ptr<BufferPool> pool_;
-  std::unique_ptr<File> index_file_;
+  std::unique_ptr<PagedFile> index_file_;
   std::unique_ptr<WAL> wal_;
   const std::string index_path_ = "btreecursor_test.index";
   const std::string wal_path_ = "btreecursor_test.wal";
@@ -29,7 +29,7 @@ class BTreeCursorTest : public ::testing::Test {
     std::remove(wal_path_.c_str());
     wal_ = WAL::initializeNew(wal_path_);
     pool_ = std::make_unique<BufferPool>(*wal_);
-    index_file_ = std::make_unique<File>(index_path_);
+    index_file_ = std::make_unique<PagedFile>(index_path_);
     initializeLeafPage(*index_file_);
   }
 
@@ -40,7 +40,7 @@ class BTreeCursorTest : public ::testing::Test {
     std::remove(wal_path_.c_str());
   }
 
-  static void initializeLeafPage(File& file) {
+  static void initializeLeafPage(PagedFile& file) {
     std::array<char, Page::PAGE_SIZE_BYTE> buffer{};
     auto page = std::make_unique<Page>(buffer.data(), PageKind::LeafIndex,
                                        LeafIndexPage::NO_RIGHT_SIBLING, 0);
@@ -81,7 +81,7 @@ std::vector<RID> entryRIDs(const std::vector<IndexEntry>& entries) {
   return rids;
 }
 
-std::vector<RID> findIntRIDs(BufferPool& pool, File& index_file, int key) {
+std::vector<RID> findIntRIDs(BufferPool& pool, PagedFile& index_file, int key) {
   return entryRIDs(BTreeCursor::findEntries(
       pool, index_file, exactBoundary(encodeIntKey(key)), false));
 }

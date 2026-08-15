@@ -185,10 +185,10 @@ If profiling later shows that the WAL write path is slowing writers down, we
 could either redesign the append path or move WAL construction behind a
 dedicated WAL thread without changing the WAL format.
 
-### File stream cache
+### PagedFile stream cache
 
-`File` keeps a shared stream cache keyed by file path.
+`PagedFile` keeps a shared stream cache keyed by file path.
 
-- Multiple `File` objects for the same path reuse one live OS-level stream when possible.
-- This avoids repeatedly opening the same backing file while still letting callers keep lightweight `File` wrappers.
+- Multiple `PagedFile` objects for the same path reuse one live OS-level stream when possible.
+- This avoids repeatedly opening the same backing file while still letting callers keep lightweight `PagedFile` wrappers.
 - When the last shared owner goes away, the underlying stream can be closed and removed from the cache.

@@ -11,7 +11,7 @@
 #include "catalog/table_metadata.h"
 #include "execution/heapfile.h"
 #include "schema/schema.h"
-#include "storage/disk/file.h"
+#include "storage/disk/pagedfile.h"
 #include "storage/index/rid.h"
 #include "tuple/typed_row.h"
 
@@ -45,8 +45,8 @@ class Table {
     return indexed_column_names_;
   }
   std::vector<std::size_t> indexedColumnIndexes() const;
-  std::optional<std::reference_wrapper<File>> indexFile();
-  File& requireIndexFile();
+  std::optional<std::reference_wrapper<PagedFile>> indexFile();
+  PagedFile& requireIndexFile();
   HeapFile& heapFile() { return heap_file_; }
 
  private:
@@ -66,6 +66,6 @@ class Table {
   std::string name_;
   Schema schema_;
   std::vector<std::string> indexed_column_names_;
-  std::optional<File> index_file_;
+  std::optional<PagedFile> index_file_;
   HeapFile heap_file_;
 };

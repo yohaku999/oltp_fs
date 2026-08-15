@@ -9,11 +9,11 @@
 #include <unordered_map>
 /**
  * The same file can be accessed by multiple buffer pool frames, so we can cache
- * the file stream in memory to avoid opening the same file multiple times. File
- * class should not own memory, it just provides utility functions to read/write
- * pages from/to the buffer pool.
+ * the file stream in memory to avoid opening the same file multiple times.
+ * PagedFile class should not own page memory; it provides utility functions to
+ * read/write pages from/to the buffer pool.
  */
-class File {
+class PagedFile {
  private:
   struct SharedState {
     std::shared_ptr<std::fstream> stream;
@@ -35,8 +35,8 @@ class File {
   static void invalidateCache(const std::string& file_path);
   uint16_t allocateNextPageId();
   bool isPageIDUsed(uint16_t page_id) const;
-  File(const std::string& file_path);
-  ~File();
+  PagedFile(const std::string& file_path);
+  ~PagedFile();
   void initializeStreamIfClosed();
   void close();
   void readPageIntoBuffer(uint16_t const page_id, char* buffer);

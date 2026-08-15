@@ -10,7 +10,7 @@
 #include <vector>
 
 #include "storage/buffer/bufferpool.h"
-#include "storage/disk/file.h"
+#include "storage/disk/pagedfile.h"
 #include "storage/index/rid.h"
 #include "storage/page/cell.h"
 #include "storage/page/page.h"
@@ -26,13 +26,16 @@ class HeapFile {
     file_.writePageFromBuffer(0, buffer.data());
   }
 
-  File& rawFile() { return file_; }
-  const File& rawFile() const { return file_; }
+  PagedFile& rawFile() { return file_; }
+  const PagedFile& rawFile() const { return file_; }
 
   bool isPageIDUsed(uint16_t page_id) const {
     return file_.isPageIDUsed(page_id);
   }
 
+  /**
+   * Collects all RIDs from the heap file.
+   */
   std::vector<RID> collectRids(BufferPool& pool) {
     std::vector<RID> rids;
     for (uint16_t page_id = 0; page_id <= file_.getMaxPageID(); ++page_id) {
@@ -50,6 +53,9 @@ class HeapFile {
     return rids;
   }
 
+  /**
+   *
+   */
   template <typename Fn>
   auto withCell(BufferPool& pool, const RID& rid, Fn&& fn) const
       -> std::optional<std::invoke_result_t<Fn, RecordCellView>> {
@@ -68,5 +74,5 @@ class HeapFile {
   }
 
  private:
-  mutable File file_;
+  mutable PagedFile file_;
 };

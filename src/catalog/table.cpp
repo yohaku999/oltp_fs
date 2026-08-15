@@ -45,7 +45,8 @@ Table::Table(std::string name, Schema schema,
       schema_(std::move(schema)),
       indexed_column_names_(std::move(indexed_column_names)),
       index_file_(index_path.has_value()
-                      ? std::optional<File>(std::in_place, index_path.value())
+                      ? std::optional<PagedFile>(std::in_place,
+                                                 index_path.value())
                       : std::nullopt),
       heap_file_(defaultHeapPath(name_)) {}
 
@@ -160,7 +161,7 @@ std::string Table::defaultHeapPath(const std::string& table_name) {
 }
 
 void Table::removeFileIfExists(const std::string& path) {
-  File::invalidateCache(path);
+  PagedFile::invalidateCache(path);
   std::error_code error;
   std::filesystem::remove(path, error);
   if (error) {
@@ -236,14 +237,14 @@ std::vector<std::size_t> Table::indexedColumnIndexes() const {
   return column_indexes;
 }
 
-std::optional<std::reference_wrapper<File>> Table::indexFile() {
+std::optional<std::reference_wrapper<PagedFile>> Table::indexFile() {
   if (!index_file_.has_value()) {
     return std::nullopt;
   }
   return index_file_.value();
 }
 
-File& Table::requireIndexFile() {
+PagedFile& Table::requireIndexFile() {
   const auto index_file = indexFile();
   if (!index_file.has_value()) {
     throw std::runtime_error("Table has no index file: " + name_);

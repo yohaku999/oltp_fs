@@ -8,12 +8,12 @@
 #include "execution/operator.h"
 
 class BufferPool;
-class File;
+class PagedFile;
 class Schema;
 
 class SeqScanOperator : public TypedRowOperator {
  public:
-  SeqScanOperator(BufferPool& pool, File& heap_file, const Schema& schema,
+  SeqScanOperator(BufferPool& pool, PagedFile& heap_file, const Schema& schema,
                   std::vector<BoundComparisonPredicate> predicates = {});
 
   void open() override;
@@ -22,7 +22,7 @@ class SeqScanOperator : public TypedRowOperator {
 
  private:
   BufferPool& pool_;
-  File& heap_file_;
+  PagedFile& heap_file_;
   const Schema& schema_;
   std::vector<BoundComparisonPredicate> predicates_;
   OperatorExecutionLogger logger_{"SeqScanOperator"};

@@ -12,7 +12,7 @@
 #include <utility>
 
 #include "schema/schema.h"
-#include "storage/disk/file.h"
+#include "storage/disk/pagedfile.h"
 #include "storage/page/page.h"
 #include "storage/record/record_cell.h"
 #include "storage/record/record_serializer.h"
@@ -37,7 +37,7 @@ class BufferPoolTest : public ::testing::Test {
   static constexpr const char* kWalFile = "bufferpool_test.wal";
   static constexpr const size_t max_frames_count = 10;
   std::unique_ptr<BufferPool> pool;
-  std::unique_ptr<File> testFile;
+  std::unique_ptr<PagedFile> testFile;
   std::unique_ptr<WAL> wal;
 
   void SetUp() override {
@@ -49,7 +49,7 @@ class BufferPoolTest : public ::testing::Test {
     ofs.close();
     wal = WAL::initializeNew(kWalFile);
     pool = std::make_unique<BufferPool>(*wal);
-    testFile = std::make_unique<File>(kTestFile);
+    testFile = std::make_unique<PagedFile>(kTestFile);
   }
 
   void TearDown() override {

@@ -14,7 +14,7 @@
 #include "execution/executor.h"
 #include "execution/parsers/insert_parser.h"
 #include "storage/buffer/bufferpool.h"
-#include "storage/disk/file.h"
+#include "storage/disk/pagedfile.h"
 #include "storage/wal/wal.h"
 #include "stub_rid_operator.h"
 

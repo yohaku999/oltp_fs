@@ -50,7 +50,7 @@ for newly-created pages.
 
 ### Foreground Page Writeback
 
-`File::writePageFromBuffer` was also visible in the eviction path. This can mean
+`PagedFile::writePageFromBuffer` was also visible in the eviction path. This can mean
 dirty victims are being written synchronously while foreground execution waits.
 
 This pass does not attempt a background writer or a full replacement-policy
@@ -172,8 +172,8 @@ delta to these changes.
 | --- | ---: | ---: | ---: | --- |
 | `FrameDirectory::findVictimFrame` | 29.38% | 42.98% | 44.74% | Not improved. It remains the largest unresolved buffer-pool signal. |
 | `BufferPool::zeroOutFrame` | 0.17% | 0.00% | 0.00% | Confirmed, but the direct win is small. |
-| `File::writePageFromBuffer` | 2.27% | 0.25% | 0.93% | Improved in the profile, but this does not prove fewer dirty evictions without DBFS-side eviction counters. |
-| `File::readPageIntoBuffer` | 17.44% | 8.82% | 9.23% | Improved in the profile, likely helped by fewer wasted index/page accesses. |
+| `PagedFile::writePageFromBuffer` | 2.27% | 0.25% | 0.93% | Improved in the profile, but this does not prove fewer dirty evictions without DBFS-side eviction counters. |
+| `PagedFile::readPageIntoBuffer` | 17.44% | 8.82% | 9.23% | Improved in the profile, likely helped by fewer wasted index/page accesses. |
 | DBFS buffer-pool counters | not exported | not exported | not exported | Not confirmed. The result artifacts only include BenchBase/PostgreSQL-style metrics, so eviction frequency and dirty-eviction counts are still inferred from perf. |
 | `std::filesystem::create_directories` from table construction | 1.13% | 0.00% | 0.00% | Confirmed. The measured execute path no longer performs directory creation/status checks from `Table` construction. |
 | `BTreeCursor::splitLeafPage` | 4.71% | 0.00% | 0.12% | Mostly confirmed. Some split work remains, but the old full-scan symptom is gone. |

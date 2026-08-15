@@ -14,7 +14,7 @@
 
 #include "logging.h"
 #include "page_key.h"
-#include "storage/disk/file.h"
+#include "storage/disk/pagedfile.h"
 #include "storage/page/page.h"
 #include "storage/wal/wal.h"
 
@@ -79,7 +79,7 @@ BufferPool::BufferPool(WAL& wal)
   }
 };
 
-uint16_t BufferPool::createPage(PageKind kind, File& file,
+uint16_t BufferPool::createPage(PageKind kind, PagedFile& file,
                                 uint16_t right_most_child_page_id) {
   uint16_t page_id = file.allocateNextPageId();
   const PageKey page_key{file.getFilePath(), page_id};
@@ -108,7 +108,7 @@ uint16_t BufferPool::createPage(PageKind kind, File& file,
   return page_id;
 }
 
-Page* BufferPool::pinPage(int page_id, File& file) {
+Page* BufferPool::pinPage(int page_id, PagedFile& file) {
   stats_.pin_page_calls++;
   if (!file.isPageIDUsed(page_id)) {
     throw std::logic_error(
@@ -152,7 +152,7 @@ Page* BufferPool::pinPage(int page_id, File& file) {
   }
 };
 
-void BufferPool::unpinPage(Page* page, File& file) {
+void BufferPool::unpinPage(Page* page, PagedFile& file) {
   if (!page) {
     throw std::invalid_argument("BufferPool::unpinPage called with null page");
   }
@@ -191,13 +191,13 @@ BufferPoolResetResult BufferPool::resetForBenchmark() {
 
   if (result.dirty_frames_flushed > 0) {
     wal_.flush();
-    std::unordered_map<std::string, std::unique_ptr<File>> files;
+    std::unordered_map<std::string, std::unique_ptr<PagedFile>> files;
     for (size_t frame_id = 0; frame_id < MAX_FRAME_COUNT; ++frame_id) {
       auto& frame = frame_directory_.getFrame(static_cast<int>(frame_id));
       if (frame.page != nullptr && frame.page->isDirty()) {
         auto [file_it, inserted] = files.try_emplace(frame.file_path, nullptr);
         if (inserted) {
-          file_it->second = std::make_unique<File>(frame.file_path);
+          file_it->second = std::make_unique<PagedFile>(frame.file_path);
         }
         persistPage(frame.page_id, *file_it->second, *frame.page);
       }
@@ -234,7 +234,7 @@ void BufferPool::evictFrame(int victim_frame_id) {
                           victim_frame_id, *victim_frame.page, dirty);
   if (dirty) {
     stats_.dirty_evictions++;
-    File file(victim_frame.file_path);
+    PagedFile file(victim_frame.file_path);
     persistPage(evict_page_id, file, *victim_frame.page);
   }
   stats_.evictions++;
@@ -245,7 +245,7 @@ void BufferPool::evictFrame(int victim_frame_id) {
                             evict_page_id, victim_frame_id);
 };
 
-void BufferPool::persistPage(int page_id, File& file, Page& page) {
+void BufferPool::persistPage(int page_id, PagedFile& file, Page& page) {
   if (!isPageLSNDurable(page)) {
     wal_.flush();
     if (!isPageLSNDurable(page)) {
@@ -258,7 +258,7 @@ void BufferPool::persistPage(int page_id, File& file, Page& page) {
   file.writePageFromBuffer(page_id, page.data());
 }
 
-void BufferPool::logBufferPoolPinEvent(const File& file, int page_id,
+void BufferPool::logBufferPoolPinEvent(const PagedFile& file, int page_id,
                                        int frame_id, const Page& page,
                                        bool hit) {
   if (!buffer_pool_event_log_enabled_) {
@@ -272,7 +272,7 @@ void BufferPool::logBufferPoolPinEvent(const File& file, int page_id,
       pageKindLabel(page.kind()), page.isDirty() ? 1 : 0, hit ? 1 : 0));
 }
 
-void BufferPool::logBufferPoolReadEvent(const File& file, int page_id,
+void BufferPool::logBufferPoolReadEvent(const PagedFile& file, int page_id,
                                         int frame_id, const Page& page) {
   if (!buffer_pool_event_log_enabled_) {
     return;

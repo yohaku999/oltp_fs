@@ -10,13 +10,13 @@
 #include "storage/index/rid.h"
 
 /**
- * BTreeCursor is an arbitration layer that coordinates BufferPool and File to
- * execute B-Tree index traversal and modification of index page as a single
- * transactional sequence.
+ * BTreeCursor is an arbitration layer that coordinates BufferPool and
+ * PagedFile to execute B-Tree index traversal and modification of index pages
+ * as a single transactional sequence.
  *
  * A path-generation helper centralizes file naming under
- * ./data/<table>.{index,db}. File is responsible for page-ID allocation and
- * persistence (e.g., maintaining the high-water mark), while BufferPool
+ * ./data/<table>.{index,db}. PagedFile is responsible for page-ID allocation
+ * and persistence (e.g., maintaining the high-water mark), while BufferPool
  * provides page caching.
  */
 class BTreeCursor {
@@ -30,26 +30,27 @@ class BTreeCursor {
     uint16_t right_page_id;
   };
   static std::vector<IndexEntry> findEntries(
-      BufferPool& pool, File& indexFile,
+      BufferPool& pool, PagedFile& indexFile,
       std::pair<Boundary, Boundary> boundaries, bool do_invalidate);
-  static int findLeafPageID(BufferPool& pool, File& indexFile,
+  static int findLeafPageID(BufferPool& pool, PagedFile& indexFile,
                             const std::string& key);
-  static SplitResult splitPage(BufferPool& pool, File& indexFile,
+  static SplitResult splitPage(BufferPool& pool, PagedFile& indexFile,
                                Page* old_page, Page* parent_page);
-  static void insertIntoIndex(BufferPool& pool, File& indexFile,
+  static void insertIntoIndex(BufferPool& pool, PagedFile& indexFile,
                               const std::string& key, uint16_t heap_page_id,
                               uint16_t slot_id);
-  static SplitResult splitLeafPage(BufferPool& pool, File& index_file,
+  static SplitResult splitLeafPage(BufferPool& pool, PagedFile& index_file,
                                    Page& old_page,
                                    const std::string& separate_key);
-  static SplitResult splitInternalPage(BufferPool& pool, File& index_file,
+  static SplitResult splitInternalPage(BufferPool& pool, PagedFile& index_file,
                                        Page& old_page,
                                        const std::string& separate_key);
-  static Page* ensureParentPage(BufferPool& pool, File& index_file,
+  static Page* ensureParentPage(BufferPool& pool, PagedFile& index_file,
                                 Page& old_page);
   static bool isInsideBoundary(std::string_view key, Boundary boundary,
                                bool is_boundary_left);
 
  public:
-  static void dumpTree(BufferPool& pool, File& indexFile, std::ostream& os);
+  static void dumpTree(BufferPool& pool, PagedFile& indexFile,
+                       std::ostream& os);
 };

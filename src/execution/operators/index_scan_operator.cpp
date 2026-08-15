@@ -21,7 +21,7 @@ std::vector<BoundComparisonPredicate> flattenPredicates(
 }  // namespace
 
 IndexScanOperator::IndexScanOperator(
-    BufferPool& pool, File& index_file,
+    BufferPool& pool, PagedFile& index_file,
     std::pair<BTreeCursor::Boundary, BTreeCursor::Boundary> boundaries,
     std::vector<std::vector<BoundComparisonPredicate>> index_ordered_predicates)
     : pool_(pool),

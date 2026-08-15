@@ -44,7 +44,7 @@ add_dependencies(pg_query libpg_query_proj)
 
 add_library(dbfs_src
     src/storage/buffer/bufferpool.cpp
-    src/storage/disk/file.cpp
+    src/storage/disk/pagedfile.cpp
     src/storage/page/page.cpp
     src/storage/index/index_page.cpp
     src/storage/index/intermediate_cell.cpp
@@ -109,8 +109,8 @@ target_link_libraries(cell_test dbfs_src GTest::gtest_main)
 add_executable(page_test test/storage/page/page.cpp)
 target_link_libraries(page_test dbfs_src GTest::gtest_main)
 
-add_executable(file_test test/storage/disk/file.cpp)
-target_link_libraries(file_test dbfs_src GTest::gtest_main)
+add_executable(pagedfile_test test/storage/disk/pagedfile.cpp)
+target_link_libraries(pagedfile_test dbfs_src GTest::gtest_main)
 
 add_executable(btreecursor_test test/storage/index/btreecursor.cpp)
 target_link_libraries(btreecursor_test dbfs_src GTest::gtest_main)
@@ -176,7 +176,7 @@ add_test(NAME BufferPoolTest COMMAND bufferpool_test)
 add_test(NAME BufferPoolReplacementTest COMMAND bufferpool_replacement_test)
 add_test(NAME CellTest COMMAND cell_test)
 add_test(NAME PageTest COMMAND page_test)
-add_test(NAME FileTest COMMAND file_test)
+add_test(NAME PagedFileTest COMMAND pagedfile_test)
 add_test(NAME BTreeCursorTest COMMAND btreecursor_test)
 add_test(NAME IndexKeyTest COMMAND index_key_test)
 add_test(NAME FrameDirectoryTest COMMAND frame_directory_test)

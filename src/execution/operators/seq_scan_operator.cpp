@@ -2,12 +2,12 @@
 
 #include "schema/schema.h"
 #include "storage/buffer/bufferpool.h"
-#include "storage/disk/file.h"
+#include "storage/disk/pagedfile.h"
 #include "storage/page/cell.h"
 #include "storage/page/page.h"
 #include "storage/record/record_cell.h"
 SeqScanOperator::SeqScanOperator(
-    BufferPool& pool, File& heap_file, const Schema& schema,
+    BufferPool& pool, PagedFile& heap_file, const Schema& schema,
     std::vector<BoundComparisonPredicate> predicates)
     : pool_(pool),
       heap_file_(heap_file),

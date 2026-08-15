@@ -110,7 +110,7 @@ std::optional<int> insertCellWithCompaction(Page& page, const IndexCell& cell) {
  * As a side effect, each visited page is annotated with its parent page ID for
  * later split handling.
  */
-int BTreeCursor::findLeafPageID(BufferPool& pool, File& indexFile,
+int BTreeCursor::findLeafPageID(BufferPool& pool, PagedFile& indexFile,
                                 const std::string& key) {
   int page_id = indexFile.getRootPageID();
   int parent_page_id = Page::HAS_NO_PARENT;
@@ -150,7 +150,7 @@ int BTreeCursor::findLeafPageID(BufferPool& pool, File& indexFile,
  * @return A vector of index entries inside the given boundaries.
  */
 std::vector<IndexEntry> BTreeCursor::findEntries(
-    BufferPool& pool, File& indexFile,
+    BufferPool& pool, PagedFile& indexFile,
     std::pair<BTreeCursor::Boundary, BTreeCursor::Boundary> boundaries,
     bool do_invalidate) {
   const auto& [left_boundary, right_boundary] = boundaries;
@@ -182,7 +182,7 @@ std::vector<IndexEntry> BTreeCursor::findEntries(
   return matching_entries;
 }
 
-void BTreeCursor::insertIntoIndex(BufferPool& pool, File& indexFile,
+void BTreeCursor::insertIntoIndex(BufferPool& pool, PagedFile& indexFile,
                                   const std::string& key, uint16_t heap_page_id,
                                   uint16_t slot_id) {
   dbfs_log::index().debug(
@@ -250,7 +250,7 @@ void BTreeCursor::insertIntoIndex(BufferPool& pool, File& indexFile,
  * @param txn The transaction performing the insert.
  * @return parent page of old_page, which is the new root page of the btree.
  */
-Page* BTreeCursor::ensureParentPage(BufferPool& pool, File& index_file,
+Page* BTreeCursor::ensureParentPage(BufferPool& pool, PagedFile& index_file,
                                     Page& old_page) {
   int parent_page_id;
   if (old_page.getParentPageID() == Page::HAS_NO_PARENT) {
@@ -282,7 +282,7 @@ Page* BTreeCursor::ensureParentPage(BufferPool& pool, File& index_file,
  * @return the separator cell to be inserted into the parent page.
  */
 BTreeCursor::SplitResult BTreeCursor::splitLeafPage(
-    BufferPool& pool, File& index_file, Page& old_page,
+    BufferPool& pool, PagedFile& index_file, Page& old_page,
     const std::string& separate_key) {
   uint16_t new_page_id = pool.createPage(PageKind::LeafIndex, index_file);
   Page* new_page = pool.pinPage(new_page_id, index_file);
@@ -301,7 +301,7 @@ BTreeCursor::SplitResult BTreeCursor::splitLeafPage(
 }
 
 BTreeCursor::SplitResult BTreeCursor::splitInternalPage(
-    BufferPool& pool, File& index_file, Page& old_page,
+    BufferPool& pool, PagedFile& index_file, Page& old_page,
     const std::string& separate_key) {
   uint16_t new_page_id = pool.createPage(PageKind::InternalIndex, index_file);
   Page* new_page = pool.pinPage(new_page_id, index_file);
@@ -316,7 +316,7 @@ BTreeCursor::SplitResult BTreeCursor::splitInternalPage(
 }
 
 BTreeCursor::SplitResult BTreeCursor::splitPage(BufferPool& pool,
-                                                File& index_file,
+                                                PagedFile& index_file,
                                                 Page* old_page,
                                                 Page* parent_page) {
   dbfs_log::index().debug("Split old page and rewire pointer.");
@@ -342,7 +342,7 @@ BTreeCursor::SplitResult BTreeCursor::splitPage(BufferPool& pool,
   return split_result;
 }
 
-void BTreeCursor::dumpTree(BufferPool& pool, File& indexFile,
+void BTreeCursor::dumpTree(BufferPool& pool, PagedFile& indexFile,
                            std::ostream& os) {
   const uint16_t max_page_id = indexFile.getMaxPageID();
   for (uint16_t page_id = 0; page_id <= max_page_id; ++page_id) {

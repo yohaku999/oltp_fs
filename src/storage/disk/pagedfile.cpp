@@ -1,4 +1,4 @@
-#include "file.h"
+#include "pagedfile.h"
 
 #include <spdlog/spdlog.h>
 
@@ -13,10 +13,10 @@
 #include "logging.h"
 #include "storage/page/page.h"
 
-std::unordered_map<std::string, std::weak_ptr<File::SharedState>>
-    File::state_cache_;
+std::unordered_map<std::string, std::weak_ptr<PagedFile::SharedState>>
+    PagedFile::state_cache_;
 
-void File::invalidateCache(const std::string& file_path) {
+void PagedFile::invalidateCache(const std::string& file_path) {
   auto cached = state_cache_.find(file_path);
   if (cached == state_cache_.end()) {
     return;
@@ -31,11 +31,11 @@ void File::invalidateCache(const std::string& file_path) {
   state_cache_.erase(cached);
 }
 
-bool File::isPageIDUsed(uint16_t page_id) const {
+bool PagedFile::isPageIDUsed(uint16_t page_id) const {
   return page_id <= state_->max_page_id;
 }
 
-uint16_t File::allocateNextPageId() {
+uint16_t PagedFile::allocateNextPageId() {
   if (state_->max_page_id == std::numeric_limits<uint16_t>::max()) {
     throw std::overflow_error("page ID overflow");
   }
@@ -44,14 +44,14 @@ uint16_t File::allocateNextPageId() {
   return state_->max_page_id;
 }
 
-void File::writeHeader() {
+void PagedFile::writeHeader() {
   initializeStreamIfClosed();
 
-  char buffer[File::HEADDER_SIZE_BYTE];
+  char buffer[PagedFile::HEADDER_SIZE_BYTE];
   std::memset(buffer, 0, sizeof(buffer));
 
   std::memcpy(buffer, &state_->max_page_id, sizeof(uint16_t));
-  std::memcpy(buffer + File::MAX_PAGE_ID_SIZE_BYTE, &state_->root_page_id,
+  std::memcpy(buffer + PagedFile::MAX_PAGE_ID_SIZE_BYTE, &state_->root_page_id,
               sizeof(uint16_t));
 
   state_->stream->seekp(0, std::ios::beg);
@@ -77,7 +77,7 @@ void File::writeHeader() {
 /**
  * Ensures `stream_` refers to an open stream for `file_path_`.
  */
-void File::initializeStreamIfClosed() {
+void PagedFile::initializeStreamIfClosed() {
   if (!state_) {
     throw std::runtime_error("file state is not initialized: " + file_path_);
   }
@@ -97,7 +97,7 @@ void File::initializeStreamIfClosed() {
   state_->stream = new_stream;
 }
 
-void File::close() {
+void PagedFile::close() {
   if (!state_) {
     return;
   }
@@ -147,7 +147,7 @@ void File::close() {
   state_->stream.reset();
 }
 
-File::~File() {
+PagedFile::~PagedFile() {
   try {
     close();
   } catch (const std::exception& ex) {
@@ -159,7 +159,7 @@ File::~File() {
   }
 }
 
-File::File(const std::string& file_path) : file_path_(file_path) {
+PagedFile::PagedFile(const std::string& file_path) : file_path_(file_path) {
   const auto cached = state_cache_.find(file_path_);
   if (cached != state_cache_.end()) {
     auto existing = cached->second.lock();
@@ -174,7 +174,7 @@ File::File(const std::string& file_path) : file_path_(file_path) {
   const bool is_new_file = !std::filesystem::exists(file_path_) ||
                            std::filesystem::file_size(file_path_) == 0;
   dbfs_log::storage().debug(
-      "initializing File object for path: {}, is_new_file: {}", file_path_,
+      "initializing PagedFile object for path: {}, is_new_file: {}", file_path_,
       is_new_file);
 
   if (!is_new_file) {
@@ -184,11 +184,12 @@ File::File(const std::string& file_path) : file_path_(file_path) {
     // exists.
     state_->stream->seekg(0, std::ios::beg);
     std::unique_ptr<char[]> header_buffer =
-        std::make_unique<char[]>(File::HEADDER_SIZE_BYTE);
-    state_->stream->read(header_buffer.get(), File::HEADDER_SIZE_BYTE);
+        std::make_unique<char[]>(PagedFile::HEADDER_SIZE_BYTE);
+    state_->stream->read(header_buffer.get(), PagedFile::HEADDER_SIZE_BYTE);
     state_->max_page_id = readValue<uint16_t>(header_buffer.get());
     state_->root_page_id =
-        readValue<uint16_t>(header_buffer.get() + File::MAX_PAGE_ID_SIZE_BYTE);
+        readValue<uint16_t>(header_buffer.get() +
+                            PagedFile::MAX_PAGE_ID_SIZE_BYTE);
     dbfs_log::storage().debug(
         "opened existing file: {}, max_page_id loaded from header: {}, "
         "root_page_id loaded from header: {}",
@@ -212,11 +213,11 @@ File::File(const std::string& file_path) : file_path_(file_path) {
 }
 
 // this method should be called only from buffer pool in prod.
-void File::writePageFromBuffer(uint16_t const page_id, char* buffer) {
+void PagedFile::writePageFromBuffer(uint16_t const page_id, char* buffer) {
   initializeStreamIfClosed();
 
   const std::streamoff offset =
-      static_cast<std::streamoff>(File::HEADDER_SIZE_BYTE) +
+      static_cast<std::streamoff>(PagedFile::HEADDER_SIZE_BYTE) +
       static_cast<std::streamoff>(page_id) * Page::PAGE_SIZE_BYTE;
   state_->stream->seekp(offset, std::ios::beg);
   if (!state_->stream) {
@@ -233,11 +234,11 @@ void File::writePageFromBuffer(uint16_t const page_id, char* buffer) {
   state_->stream->clear();
 }
 
-void File::readPageIntoBuffer(uint16_t const page_id, char* buffer) {
+void PagedFile::readPageIntoBuffer(uint16_t const page_id, char* buffer) {
   initializeStreamIfClosed();
 
   const std::streamoff offset =
-      static_cast<std::streamoff>(File::HEADDER_SIZE_BYTE) +
+      static_cast<std::streamoff>(PagedFile::HEADDER_SIZE_BYTE) +
       static_cast<std::streamoff>(page_id) * Page::PAGE_SIZE_BYTE;
   state_->stream->seekg(offset, std::ios::beg);
   if (!state_->stream) {

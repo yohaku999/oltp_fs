@@ -8,7 +8,7 @@
 #include <memory>
 #include <vector>
 
-#include "storage/disk/file.h"
+#include "storage/disk/pagedfile.h"
 #include "storage/page/page.h"
 #include "storage/wal/wal.h"
 
@@ -18,7 +18,7 @@ class BufferPoolReplacementTest : public ::testing::Test {
   static constexpr const char* kWalFile = "bufferpool_replacement_test.wal";
 
   std::unique_ptr<BufferPool> pool;
-  std::unique_ptr<File> test_file;
+  std::unique_ptr<PagedFile> test_file;
   std::unique_ptr<WAL> wal;
 
   void SetUp() override {
@@ -32,7 +32,7 @@ class BufferPoolReplacementTest : public ::testing::Test {
 
     wal = WAL::initializeNew(kWalFile);
     pool = std::make_unique<BufferPool>(*wal);
-    test_file = std::make_unique<File>(kTestFile);
+    test_file = std::make_unique<PagedFile>(kTestFile);
   }
 
   void TearDown() override {
