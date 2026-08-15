@@ -43,6 +43,93 @@ Page::Page(char* page_buffer, uint16_t page_id)
       page_buffer_(page_buffer) {}
 
 /**
+ * Updates the leaf cell with the same key.
+ *
+ * The key does not change, so the serialized cell has the same size and can
+ * safely replace the existing cell in place. Only the RID stored in the leaf
+ * cell is expected to change.
+ */
+std::optional<int> Page::updateIndexCell(const LeafCell& cell) {
+  if (kind() != PageKind::LeafIndex) {
+    return std::nullopt;
+  }
+
+  dbfs_log::storage().debug(
+      "Attempting to update leaf cell with key {} in page ID {}", cell.key(),
+      getPageID());
+  const std::vector<std::byte> cell_bytes = cell.serialize();
+
+  for (int slot_id = 0; slot_id < getSlotCount(); ++slot_id) {
+    char* existing_cell_data_start =
+        page_buffer_ + getCellOffsetOnXthPointer(slot_id);
+    if (!Cell::isValid(existing_cell_data_start)) {
+      continue;
+    }
+
+    LeafCell existing_cell = LeafCell::decodeCell(existing_cell_data_start);
+    if (existing_cell.key() != cell.key()) {
+      continue;
+    }
+
+    if (existing_cell.payloadSize() != cell_bytes.size()) {
+      throw std::logic_error(
+          "Page::updateIndexCell cannot change the leaf-cell size");
+    }
+
+    std::memcpy(existing_cell_data_start, cell_bytes.data(), cell_bytes.size());
+    markDirty();
+    return slot_id;
+  }
+
+  dbfs_log::storage().debug("Leaf cell with key {} not found in page ID {}",
+                            cell.key(), getPageID());
+  return std::nullopt;
+}
+
+bool Page::updateRecordCell(int slot_id, const RecordCell& cell) {
+  if (kind() != PageKind::Heap || slot_id < 0 || slot_id >= getSlotCount()) {
+    return false;
+  }
+
+  const uint16_t old_cell_offset = getCellOffsetOnXthPointer(slot_id);
+  char* old_cell_start = page_buffer_ + old_cell_offset;
+
+  if (!Cell::isValid(old_cell_start)) {
+    throw std::logic_error(
+        "Page::updateRecordCell: slot_id points to an invalidated cell");
+  }
+
+  // The cell can grow up to the next cell at a higher physical offset.
+  size_t old_cell_capacity = PAGE_SIZE_BYTE - old_cell_offset;
+
+  for (int i = 0; i < getSlotCount(); ++i) {
+    if (i == slot_id) {
+      continue;
+    }
+
+    const uint16_t other_offset = getCellOffsetOnXthPointer(i);
+
+    if (other_offset > old_cell_offset) {
+      old_cell_capacity =
+          std::min(old_cell_capacity,
+                   static_cast<size_t>(other_offset - old_cell_offset));
+    }
+  }
+
+  const auto& new_bytes = cell.serializedBytes();
+
+  // Let the caller relocate the record when it does not fit in place.
+  if (new_bytes.size() > old_cell_capacity) {
+    return false;
+  }
+
+  std::memcpy(old_cell_start, new_bytes.data(), new_bytes.size());
+
+  markDirty();
+  return true;
+}
+
+/**
  * Attempts to insert a cell into this page.
  *
  * @param cell Cell to serialize and place in the page payload.
@@ -55,33 +142,34 @@ Page::Page(char* page_buffer, uint16_t page_id)
 std::optional<int> Page::insertCell(const Cell& cell) {
   dbfs_log::storage().debug("Attempting to insert {} cell into page ID {}",
                             static_cast<int>(cell.kind()), getPageID());
-  const std::vector<std::byte> serialized_cell = cell.serialize();
+  const std::vector<std::byte> cell_bytes = cell.serialize();
 
   const size_t cell_content_start_offset = getSlotDirectoryOffset();
   const size_t existing_slot_end_offset =
       Page::HEADDER_SIZE_BYTE +
       Page::CELL_POINTER_SIZE * (static_cast<size_t>(getSlotCount()));
 
-  if (cell_content_start_offset < existing_slot_end_offset +
-                                      Page::CELL_POINTER_SIZE +
-                                      serialized_cell.size()) {
-    dbfs_log::storage().debug(
-        "This page does not have enough space to insert the cell anymore.");
-    return std::nullopt;
-  }
-
-  if (serialized_cell.size() > cell_content_start_offset) {
+  if (cell_bytes.size() > cell_content_start_offset) {
     dbfs_log::storage().debug(
         "The size of the serialized cell is larger than the available space in "
         "the page.");
     return std::nullopt;
   }
 
-  uint16_t new_cell_start_offset =
-      static_cast<uint16_t>(cell_content_start_offset - serialized_cell.size());
+  const uint16_t new_cell_start_offset =
+      static_cast<uint16_t>(cell_content_start_offset - cell_bytes.size());
+  const size_t new_slot_end_offset =
+      existing_slot_end_offset + Page::CELL_POINTER_SIZE;
+
+  if (new_cell_start_offset < new_slot_end_offset) {
+    dbfs_log::storage().debug(
+        "This page does not have enough space to insert the cell anymore.");
+    return std::nullopt;
+  }
+
   char* cell_data_start = page_buffer_ + new_cell_start_offset;
 
-  std::memcpy(cell_data_start, serialized_cell.data(), serialized_cell.size());
+  std::memcpy(cell_data_start, cell_bytes.data(), cell_bytes.size());
 
   // For index pages, keep the cell pointers sorted by key in ascending order.
   // Heap-record pointers remain in insertion order.

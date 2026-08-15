@@ -33,6 +33,7 @@
 #include "storage/buffer/bufferpool.h"
 #include "storage/index/btreecursor.h"
 #include "storage/index/index_key.h"
+#include "storage/index/leaf_cell.h"
 #include "storage/page/cell.h"
 #include "storage/page/page.h"
 #include "storage/record/record_cell.h"
@@ -363,6 +364,52 @@ std::size_t removeMatchingRows(
   return removed_count;
 }
 
+RID insertRecordIntoHeap(BufferPool& pool, Table& table, const RecordCell& cell,
+                         WAL& wal) {
+  File& heap_file = table.heapFile().rawFile();
+  uint16_t target_page_id = heap_file.getMaxPageID();
+  Page* heap_page = pool.pinPage(target_page_id, heap_file);
+  auto inserted_slot_id = heap_page->insertCell(cell);
+  if (!inserted_slot_id.has_value()) {
+    pool.unpinPage(heap_page, heap_file);
+    target_page_id = pool.createPage(PageKind::Heap, heap_file);
+    heap_page = pool.pinPage(target_page_id, heap_file);
+    inserted_slot_id = heap_page->insertCell(cell);
+    if (!inserted_slot_id.has_value()) {
+      pool.unpinPage(heap_page, heap_file);
+      throw std::runtime_error(
+          "Failed to insert record cell into a new heap page due to "
+          "insufficient space.");
+    }
+  }
+  const RID inserted_rid{target_page_id,
+                         static_cast<uint16_t>(inserted_slot_id.value())};
+
+  wal.write(
+      WALRecord::RecordType::INSERT, inserted_rid.heap_page_id,
+      InsertRedoBody(inserted_rid.slot_id, cell.serializedBytes()).encode());
+  pool.unpinPage(heap_page, heap_file);
+
+  return inserted_rid;
+}
+
+void invalidateHeapRecord(BufferPool& pool, Table& table, const RID& rid,
+                          const RecordCell& before, WAL& wal) {
+  File& heap_file = table.heapFile().rawFile();
+  Page* heap_page = pool.pinPage(rid.heap_page_id, heap_file);
+  char* cell_start = heap_page->slotCellStartUnchecked(rid.slot_id);
+  if (!Cell::isValid(cell_start)) {
+    pool.unpinPage(heap_page, heap_file);
+    throw std::logic_error(
+        "invalidateHeapRecord: RID points to an invalidated record");
+  }
+
+  wal.write(WALRecord::RecordType::DELETE, rid.heap_page_id,
+            DeleteRedoBody(rid.slot_id, before.serializedBytes()).encode());
+  heap_page->invalidateSlot(rid.slot_id);
+  pool.unpinPage(heap_page, heap_file);
+}
+
 void insertRow(BufferPool& pool, Table& table, const TypedRow& row, WAL& wal) {
   const auto index_file = table.indexFile();
   std::optional<std::string> key;
@@ -388,32 +435,8 @@ void insertRow(BufferPool& pool, Table& table, const TypedRow& row, WAL& wal) {
                                 table.name());
   }
 
-  RecordCell cell = RecordSerializer::serialize(table.schema(), row);
-
-  File& heap_file = table.heapFile().rawFile();
-  uint16_t target_page_id = heap_file.getMaxPageID();
-  Page* heap_page = pool.pinPage(target_page_id, heap_file);
-  auto inserted_slot_id = heap_page->insertCell(cell);
-  if (!inserted_slot_id.has_value()) {
-    pool.unpinPage(heap_page, heap_file);
-    target_page_id = pool.createPage(PageKind::Heap, heap_file);
-    heap_page = pool.pinPage(target_page_id, heap_file);
-    inserted_slot_id = heap_page->insertCell(cell);
-    if (!inserted_slot_id.has_value()) {
-      pool.unpinPage(heap_page, heap_file);
-      throw std::runtime_error(
-          "Failed to insert record cell into a new heap page due to "
-          "insufficient space.");
-    }
-  }
-  pool.unpinPage(heap_page, heap_file);
-
-  const RID inserted_rid{target_page_id,
-                         static_cast<uint16_t>(inserted_slot_id.value())};
-
-  wal.write(
-      WALRecord::RecordType::INSERT, inserted_rid.heap_page_id,
-      InsertRedoBody(inserted_rid.slot_id, cell.serializedBytes()).encode());
+  const RecordCell cell = RecordSerializer::serialize(table.schema(), row);
+  const RID inserted_rid = insertRecordIntoHeap(pool, table, cell, wal);
 
   if (index_file.has_value()) {
     BTreeCursor::insertIntoIndex(pool, index_file->get(), key.value(),
@@ -429,11 +452,23 @@ std::size_t updateMatchingRows(
   const std::vector<BoundUpdateAssignment> bound_assignments =
       binder::bindUpdateAssignments(parser.extractAssignments(table.schema()),
                                     table);
+  const std::vector<std::size_t> indexed_column_indexes =
+      table.indexedColumnIndexes();
+  for (const BoundUpdateAssignment& assignment : bound_assignments) {
+    if (std::find(indexed_column_indexes.begin(), indexed_column_indexes.end(),
+                  assignment.target_column_index) !=
+        indexed_column_indexes.end()) {
+      throw std::runtime_error("Updating indexed columns is not supported: " +
+                               table.name());
+    }
+  }
+
   const std::vector<RID> rids =
       collectRidsNarrowedByPredicates(pool, table, predicates);
   const std::vector<BoundComparisonPredicate> bound_predicates =
       binder::bindPredicates(predicates, {table});
-  std::vector<TypedRow> updated_rows;
+  const auto index_file = table.indexFile();
+  std::size_t updated_count = 0;
 
   for (const RID& rid : rids) {
     std::optional<TypedRow> original_row = table.heapFile().withCell(
@@ -447,17 +482,63 @@ std::size_t updateMatchingRows(
       continue;
     }
 
-    updated_rows.push_back(applyUpdateAssignments(
-        *original_row, bound_assignments, table.schema()));
+    const TypedRow updated_row = applyUpdateAssignments(
+        *original_row, bound_assignments, table.schema());
+    const RecordCell original_cell =
+        RecordSerializer::serialize(table.schema(), *original_row);
+    const RecordCell updated_cell =
+        RecordSerializer::serialize(table.schema(), updated_row);
+
+    std::optional<std::string> index_key;
+    if (index_file.has_value()) {
+      const std::string old_key = table.extractIndexKey(*original_row);
+      const std::string new_key = table.extractIndexKey(updated_row);
+      if (old_key != new_key) {
+        throw std::runtime_error("Updating indexed columns is not supported: " +
+                                 table.name());
+      }
+      index_key = old_key;
+    }
+
+    File& heap_file = table.heapFile().rawFile();
+    Page* heap_page = pool.pinPage(rid.heap_page_id, heap_file);
+    const bool updated_in_place =
+        heap_page->updateRecordCell(rid.slot_id, updated_cell);
+    if (updated_in_place) {
+      UpdateRedoBody update_body{};
+      update_body.offset = rid.slot_id;
+      update_body.before = original_cell.serializedBytes();
+      update_body.after = updated_cell.serializedBytes();
+      wal.write(WALRecord::RecordType::UPDATE, rid.heap_page_id,
+                update_body.encode());
+      pool.unpinPage(heap_page, heap_file);
+      ++updated_count;
+      continue;
+    }
+    pool.unpinPage(heap_page, heap_file);
+
+    const RID new_rid = insertRecordIntoHeap(pool, table, updated_cell, wal);
+
+    if (index_file.has_value()) {
+      const int leaf_page_id = BTreeCursor::findLeafPageID(
+          pool, index_file->get(), index_key.value());
+      Page* leaf_page = pool.pinPage(leaf_page_id, index_file->get());
+      const auto updated_index_slot = leaf_page->updateIndexCell(
+          LeafCell(index_key.value(), new_rid.heap_page_id, new_rid.slot_id));
+      pool.unpinPage(leaf_page, index_file->get());
+
+      if (!updated_index_slot.has_value()) {
+        invalidateHeapRecord(pool, table, new_rid, updated_cell, wal);
+        throw std::logic_error(
+            "Failed to update the leaf cell for relocated record");
+      }
+    }
+
+    invalidateHeapRecord(pool, table, rid, original_cell, wal);
+    ++updated_count;
   }
 
-  const std::size_t removed_count =
-      removeMatchingRows(pool, table, predicates, wal);
-  for (const TypedRow& updated_row : updated_rows) {
-    insertRow(pool, table, updated_row, wal);
-  }
-
-  return removed_count;
+  return updated_count;
 }
 
 std::unique_ptr<TypedRowOperator> buildReadSource(

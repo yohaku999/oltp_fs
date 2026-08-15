@@ -7,6 +7,8 @@
 
 class LeafIndexPage;
 class InternalIndexPage;
+class LeafCell;
+class RecordCell;
 
 enum class PageKind { Heap, LeafIndex, InternalIndex };
 
@@ -78,6 +80,8 @@ class Page {
   const char* slotCellStartUnchecked(int slot_id) const;
   char* getSlotValueStart(int slot_id);
   std::optional<int> insertCell(const Cell& cell);
+  std::optional<int> updateIndexCell(const LeafCell& cell);
+  bool updateRecordCell(int slot_id, const RecordCell& cell);
   void invalidateSlot(uint16_t slot_id);
   std::uint64_t getPageLSN() const;
   void setPageLSN(std::uint64_t lsn) {
