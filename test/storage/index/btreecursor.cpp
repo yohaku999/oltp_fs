@@ -154,6 +154,34 @@ TEST_F(BTreeCursorTest, InsertIntoIndexAndFindRecordLocation) {
   }
 }
 
+TEST_F(BTreeCursorTest, ContainsKeyUsesExactKeyLookup) {
+  const std::string existing_key = encodeIntKey(42);
+  BTreeCursor::insertIntoIndex(*pool_, *index_file_, existing_key, 5, 3);
+
+  EXPECT_TRUE(
+      BTreeCursor::containsKey(*pool_, *index_file_, existing_key));
+  EXPECT_FALSE(BTreeCursor::containsKey(*pool_, *index_file_, encodeIntKey(4)));
+  EXPECT_FALSE(
+      BTreeCursor::containsKey(*pool_, *index_file_, encodeIntKey(420)));
+}
+
+TEST_F(BTreeCursorTest, ContainsKeyFindsKeyAfterLeafSplit) {
+  constexpr int kNumKeys = 500;
+  for (int key = 0; key < kNumKeys; ++key) {
+    BTreeCursor::insertIntoIndex(*pool_, *index_file_, encodeIntKey(key), 7,
+                                 static_cast<uint16_t>(key));
+  }
+
+  EXPECT_TRUE(
+      BTreeCursor::containsKey(*pool_, *index_file_, encodeIntKey(0)));
+  EXPECT_TRUE(
+      BTreeCursor::containsKey(*pool_, *index_file_, encodeIntKey(250)));
+  EXPECT_TRUE(
+      BTreeCursor::containsKey(*pool_, *index_file_, encodeIntKey(499)));
+  EXPECT_FALSE(
+      BTreeCursor::containsKey(*pool_, *index_file_, encodeIntKey(500)));
+}
+
 TEST_F(BTreeCursorTest, ReplaceRIDUpdatesRecordLocationForKey) {
   const std::string key = encodeIntKey(42);
   BTreeCursor::insertIntoIndex(*pool_, *index_file_, key, 5, 3);

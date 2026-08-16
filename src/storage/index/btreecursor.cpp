@@ -141,6 +141,15 @@ int BTreeCursor::findLeafPageID(BufferPool& pool, PagedFile& indexFile,
   return page_id;
 }
 
+bool BTreeCursor::containsKey(BufferPool& pool, PagedFile& indexFile,
+                              const std::string& key) {
+  const int leaf_page_id = findLeafPageID(pool, indexFile, key);
+  Page* leaf_page = pool.pinPage(leaf_page_id, indexFile);
+  const bool contains_key = LeafIndexPage(*leaf_page).hasKey(key);
+  pool.unpinPage(leaf_page, indexFile);
+  return contains_key;
+}
+
 /**
  * Traverses the B-tree to find all index entries inside the given boundaries.
  * @param pool Buffer pool used to pin and unpin index pages during traversal.

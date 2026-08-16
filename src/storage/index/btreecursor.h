@@ -34,6 +34,8 @@ class BTreeCursor {
       std::pair<Boundary, Boundary> boundaries, bool do_invalidate);
   static int findLeafPageID(BufferPool& pool, PagedFile& indexFile,
                             const std::string& key);
+  static bool containsKey(BufferPool& pool, PagedFile& indexFile,
+                          const std::string& key);
   static SplitResult splitPage(BufferPool& pool, PagedFile& indexFile,
                                Page* old_page, Page* parent_page);
   static void insertIntoIndex(BufferPool& pool, PagedFile& indexFile,

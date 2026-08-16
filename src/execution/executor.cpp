@@ -374,15 +374,7 @@ void insertRow(BufferPool& pool, Table& table, const TypedRow& row) {
     dbfs_log::execution().debug("Inserting record with key {} into table {}.",
                                 index_key::formatForDebug(key.value()),
                                 table.name());
-    const std::vector<BoundComparisonPredicate> predicates =
-        buildIndexKeyEqualityPredicates(table, row);
-    const std::vector<std::vector<BoundComparisonPredicate>>
-        ordered_predicates =
-            prepareIndexKeyPredicates(predicates, table.indexedColumnIndexes());
-    const auto& boundaries = buildTraversalBoundaries(ordered_predicates);
-    std::vector<IndexEntry> existing_entries =
-        BTreeCursor::findEntries(pool, index_file->get(), boundaries, false);
-    if (!existing_entries.empty()) {
+    if (BTreeCursor::containsKey(pool, index_file->get(), key.value())) {
       throw std::runtime_error(
           "Duplicate key is not allowed for indexed table: " + table.name());
     }
