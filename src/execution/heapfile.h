@@ -18,6 +18,7 @@
 #include "storage/wal/wal.h"
 #include "storage/wal/wal_body.h"
 #include "storage/wal/wal_record.h"
+#include "execution/heapscan.h"
 
 /**
  *
@@ -31,9 +32,6 @@ class HeapFile {
     Page(buffer.data(), PageKind::Heap, 0, 0);
     file_.writePageFromBuffer(0, buffer.data());
   }
-
-  PagedFile& rawFile() { return file_; }
-  const PagedFile& rawFile() const { return file_; }
 
   bool isPageIDUsed(uint16_t page_id) const {
     return file_.isPageIDUsed(page_id);
@@ -62,7 +60,7 @@ class HeapFile {
   /**
    * Inserts a record cell into the heap file and returns the RID of the inserted record.
    */
-  RID insertRecordIntoHeap(BufferPool& pool, const RecordCell& cell) {
+  RID insertRecord(BufferPool& pool, const RecordCell& cell) {
     const uint16_t insert_page_id = file_.getMaxPageID();
     if (auto rid = tryInsertIntoPage(pool, insert_page_id, cell)) {
       return *rid;
@@ -73,6 +71,22 @@ class HeapFile {
     }
     throw std::runtime_error(
         "Record cell does not fit in an empty heap page.");
+  }
+
+  void invalidateRecord(BufferPool& pool, const RID& rid,
+                          const RecordCell& before) {
+    Page* page = pool.pinPage(rid.heap_page_id, file_);
+    page->invalidateSlot(rid.slot_id);
+    pool.wal().write(
+        WALRecord::RecordType::DELETE, rid.heap_page_id,
+        DeleteRedoBody(rid.slot_id, before.serializedBytes()).encode());
+    pool.unpinPage(page, file_);
+  }
+
+  HeapScan scan(
+    BufferPool& pool,
+    const Schema& schema) {
+  return HeapScan(pool, file_, schema);
   }
 
   /**

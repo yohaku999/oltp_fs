@@ -359,33 +359,14 @@ std::size_t removeMatchingRows(
       BTreeCursor::findEntries(pool, index_file->get(), boundaries, true);
     }
 
-    pool.wal().write(WALRecord::RecordType::DELETE, rid.heap_page_id,
-                     DeleteRedoBody(rid.slot_id).encode());
-    Page* page = pool.pinPage(rid.heap_page_id, table.heapFile().rawFile());
-    page->invalidateSlot(rid.slot_id);
-    pool.unpinPage(page, table.heapFile().rawFile());
+    const RecordCell before =
+    RecordSerializer::serialize(
+        table.schema(), *row);
+    table.heapFile().invalidateRecord(pool, rid, before);
     ++removed_count;
   }
 
   return removed_count;
-}
-
-void invalidateHeapRecord(BufferPool& pool, Table& table, const RID& rid,
-                          const RecordCell& before) {
-  PagedFile& heap_file = table.heapFile().rawFile();
-  Page* heap_page = pool.pinPage(rid.heap_page_id, heap_file);
-  char* cell_start = heap_page->slotCellStartUnchecked(rid.slot_id);
-  if (!Cell::isValid(cell_start)) {
-    pool.unpinPage(heap_page, heap_file);
-    throw std::logic_error(
-        "invalidateHeapRecord: RID points to an invalidated record");
-  }
-
-  pool.wal().write(
-      WALRecord::RecordType::DELETE, rid.heap_page_id,
-      DeleteRedoBody(rid.slot_id, before.serializedBytes()).encode());
-  heap_page->invalidateSlot(rid.slot_id);
-  pool.unpinPage(heap_page, heap_file);
 }
 
 void insertRow(BufferPool& pool, Table& table, const TypedRow& row) {
@@ -414,7 +395,7 @@ void insertRow(BufferPool& pool, Table& table, const TypedRow& row) {
   }
 
   const RecordCell cell = RecordSerializer::serialize(table.schema(), row);
-  const RID inserted_rid = table.heapFile().insertRecordIntoHeap(pool, cell);
+  const RID inserted_rid = table.heapFile().insertRecord(pool, cell);
 
   if (index_file.has_value()) {
     BTreeCursor::insertIntoIndex(pool, index_file->get(), key.value(),
@@ -484,8 +465,9 @@ std::size_t updateMatchingRows(
       ++updated_count;
       continue;
     }
+    // when page overflowed
     const RID new_rid =
-        table.heapFile().insertRecordIntoHeap(pool, updated_cell);
+        table.heapFile().insertRecord(pool, updated_cell);
 
     if (index_file.has_value()) {
       const int leaf_page_id = BTreeCursor::findLeafPageID(
@@ -496,13 +478,13 @@ std::size_t updateMatchingRows(
       pool.unpinPage(leaf_page, index_file->get());
 
       if (!updated_index_slot.has_value()) {
-        invalidateHeapRecord(pool, table, new_rid, updated_cell);
+        table.heapFile().invalidateRecord(pool, new_rid, updated_cell);
         throw std::logic_error(
             "Failed to update the leaf cell for relocated record");
       }
     }
 
-    invalidateHeapRecord(pool, table, rid, original_cell);
+    table.heapFile().invalidateRecord(pool, rid, original_cell);
     ++updated_count;
   }
 
@@ -520,7 +502,7 @@ std::unique_ptr<TypedRowOperator> buildReadSource(
         "Building sequential scan operator for table {} because index scan "
         "prerequisites are not met.",
         table.name());
-    return std::make_unique<SeqScanOperator>(pool, table.heapFile().rawFile(),
+    return std::make_unique<SeqScanOperator>(pool, table.heapFile(),
                                              table.schema(), bound_predicates);
   }
 

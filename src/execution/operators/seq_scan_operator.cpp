@@ -2,21 +2,17 @@
 
 #include "schema/schema.h"
 #include "storage/buffer/bufferpool.h"
-#include "storage/disk/pagedfile.h"
+#include "execution/heapfile.h"
 #include "storage/page/cell.h"
 #include "storage/page/page.h"
 #include "storage/record/record_cell.h"
 SeqScanOperator::SeqScanOperator(
-    BufferPool& pool, PagedFile& heap_file, const Schema& schema,
+    BufferPool& pool, HeapFile& heap_file, const Schema& schema,
     std::vector<BoundComparisonPredicate> predicates)
-    : pool_(pool),
-      heap_file_(heap_file),
-      schema_(schema),
-      predicates_(std::move(predicates)) {}
+    : predicates_(std::move(predicates)),
+      scan_(heap_file.scan(pool, schema)) {}
 
 void SeqScanOperator::open() {
-  current_page_id_ = 0;
-  current_slot_id_ = 0;
   is_open_ = true;
   logger_.open();
 }
@@ -26,29 +22,14 @@ std::optional<TypedRow> SeqScanOperator::next() {
     return std::nullopt;
   }
 
-  while (current_page_id_ <= heap_file_.getMaxPageID()) {
-    Page* page = pool_.pinPage(current_page_id_, heap_file_);
-    while (current_slot_id_ < page->slotCount()) {
-      const uint16_t slot_id = current_slot_id_++;
-      char* cell_start = page->slotCellStartUnchecked(slot_id);
-      if (!Cell::isValid(cell_start)) {
-        continue;
-      }
-
-      logger_.recordInput();
-      TypedRow row = RecordCellView(cell_start).getTypedRow(schema_);
-      pool_.unpinPage(page, heap_file_);
-      // Apply filtering: skip row if predicates don't match
-      if (!passesPredicates(row, predicates_)) {
-        continue;
-      }
-      logger_.recordOutput();
-      return row;
+  while (auto item = scan_.next()) {
+    logger_.recordInput();
+    if (!passesPredicates(item->second, predicates_)) {
+      continue;
     }
 
-    pool_.unpinPage(page, heap_file_);
-    ++current_page_id_;
-    current_slot_id_ = 0;
+    logger_.recordOutput();
+    return std::move(item->second);
   }
 
   return std::nullopt;
@@ -56,5 +37,6 @@ std::optional<TypedRow> SeqScanOperator::next() {
 
 void SeqScanOperator::close() {
   is_open_ = false;
+  scan_.close();
   logger_.close();
 }

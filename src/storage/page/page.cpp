@@ -269,8 +269,16 @@ char* Page::getSplitKeyCellStart() {
 }
 
 void Page::invalidateSlot(uint16_t slot_id) {
-  char* cell_data = page_buffer_ + getCellOffsetOnXthPointer(slot_id);
-  Cell::markInvalid(cell_data);
+  if (slot_id >= slotCount()) {
+    throw std::out_of_range("Page::invalidateSlot: invalid slot ID");
+  }
+
+  char* cell_start = slotCellStartUnchecked(slot_id);
+  if (!Cell::isValid(cell_start)) {
+    throw std::logic_error(
+        "Page::invalidateSlot: slot points to an invalidated cell");
+  }
+  Cell::markInvalid(cell_start);
   markDirty();
 }
 
