@@ -39,6 +39,7 @@ class BufferPool {
   void unpinPage(Page* page, PagedFile& file);
   uint16_t createPage(PageKind kind, PagedFile& file,
                       uint16_t right_most_child_page_id = HAS_NO_CHILD);
+  WAL& wal() noexcept { return wal_; }
   BufferPoolResetResult resetForBenchmark();
   const BufferPoolStats& stats() const { return stats_; }
   ~BufferPool();

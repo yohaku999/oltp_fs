@@ -44,6 +44,12 @@
 
 namespace {
 
+void requireMatchingWal(BufferPool& pool, WAL& wal) {
+  if (&wal != &pool.wal()) {
+    throw std::logic_error("Executor and BufferPool use different WALs");
+  }
+}
+
 struct PredicateValueAndType {
   const FieldValue& value;
   Column::Type column_type;
@@ -317,7 +323,7 @@ std::vector<RID> collectRidsNarrowedByPredicates(
 
 std::size_t removeMatchingRows(
     BufferPool& pool, Table& table,
-    const std::vector<UnboundComparisonPredicate>& predicates, WAL& wal) {
+    const std::vector<UnboundComparisonPredicate>& predicates) {
   const std::vector<RID> rids =
       collectRidsNarrowedByPredicates(pool, table, predicates);
   const std::vector<BoundComparisonPredicate> bound_predicates =
@@ -353,8 +359,8 @@ std::size_t removeMatchingRows(
       BTreeCursor::findEntries(pool, index_file->get(), boundaries, true);
     }
 
-    wal.write(WALRecord::RecordType::DELETE, rid.heap_page_id,
-              DeleteRedoBody(rid.slot_id).encode());
+    pool.wal().write(WALRecord::RecordType::DELETE, rid.heap_page_id,
+                     DeleteRedoBody(rid.slot_id).encode());
     Page* page = pool.pinPage(rid.heap_page_id, table.heapFile().rawFile());
     page->invalidateSlot(rid.slot_id);
     pool.unpinPage(page, table.heapFile().rawFile());
@@ -364,37 +370,8 @@ std::size_t removeMatchingRows(
   return removed_count;
 }
 
-RID insertRecordIntoHeap(BufferPool& pool, Table& table, const RecordCell& cell,
-                         WAL& wal) {
-  PagedFile& heap_file = table.heapFile().rawFile();
-  uint16_t target_page_id = heap_file.getMaxPageID();
-  Page* heap_page = pool.pinPage(target_page_id, heap_file);
-  auto inserted_slot_id = heap_page->insertCell(cell);
-  if (!inserted_slot_id.has_value()) {
-    pool.unpinPage(heap_page, heap_file);
-    target_page_id = pool.createPage(PageKind::Heap, heap_file);
-    heap_page = pool.pinPage(target_page_id, heap_file);
-    inserted_slot_id = heap_page->insertCell(cell);
-    if (!inserted_slot_id.has_value()) {
-      pool.unpinPage(heap_page, heap_file);
-      throw std::runtime_error(
-          "Failed to insert record cell into a new heap page due to "
-          "insufficient space.");
-    }
-  }
-  const RID inserted_rid{target_page_id,
-                         static_cast<uint16_t>(inserted_slot_id.value())};
-
-  wal.write(
-      WALRecord::RecordType::INSERT, inserted_rid.heap_page_id,
-      InsertRedoBody(inserted_rid.slot_id, cell.serializedBytes()).encode());
-  pool.unpinPage(heap_page, heap_file);
-
-  return inserted_rid;
-}
-
 void invalidateHeapRecord(BufferPool& pool, Table& table, const RID& rid,
-                          const RecordCell& before, WAL& wal) {
+                          const RecordCell& before) {
   PagedFile& heap_file = table.heapFile().rawFile();
   Page* heap_page = pool.pinPage(rid.heap_page_id, heap_file);
   char* cell_start = heap_page->slotCellStartUnchecked(rid.slot_id);
@@ -404,13 +381,14 @@ void invalidateHeapRecord(BufferPool& pool, Table& table, const RID& rid,
         "invalidateHeapRecord: RID points to an invalidated record");
   }
 
-  wal.write(WALRecord::RecordType::DELETE, rid.heap_page_id,
-            DeleteRedoBody(rid.slot_id, before.serializedBytes()).encode());
+  pool.wal().write(
+      WALRecord::RecordType::DELETE, rid.heap_page_id,
+      DeleteRedoBody(rid.slot_id, before.serializedBytes()).encode());
   heap_page->invalidateSlot(rid.slot_id);
   pool.unpinPage(heap_page, heap_file);
 }
 
-void insertRow(BufferPool& pool, Table& table, const TypedRow& row, WAL& wal) {
+void insertRow(BufferPool& pool, Table& table, const TypedRow& row) {
   const auto index_file = table.indexFile();
   std::optional<std::string> key;
   if (index_file.has_value()) {
@@ -436,7 +414,7 @@ void insertRow(BufferPool& pool, Table& table, const TypedRow& row, WAL& wal) {
   }
 
   const RecordCell cell = RecordSerializer::serialize(table.schema(), row);
-  const RID inserted_rid = insertRecordIntoHeap(pool, table, cell, wal);
+  const RID inserted_rid = table.heapFile().insertRecordIntoHeap(pool, cell);
 
   if (index_file.has_value()) {
     BTreeCursor::insertIntoIndex(pool, index_file->get(), key.value(),
@@ -448,7 +426,7 @@ void insertRow(BufferPool& pool, Table& table, const TypedRow& row, WAL& wal) {
 std::size_t updateMatchingRows(
     BufferPool& pool, Table& table,
     const std::vector<UnboundComparisonPredicate>& predicates,
-    const UpdateParser& parser, WAL& wal) {
+    const UpdateParser& parser) {
   const std::vector<BoundUpdateAssignment> bound_assignments =
       binder::bindUpdateAssignments(parser.extractAssignments(table.schema()),
                                     table);
@@ -500,24 +478,14 @@ std::size_t updateMatchingRows(
       index_key = old_key;
     }
 
-    PagedFile& heap_file = table.heapFile().rawFile();
-    Page* heap_page = pool.pinPage(rid.heap_page_id, heap_file);
-    const bool updated_in_place =
-        heap_page->updateRecordCell(rid.slot_id, updated_cell);
+    const bool updated_in_place = table.heapFile().updateRecord(
+        rid, pool, original_cell, updated_cell);
     if (updated_in_place) {
-      UpdateRedoBody update_body{};
-      update_body.offset = rid.slot_id;
-      update_body.before = original_cell.serializedBytes();
-      update_body.after = updated_cell.serializedBytes();
-      wal.write(WALRecord::RecordType::UPDATE, rid.heap_page_id,
-                update_body.encode());
-      pool.unpinPage(heap_page, heap_file);
       ++updated_count;
       continue;
     }
-    pool.unpinPage(heap_page, heap_file);
-
-    const RID new_rid = insertRecordIntoHeap(pool, table, updated_cell, wal);
+    const RID new_rid =
+        table.heapFile().insertRecordIntoHeap(pool, updated_cell);
 
     if (index_file.has_value()) {
       const int leaf_page_id = BTreeCursor::findLeafPageID(
@@ -528,13 +496,13 @@ std::size_t updateMatchingRows(
       pool.unpinPage(leaf_page, index_file->get());
 
       if (!updated_index_slot.has_value()) {
-        invalidateHeapRecord(pool, table, new_rid, updated_cell, wal);
+        invalidateHeapRecord(pool, table, new_rid, updated_cell);
         throw std::logic_error(
             "Failed to update the leaf cell for relocated record");
       }
     }
 
-    invalidateHeapRecord(pool, table, rid, original_cell, wal);
+    invalidateHeapRecord(pool, table, rid, original_cell);
     ++updated_count;
   }
 
@@ -887,15 +855,17 @@ void executor::drop_table(const DropTableParser& parser) {
 
 void executor::insert(BufferPool& pool, Table& table,
                       const InsertParser& parser, WAL& wal) {
+  requireMatchingWal(pool, wal);
   const TypedRow row = parser.extractRow(table.schema());
-  insertRow(pool, table, row, wal);
+  insertRow(pool, table, row);
 }
 
 void executor::remove(BufferPool& pool, Table& table,
                       const DeleteParser& parser, WAL& wal) {
+  requireMatchingWal(pool, wal);
   const std::vector<UnboundComparisonPredicate> predicates =
       parser.extractComparisonPredicates(table.schema());
-  removeMatchingRows(pool, table, predicates, wal);
+  removeMatchingRows(pool, table, predicates);
 }
 
 /**
@@ -908,10 +878,11 @@ void executor::remove(BufferPool& pool, Table& table,
  */
 void executor::update(BufferPool& pool, Table& table,
                       const UpdateParser& parser, WAL& wal) {
+  requireMatchingWal(pool, wal);
   const std::vector<UnboundComparisonPredicate> predicates =
       parser.extractComparisonPredicates(table.schema());
   const std::size_t updated_count =
-      updateMatchingRows(pool, table, predicates, parser, wal);
+      updateMatchingRows(pool, table, predicates, parser);
   if (updated_count == 0) {
     throw std::runtime_error("UPDATE matched no rows.");
   }

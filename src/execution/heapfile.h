@@ -15,7 +15,13 @@
 #include "storage/page/cell.h"
 #include "storage/page/page.h"
 #include "storage/record/record_cell.h"
+#include "storage/wal/wal.h"
+#include "storage/wal/wal_body.h"
+#include "storage/wal/wal_record.h"
 
+/**
+ *
+ */
 class HeapFile {
  public:
   explicit HeapFile(std::string path) : file_(std::move(path)) {}
@@ -54,6 +60,22 @@ class HeapFile {
   }
 
   /**
+   * Inserts a record cell into the heap file and returns the RID of the inserted record.
+   */
+  RID insertRecordIntoHeap(BufferPool& pool, const RecordCell& cell) {
+    const uint16_t insert_page_id = file_.getMaxPageID();
+    if (auto rid = tryInsertIntoPage(pool, insert_page_id, cell)) {
+      return *rid;
+    }
+    const uint16_t new_page_id = pool.createPage(PageKind::Heap, file_);
+    if (auto rid = tryInsertIntoPage(pool, new_page_id, cell)) {
+      return *rid;
+    }
+    throw std::runtime_error(
+        "Record cell does not fit in an empty heap page.");
+  }
+
+  /**
    *
    */
   template <typename Fn>
@@ -73,6 +95,41 @@ class HeapFile {
     return result;
   }
 
+  bool updateRecord(const RID& rid, BufferPool& pool,
+                    const RecordCell& before, const RecordCell& after) {
+    Page* page = pool.pinPage(rid.heap_page_id, file_);
+    const bool is_updated = page->updateRecordCell(rid.slot_id, after);
+    if (is_updated) {
+      UpdateRedoBody update_body{};
+      update_body.offset = rid.slot_id;
+      update_body.before = before.serializedBytes();
+      update_body.after = after.serializedBytes();
+      pool.wal().write(WALRecord::RecordType::UPDATE, rid.heap_page_id,
+                       update_body.encode());
+    }
+    pool.unpinPage(page, file_);
+    return is_updated;
+  }
+
  private:
   mutable PagedFile file_;
+
+  std::optional<RID> tryInsertIntoPage(BufferPool& pool, uint16_t page_id,
+                                       const RecordCell& cell) {
+    Page* page = pool.pinPage(page_id, file_);
+    const auto slot_id = page->insertCell(cell);
+
+    if (!slot_id.has_value()) {
+      pool.unpinPage(page, file_);
+      return std::nullopt;
+    }
+
+    const RID rid{page_id, static_cast<uint16_t>(*slot_id)};
+    pool.wal().write(
+        WALRecord::RecordType::INSERT, rid.heap_page_id,
+        InsertRedoBody(rid.slot_id, cell.serializedBytes()).encode());
+    pool.unpinPage(page, file_);
+    return rid;
+  }
+
 };
