@@ -33,9 +33,7 @@
 #include "storage/buffer/bufferpool.h"
 #include "storage/index/btreecursor.h"
 #include "storage/index/index_key.h"
-#include "storage/index/leaf_cell.h"
 #include "storage/page/cell.h"
-#include "storage/page/page.h"
 #include "storage/record/record_cell.h"
 #include "storage/record/record_serializer.h"
 #include "storage/wal/wal.h"
@@ -468,14 +466,8 @@ std::size_t updateMatchingRows(
         table.heapFile().insertRecord(pool, updated_cell);
 
     if (index_file.has_value()) {
-      const int leaf_page_id = BTreeCursor::findLeafPageID(
-          pool, index_file->get(), index_key.value());
-      Page* leaf_page = pool.pinPage(leaf_page_id, index_file->get());
-      const auto updated_index_slot = leaf_page->updateIndexCell(
-          LeafCell(index_key.value(), new_rid.heap_page_id, new_rid.slot_id));
-      pool.unpinPage(leaf_page, index_file->get());
-
-      if (!updated_index_slot.has_value()) {
+      if (!BTreeCursor::replaceRID(pool, index_file->get(), index_key.value(),
+                                   new_rid)) {
         table.heapFile().invalidateRecord(pool, new_rid, updated_cell);
         throw std::logic_error(
             "Failed to update the leaf cell for relocated record");

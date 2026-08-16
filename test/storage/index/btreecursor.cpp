@@ -154,6 +154,23 @@ TEST_F(BTreeCursorTest, InsertIntoIndexAndFindRecordLocation) {
   }
 }
 
+TEST_F(BTreeCursorTest, ReplaceRIDUpdatesRecordLocationForKey) {
+  const std::string key = encodeIntKey(42);
+  BTreeCursor::insertIntoIndex(*pool_, *index_file_, key, 5, 3);
+
+  EXPECT_TRUE(BTreeCursor::replaceRID(*pool_, *index_file_, key, RID{9, 7}));
+
+  const std::vector<RID> rids = findIntRIDs(*pool_, *index_file_, 42);
+  ASSERT_EQ(rids.size(), 1u);
+  EXPECT_EQ(rids.front().heap_page_id, 9);
+  EXPECT_EQ(rids.front().slot_id, 7);
+}
+
+TEST_F(BTreeCursorTest, ReplaceRIDReturnsFalseWhenKeyDoesNotExist) {
+  EXPECT_FALSE(BTreeCursor::replaceRID(*pool_, *index_file_, encodeIntKey(42),
+                                       RID{9, 7}));
+}
+
 TEST_F(BTreeCursorTest, InsertManyKeysTriggersSplitAndIsSearchable) {
   const uint16_t heap_page_id = 7;
 

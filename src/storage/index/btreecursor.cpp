@@ -245,6 +245,16 @@ void BTreeCursor::insertIntoIndex(BufferPool& pool, PagedFile& indexFile,
       index_key::formatForDebug(key), heap_page_id, slot_id);
 }
 
+bool BTreeCursor::replaceRID(BufferPool& pool, PagedFile& indexFile,
+                             const std::string& key, const RID& new_rid) {
+  const int leaf_page_id = findLeafPageID(pool, indexFile, key);
+  Page* leaf_page = pool.pinPage(leaf_page_id, indexFile);
+  const std::optional<int> updated_slot = leaf_page->updateIndexCell(
+      LeafCell(key, new_rid.heap_page_id, new_rid.slot_id));
+  pool.unpinPage(leaf_page, indexFile);
+  return updated_slot.has_value();
+}
+
 /**
  * @brief creates parent page if the old_page is the initial page of the btree.
  * @param txn The transaction performing the insert.

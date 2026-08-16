@@ -39,6 +39,8 @@ class BTreeCursor {
   static void insertIntoIndex(BufferPool& pool, PagedFile& indexFile,
                               const std::string& key, uint16_t heap_page_id,
                               uint16_t slot_id);
+  static bool replaceRID(BufferPool& pool, PagedFile& indexFile,
+                         const std::string& key, const RID& new_rid);
   static SplitResult splitLeafPage(BufferPool& pool, PagedFile& index_file,
                                    Page& old_page,
                                    const std::string& separate_key);
