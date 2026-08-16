@@ -6,6 +6,8 @@
 #include "storage/page/cell.h"
 #include "storage/page/page.h"
 #include "storage/record/record_cell.h"
+
+
 SeqScanOperator::SeqScanOperator(
     BufferPool& pool, HeapFile& heap_file, const Schema& schema,
     std::vector<BoundComparisonPredicate> predicates)

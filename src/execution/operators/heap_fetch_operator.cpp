@@ -34,9 +34,7 @@ std::optional<TypedRow> HeapFetchOperator::next() {
     }
 
     logger_.recordInput();
-    std::optional<TypedRow> row = heap_file_.withCell(
-        pool_, *rid,
-        [&](RecordCellView cell) { return cell.getTypedRow(schema_); });
+    std::optional<TypedRow> row = heap_file_.readRow(pool_, *rid, schema_);
     if (!row.has_value()) {
       continue;
     }

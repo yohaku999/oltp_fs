@@ -331,9 +331,8 @@ std::size_t removeMatchingRows(
   std::size_t removed_count = 0;
 
   for (const RID& rid : rids) {
-    std::optional<TypedRow> row = table.heapFile().withCell(
-        pool, rid,
-        [&](RecordCellView cell) { return cell.getTypedRow(table.schema()); });
+    std::optional<TypedRow> row =
+        table.heapFile().readRow(pool, rid, table.schema());
     if (!row.has_value()) {
       continue;
     }
@@ -430,9 +429,8 @@ std::size_t updateMatchingRows(
   std::size_t updated_count = 0;
 
   for (const RID& rid : rids) {
-    std::optional<TypedRow> original_row = table.heapFile().withCell(
-        pool, rid,
-        [&](RecordCellView cell) { return cell.getTypedRow(table.schema()); });
+    std::optional<TypedRow> original_row =
+        table.heapFile().readRow(pool, rid, table.schema());
     if (!original_row.has_value()) {
       continue;
     }
@@ -459,7 +457,7 @@ std::size_t updateMatchingRows(
       index_key = old_key;
     }
 
-    const bool updated_in_place = table.heapFile().updateRecord(
+    const bool updated_in_place = table.heapFile().tryUpdateRecord(
         rid, pool, original_cell, updated_cell);
     if (updated_in_place) {
       ++updated_count;

@@ -5,7 +5,6 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
-#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -89,14 +88,8 @@ class HeapFile {
   return HeapScan(pool, file_, schema);
   }
 
-  /**
-   *
-   */
-  template <typename Fn>
-  auto withCell(BufferPool& pool, const RID& rid, Fn&& fn) const
-      -> std::optional<std::invoke_result_t<Fn, RecordCellView>> {
-    using Result = std::invoke_result_t<Fn, RecordCellView>;
-
+  std::optional<TypedRow> readRow(BufferPool& pool, const RID& rid,
+                                  const Schema& schema) const {
     Page* page = pool.pinPage(rid.heap_page_id, file_);
     char* cell_start = page->slotCellStartUnchecked(rid.slot_id);
     if (!Cell::isValid(cell_start)) {
@@ -104,12 +97,12 @@ class HeapFile {
       return std::nullopt;
     }
 
-    Result result = std::forward<Fn>(fn)(RecordCellView(cell_start));
+    TypedRow row = RecordCellView(cell_start).getTypedRow(schema);
     pool.unpinPage(page, file_);
-    return result;
+    return row;
   }
 
-  bool updateRecord(const RID& rid, BufferPool& pool,
+  bool tryUpdateRecord(const RID& rid, BufferPool& pool,
                     const RecordCell& before, const RecordCell& after) {
     Page* page = pool.pinPage(rid.heap_page_id, file_);
     const bool is_updated = page->updateRecordCell(rid.slot_id, after);
