@@ -195,6 +195,14 @@ TypedRow applyUpdateAssignments(
   return updated_row;
 }
 
+std::optional<TypedRow> readTypedRow(BufferPool& pool, Table& table,
+                                     const RID& rid) {
+  return table.heapFile().withRecord(
+      pool, rid, [&](RecordCellView record) {
+        return record.getTypedRow(table.schema());
+      });
+}
+
 template <typename Item, typename Source>
 std::vector<Item> collectItems(Source& source) {
   source.open();
@@ -310,56 +318,12 @@ std::vector<RID> collectRidsNarrowedByPredicates(
   return collectItems<RID>(scan);
 }
 
-std::size_t removeMatchingRows(
-    BufferPool& pool, Table& table,
-    const std::vector<UnboundComparisonPredicate>& predicates) {
-  const std::vector<RID> rids =
-      collectRidsNarrowedByPredicates(pool, table, predicates);
-  const std::vector<BoundComparisonPredicate> bound_predicates =
-      binder::bindPredicates(predicates, {table});
-  std::size_t removed_count = 0;
-
-  for (const RID& rid : rids) {
-    std::optional<TypedRow> row =
-        table.heapFile().readRow(pool, rid, table.schema());
-    if (!row.has_value()) {
-      continue;
-    }
-
-    if (!passesPredicates(*row, bound_predicates)) {
-      continue;
-    }
-
-    // delete corresponding key from index file.
-    const auto index_file = table.indexFile();
-    if (index_file.has_value()) {
-      // create index key predicates from row, since index search result can
-      // have redundant RIDs by its nature. OPTIMIZE : Even if we are doing an
-      // online delete, we can still use the original values to construct index
-      // key predicates and delete the index entry, instead of leaving the index
-      // entry dangling and cleaning it up later by a separate process.
-      const std::vector<BoundComparisonPredicate> index_key_predicates =
-          buildIndexKeyEqualityPredicates(table, *row);
-      const std::vector<std::vector<BoundComparisonPredicate>>
-          ordered_predicates = prepareIndexKeyPredicates(
-              index_key_predicates, table.indexedColumnIndexes());
-      const auto& boundaries = buildTraversalBoundaries(ordered_predicates);
-      BTreeCursor::findEntries(pool, index_file->get(), boundaries, true);
-    }
-
-    const RecordCell before =
-    RecordSerializer::serialize(
-        table.schema(), *row);
-    table.heapFile().invalidateRecord(pool, rid, before);
-    ++removed_count;
-  }
-
-  return removed_count;
-}
 
 void insertRow(BufferPool& pool, Table& table, const TypedRow& row) {
   const auto index_file = table.indexFile();
   std::optional<std::string> key;
+
+  // check pk douplication
   if (index_file.has_value()) {
     key = table.extractIndexKey(row);
     dbfs_log::execution().debug("Inserting record with key {} into table {}.",
@@ -377,6 +341,7 @@ void insertRow(BufferPool& pool, Table& table, const TypedRow& row) {
   const RecordCell cell = RecordSerializer::serialize(table.schema(), row);
   const RID inserted_rid = table.heapFile().insertRecord(pool, cell);
 
+  // update index accordingly.
   if (index_file.has_value()) {
     BTreeCursor::insertIntoIndex(pool, index_file->get(), key.value(),
                                  inserted_rid.heap_page_id,
@@ -410,8 +375,7 @@ std::size_t updateMatchingRows(
   std::size_t updated_count = 0;
 
   for (const RID& rid : rids) {
-    std::optional<TypedRow> original_row =
-        table.heapFile().readRow(pool, rid, table.schema());
+    std::optional<TypedRow> original_row = readTypedRow(pool, table, rid);
     if (!original_row.has_value()) {
       continue;
     }
@@ -810,11 +774,50 @@ void executor::insert(BufferPool& pool, Table& table,
   insertRow(pool, table, row);
 }
 
-void executor::remove(BufferPool& pool, Table& table,
+int executor::remove(BufferPool& pool, Table& table,
                       const DeleteParser& parser) {
   const std::vector<UnboundComparisonPredicate> predicates =
       parser.extractComparisonPredicates(table.schema());
-  removeMatchingRows(pool, table, predicates);
+  const std::vector<RID> rids =
+      collectRidsNarrowedByPredicates(pool, table, predicates);
+  const std::vector<BoundComparisonPredicate> bound_predicates =
+      binder::bindPredicates(predicates, {table});
+  std::size_t removed_count = 0;
+
+  for (const RID& rid : rids) {
+    std::optional<TypedRow> row = readTypedRow(pool, table, rid);
+    if (!row.has_value()) {
+      continue;
+    }
+
+    if (!passesPredicates(*row, bound_predicates)) {
+      continue;
+    }
+
+    // delete corresponding key from index file.
+    const auto index_file = table.indexFile();
+    if (index_file.has_value()) {
+      // create index key predicates from row, since index search result can
+      // have redundant RIDs by its nature. OPTIMIZE : Even if we are doing an
+      // online delete, we can still use the original values to construct index
+      // key predicates and delete the index entry, instead of leaving the index
+      // entry dangling and cleaning it up later by a separate process.
+      const std::vector<BoundComparisonPredicate> index_key_predicates =
+          buildIndexKeyEqualityPredicates(table, *row);
+      const std::vector<std::vector<BoundComparisonPredicate>>
+          ordered_predicates = prepareIndexKeyPredicates(
+              index_key_predicates, table.indexedColumnIndexes());
+      const auto& boundaries = buildTraversalBoundaries(ordered_predicates);
+      BTreeCursor::findEntries(pool, index_file->get(), boundaries, true);
+    }
+
+    const RecordCell before =
+    RecordSerializer::serialize(
+        table.schema(), *row);
+    table.heapFile().invalidateRecord(pool, rid, before);
+    ++removed_count;
+  }
+  return removed_count;
 }
 
 /**

@@ -5,6 +5,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -19,9 +20,6 @@
 #include "storage/wal/wal_record.h"
 #include "execution/heapscan.h"
 
-/**
- *
- */
 class HeapFile {
  public:
   explicit HeapFile(std::string path) : file_(std::move(path)) {}
@@ -82,14 +80,11 @@ class HeapFile {
     pool.unpinPage(page, file_);
   }
 
-  HeapScan scan(
-    BufferPool& pool,
-    const Schema& schema) {
-  return HeapScan(pool, file_, schema);
-  }
+  HeapScan scan(BufferPool& pool) { return HeapScan(pool, file_); }
 
-  std::optional<TypedRow> readRow(BufferPool& pool, const RID& rid,
-                                  const Schema& schema) const {
+  template <typename Reader>
+  auto withRecord(BufferPool& pool, const RID& rid, Reader&& reader) const
+      -> std::optional<std::invoke_result_t<Reader, RecordCellView>> {
     Page* page = pool.pinPage(rid.heap_page_id, file_);
     char* cell_start = page->slotCellStartUnchecked(rid.slot_id);
     if (!Cell::isValid(cell_start)) {
@@ -97,9 +92,10 @@ class HeapFile {
       return std::nullopt;
     }
 
-    TypedRow row = RecordCellView(cell_start).getTypedRow(schema);
+    auto result =
+        std::forward<Reader>(reader)(RecordCellView(cell_start));
     pool.unpinPage(page, file_);
-    return row;
+    return result;
   }
 
   bool tryUpdateRecord(const RID& rid, BufferPool& pool,

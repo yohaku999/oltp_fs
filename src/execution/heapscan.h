@@ -29,7 +29,6 @@ class HeapScan {
   HeapScan(HeapScan&& other) noexcept
       : pool_(other.pool_),
         file_(other.file_),
-        schema_(other.schema_),
         current_page_(std::exchange(other.current_page_, nullptr)),
         current_page_id_(other.current_page_id_),
         current_slot_id_(other.current_slot_id_) {}
@@ -52,7 +51,7 @@ class HeapScan {
     current_page_ = nullptr;
   }
 
-  std::optional<std::pair<RID, TypedRow>> next() {
+  std::optional<std::pair<RID, RecordCellView>> next() {
     const uint16_t last_page_id = file_.getMaxPageID();
     while (current_page_id_ <= last_page_id) {
       if (current_page_ == nullptr) {
@@ -73,7 +72,7 @@ class HeapScan {
                 static_cast<uint16_t>(current_page_id_),
                 slot_id,
             },
-            RecordCellView(cell_start).getTypedRow(schema_),
+            RecordCellView(cell_start),
         };
       }
 
@@ -87,14 +86,11 @@ class HeapScan {
  private:
   friend class HeapFile;
 
-  HeapScan(BufferPool& pool, PagedFile& file, const Schema& schema) : pool_(pool),
-      file_(file),
-      schema_(schema),
-      current_page_(nullptr) {}
+  HeapScan(BufferPool& pool, PagedFile& file)
+      : pool_(pool), file_(file), current_page_(nullptr) {}
 
   BufferPool& pool_;
   PagedFile& file_;
-  const Schema& schema_;
   Page* current_page_;
   uint32_t current_page_id_ = 0;
   uint16_t current_slot_id_ = 0;

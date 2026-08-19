@@ -20,7 +20,7 @@ std::vector<TypedRow> read(BufferPool& pool, const SelectParser& parser);
 
 void insert(BufferPool& pool, Table& table, const InsertParser& parser);
 
-void remove(BufferPool& pool, Table& table, const DeleteParser& parser);
+int remove(BufferPool& pool, Table& table, const DeleteParser& parser);
 
 void update(BufferPool& pool, Table& table, const UpdateParser& parser);
 

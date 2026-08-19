@@ -23,6 +23,7 @@ class SeqScanOperator : public TypedRowOperator {
   void close() override;
 
  private:
+  const Schema& schema_;
   std::vector<BoundComparisonPredicate> predicates_;
   OperatorExecutionLogger logger_{"SeqScanOperator"};
   bool is_open_ = false;

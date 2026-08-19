@@ -11,8 +11,9 @@
 SeqScanOperator::SeqScanOperator(
     BufferPool& pool, HeapFile& heap_file, const Schema& schema,
     std::vector<BoundComparisonPredicate> predicates)
-    : predicates_(std::move(predicates)),
-      scan_(heap_file.scan(pool, schema)) {}
+    : schema_(schema),
+      predicates_(std::move(predicates)),
+      scan_(heap_file.scan(pool)) {}
 
 void SeqScanOperator::open() {
   is_open_ = true;
@@ -26,12 +27,13 @@ std::optional<TypedRow> SeqScanOperator::next() {
 
   while (auto item = scan_.next()) {
     logger_.recordInput();
-    if (!passesPredicates(item->second, predicates_)) {
+    TypedRow row = item->second.getTypedRow(schema_);
+    if (!passesPredicates(row, predicates_)) {
       continue;
     }
 
     logger_.recordOutput();
-    return std::move(item->second);
+    return row;
   }
 
   return std::nullopt;

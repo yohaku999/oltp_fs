@@ -98,8 +98,10 @@ std::vector<TypedRow> IndexLookupJoinOperator::lookupInnerRows(
   std::vector<TypedRow> rows;
   rows.reserve(entries.size());
   for (const IndexEntry& entry : entries) {
-    std::optional<TypedRow> inner_row = inner_table_.heapFile().readRow(
-        pool_, entry.rid, inner_table_.schema());
+    std::optional<TypedRow> inner_row = inner_table_.heapFile().withRecord(
+        pool_, entry.rid, [&](RecordCellView record) {
+          return record.getTypedRow(inner_table_.schema());
+        });
     if (!inner_row.has_value()) {
       continue;
     }
