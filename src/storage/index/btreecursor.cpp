@@ -254,14 +254,18 @@ void BTreeCursor::insertIntoIndex(BufferPool& pool, PagedFile& indexFile,
       index_key::formatForDebug(key), heap_page_id, slot_id);
 }
 
-bool BTreeCursor::replaceRID(BufferPool& pool, PagedFile& indexFile,
+void BTreeCursor::replaceRID(BufferPool& pool, PagedFile& indexFile,
                              const std::string& key, const RID& new_rid) {
   const int leaf_page_id = findLeafPageID(pool, indexFile, key);
   Page* leaf_page = pool.pinPage(leaf_page_id, indexFile);
-  const std::optional<int> updated_slot = leaf_page->updateIndexCell(
-      LeafCell(key, new_rid.heap_page_id, new_rid.slot_id));
+  try {
+    leaf_page->updateIndexCell(
+        LeafCell(key, new_rid.heap_page_id, new_rid.slot_id));
+  } catch (...) {
+    pool.unpinPage(leaf_page, indexFile);
+    throw;
+  }
   pool.unpinPage(leaf_page, indexFile);
-  return updated_slot.has_value();
 }
 
 /**

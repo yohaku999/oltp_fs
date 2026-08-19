@@ -49,10 +49,7 @@ Page::Page(char* page_buffer, uint16_t page_id)
  * safely replace the existing cell in place. Only the RID stored in the leaf
  * cell is expected to change.
  */
-std::optional<int> Page::updateIndexCell(const LeafCell& cell) {
-  if (kind() != PageKind::LeafIndex) {
-    return std::nullopt;
-  }
+int Page::updateIndexCell(const LeafCell& cell) {
 
   dbfs_log::storage().debug(
       "Attempting to update leaf cell with key {} in page ID {}", cell.key(),
@@ -81,9 +78,8 @@ std::optional<int> Page::updateIndexCell(const LeafCell& cell) {
     return slot_id;
   }
 
-  dbfs_log::storage().debug("Leaf cell with key {} not found in page ID {}",
-                            cell.key(), getPageID());
-  return std::nullopt;
+  throw std::logic_error(
+            "Failed to update the leaf cell for relocated record");
 }
 
 bool Page::updateRecordCell(int slot_id, const RecordCell& cell) {

@@ -49,7 +49,7 @@ class HeapFetchOperatorTest : public ::testing::Test {
                           " VALUES (" + std::to_string(i) + ", '" +
                           char('a' + i - 1) + "', " + std::to_string(i * 5) +
                           ")");
-      executor::insert(*pool_, *table_, parser, *wal_);
+      executor::insert(*pool_, *table_, parser);
     }
     inserted_rids_ = table_->heapFile().collectRids(*pool_);
   }

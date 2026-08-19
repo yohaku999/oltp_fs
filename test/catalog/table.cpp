@@ -177,8 +177,7 @@ TEST_F(TableTest, InsertIndexFindRIDAndReadRowRoundTrip) {
 
   executor::insert(
       *pool_, table,
-      InsertParser("INSERT INTO table_test_table VALUES (11, 'table-value')"),
-      *wal_);
+      InsertParser("INSERT INTO table_test_table VALUES (11, 'table-value')"));
   std::vector<TypedRow> rows = executor::read(
       *pool_,
       SelectParser("SELECT id, value FROM table_test_table WHERE id = 11"));
@@ -206,7 +205,7 @@ TEST_F(TableTest, InsertHeapRecordWithWalWritesInsertRecord) {
 
   executor::insert(
       *pool_, table,
-      InsertParser("INSERT INTO table_test_table VALUES (11, 'wal')"), *wal_);
+      InsertParser("INSERT INTO table_test_table VALUES (11, 'wal')"));
   wal_->flush();
 
   std::vector<WALRecord> records = readWalRecords(kWalPath);
@@ -224,10 +223,9 @@ TEST_F(TableTest, InvalidateHeapRecordWithWalWritesDeleteRecord) {
 
   executor::insert(
       *pool_, table,
-      InsertParser("INSERT INTO table_test_table VALUES (22, 'gone')"), *wal_);
+      InsertParser("INSERT INTO table_test_table VALUES (22, 'gone')"));
   executor::remove(*pool_, table,
-                   DeleteParser("DELETE FROM table_test_table WHERE id = 22"),
-                   *wal_);
+                   DeleteParser("DELETE FROM table_test_table WHERE id = 22"));
   wal_->flush();
 
   std::vector<WALRecord> records = readWalRecords(kWalPath);

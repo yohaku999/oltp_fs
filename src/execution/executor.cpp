@@ -36,17 +36,8 @@
 #include "storage/page/cell.h"
 #include "storage/record/record_cell.h"
 #include "storage/record/record_serializer.h"
-#include "storage/wal/wal.h"
-#include "storage/wal/wal_body.h"
-#include "storage/wal/wal_record.h"
 
 namespace {
-
-void requireMatchingWal(BufferPool& pool, WAL& wal) {
-  if (&wal != &pool.wal()) {
-    throw std::logic_error("Executor and BufferPool use different WALs");
-  }
-}
 
 struct PredicateValueAndType {
   const FieldValue& value;
@@ -458,12 +449,8 @@ std::size_t updateMatchingRows(
         table.heapFile().insertRecord(pool, updated_cell);
 
     if (index_file.has_value()) {
-      if (!BTreeCursor::replaceRID(pool, index_file->get(), index_key.value(),
-                                   new_rid)) {
-        table.heapFile().invalidateRecord(pool, new_rid, updated_cell);
-        throw std::logic_error(
-            "Failed to update the leaf cell for relocated record");
-      }
+      BTreeCursor::replaceRID(pool, index_file->get(), index_key.value(),
+                                   new_rid);
     }
 
     table.heapFile().invalidateRecord(pool, rid, original_cell);
@@ -818,15 +805,13 @@ void executor::drop_table(const DropTableParser& parser) {
 }
 
 void executor::insert(BufferPool& pool, Table& table,
-                      const InsertParser& parser, WAL& wal) {
-  requireMatchingWal(pool, wal);
+                      const InsertParser& parser) {
   const TypedRow row = parser.extractRow(table.schema());
   insertRow(pool, table, row);
 }
 
 void executor::remove(BufferPool& pool, Table& table,
-                      const DeleteParser& parser, WAL& wal) {
-  requireMatchingWal(pool, wal);
+                      const DeleteParser& parser) {
   const std::vector<UnboundComparisonPredicate> predicates =
       parser.extractComparisonPredicates(table.schema());
   removeMatchingRows(pool, table, predicates);
@@ -841,8 +826,7 @@ void executor::remove(BufferPool& pool, Table& table,
  * special-case split handling.
  */
 void executor::update(BufferPool& pool, Table& table,
-                      const UpdateParser& parser, WAL& wal) {
-  requireMatchingWal(pool, wal);
+                      const UpdateParser& parser) {
   const std::vector<UnboundComparisonPredicate> predicates =
       parser.extractComparisonPredicates(table.schema());
   const std::size_t updated_count =

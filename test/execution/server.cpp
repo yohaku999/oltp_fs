@@ -212,8 +212,7 @@ void forceDataPagesToDisk(BufferPool& pool, WAL& wal) {
     executor::insert(
         pool, evictor,
         InsertParser("INSERT INTO evictor VALUES (" + std::to_string(row_id) +
-                     ", '" + payload + "')"),
-        wal);
+                     ", '" + payload + "')"));
   }
   wal.flush();
 }
@@ -251,16 +250,14 @@ void prepareTpccLikeDataset(const std::filesystem::path& temp_dir) {
   Table order_line = Table::getTable("order_line");
 
   executor::insert(*pool, warehouse,
-                   InsertParser("INSERT INTO warehouse VALUES (1, 300000.0)"),
-                   *wal);
+                   InsertParser("INSERT INTO warehouse VALUES (1, 300000.0)"));
 
   for (int item_id = 1; item_id <= kStockItems; ++item_id) {
     const int quantity = (item_id % 20) + 1;
     executor::insert(
         *pool, stock,
         InsertParser("INSERT INTO stock VALUES (" + std::to_string(item_id) +
-                     ", 1, " + std::to_string(quantity) + ")"),
-        *wal);
+                     ", 1, " + std::to_string(quantity) + ")"));
   }
 
   const int first_order_id = 3001 - kOrderCount;
@@ -275,8 +272,7 @@ void prepareTpccLikeDataset(const std::filesystem::path& temp_dir) {
                                     std::to_string(order_id) + ", " +
                                     std::to_string(kDistrictId) + ", 1, " +
                                     std::to_string(line_number) + ", " +
-                                    std::to_string(item_id) + ")"),
-                       *wal);
+                                    std::to_string(item_id) + ")"));
     }
   }
 

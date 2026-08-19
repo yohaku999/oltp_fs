@@ -425,7 +425,7 @@ std::string Server::handleRequest(const std::string& request) {
           const std::string rendered_sql =
               renderSqlWithParameters(sql_template, parameter_set);
           InsertParser parser(rendered_sql);
-          executor::insert(*pool_, table, parser, *wal_);
+          executor::insert(*pool_, table, parser);
           update_counts.push_back(1);
         }
 
@@ -458,17 +458,17 @@ std::string Server::handleRequest(const std::string& request) {
   } else if (leadingKeyword(sql) == "INSERT") {
     InsertParser parser(sql);
     Table table = Table::getTable(parser.extractTableName());
-    executor::insert(*pool_, table, parser, *wal_);
+    executor::insert(*pool_, table, parser);
     res["updateCount"] = 1;
   } else if (leadingKeyword(sql) == "UPDATE") {
     UpdateParser parser(sql);
     Table table = Table::getTable(parser.extractTableName());
-    executor::update(*pool_, table, parser, *wal_);
+    executor::update(*pool_, table, parser);
     res["updateCount"] = 1;
   } else if (leadingKeyword(sql) == "DELETE") {
     DeleteParser parser(sql);
     Table table = Table::getTable(parser.extractTableName());
-    executor::remove(*pool_, table, parser, *wal_);
+    executor::remove(*pool_, table, parser);
     res["updateCount"] = 1;
   } else {
     res["ok"] = false;
