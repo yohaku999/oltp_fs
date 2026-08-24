@@ -1,13 +1,29 @@
 #pragma once
 
+#include <cstddef>
+#include <optional>
 #include <vector>
 
 #include "catalog/table.h"
 #include "execution/comparison_predicate.h"
+#include "execution/order_by_spec.h"
 #include "execution/select_item.h"
 #include "execution/update_assignment.h"
 
+class SelectParser;
+
 namespace binder {
+
+struct BoundSelectQuery {
+  std::vector<Table> tables;
+  std::vector<BoundSelectItem> select_items;
+  std::vector<BoundComparisonPredicate> predicates;
+  std::vector<std::vector<BoundComparisonPredicate>> table_predicates;
+  std::vector<OrderBySpec> order_by_specs;
+  std::optional<std::size_t> limit_count;
+};
+
+BoundSelectQuery bindSelectQuery(const SelectParser& parser);
 
 BoundColumnRef bindColumnRef(const ColumnRef& column_ref,
                              const std::vector<Table>& tables);

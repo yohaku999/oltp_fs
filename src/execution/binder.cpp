@@ -2,6 +2,12 @@
 
 #include <optional>
 #include <stdexcept>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "execution/parsers/select_parser.h"
+#include "schema/schema.h"
 
 namespace binder {
 
@@ -83,6 +89,59 @@ std::optional<BoundOperand> tryBindOperand(const UnboundOperand& operand,
 }
 
 }  // namespace
+
+BoundSelectQuery bindSelectQuery(const SelectParser& parser) {
+  BoundSelectQuery bound_query;
+
+  const std::vector<std::string> table_names = parser.extractTableNames();
+  bound_query.tables.reserve(table_names.size());
+  for (const auto& table_name : table_names) {
+    bound_query.tables.push_back(Table::getTable(table_name));
+  }
+
+  std::vector<Column> columns;
+  for (const auto& table : bound_query.tables) {
+    const auto& table_columns = table.schema().columns();
+    columns.insert(columns.end(), table_columns.begin(), table_columns.end());
+  }
+  const Schema joined_schema(std::move(columns));
+
+  const std::vector<UnboundComparisonPredicate> unbound_predicates =
+      parser.extractComparisonPredicates(joined_schema);
+  bound_query.predicates =
+      bindPredicates(unbound_predicates, bound_query.tables);
+
+  bound_query.table_predicates.reserve(bound_query.tables.size());
+  for (const auto& table : bound_query.tables) {
+    bound_query.table_predicates.push_back(
+        bindPredicatesResolvableByTable(unbound_predicates, table));
+  }
+
+  bound_query.select_items =
+      bindSelectItems(parser.extractSelectItems(), bound_query.tables);
+
+  bool has_aggregate = false;
+  bool has_projection = false;
+  for (const auto& item : bound_query.select_items) {
+    has_aggregate =
+        has_aggregate || std::holds_alternative<BoundAggregateCall>(item);
+    has_projection =
+        has_projection || std::holds_alternative<BoundColumnRef>(item);
+  }
+  if (has_aggregate && has_projection) {
+    throw std::runtime_error(
+        "Mixing aggregate and non-aggregate select items is not supported.");
+  }
+
+  bound_query.order_by_specs = parser.extractOrderBySpecs(joined_schema);
+  if (has_aggregate && !bound_query.order_by_specs.empty()) {
+    throw std::runtime_error(
+        "ORDER BY is not supported for aggregate queries.");
+  }
+
+  bound_query.limit_count = parser.extractLimitCount();
+  return bound_query;
+}
 
 BoundColumnRef bindColumnRef(const ColumnRef& column_ref,
                              const std::vector<Table>& tables) {

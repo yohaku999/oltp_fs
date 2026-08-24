@@ -426,9 +426,7 @@ std::size_t updateMatchingRows(
 
 std::unique_ptr<TypedRowOperator> buildReadSource(
     BufferPool& pool, Table& table,
-    const std::vector<UnboundComparisonPredicate>& predicates) {
-  const std::vector<BoundComparisonPredicate> bound_predicates =
-      binder::bindPredicatesResolvableByTable(predicates, table);
+    std::vector<BoundComparisonPredicate> bound_predicates) {
   IndexLookupPlan index_plan = planIndexLookup(table, bound_predicates);
   if (!index_plan.can_use_index) {
     dbfs_log::execution().debug(
@@ -624,50 +622,15 @@ std::optional<IndexLookupJoinPlan> findIndexLookupJoinPlanForTwoTableJoin(
  */
 std::vector<TypedRow> executor::read(BufferPool& pool,
                                      const SelectParser& parser) {
-  std::vector<std::string> table_names = parser.extractTableNames();
-  std::vector<Table> tables;
-  tables.reserve(table_names.size());
-  for (const auto& table_name : table_names) {
-    tables.push_back(Table::getTable(table_name));
-  }
-
-  // build joined schema
-  std::vector<Column> columns;
-  for (const auto& table : tables) {
-    const auto& table_columns = table.schema().columns();
-    columns.insert(columns.end(), table_columns.begin(), table_columns.end());
-  }
-  const Schema joined_schema(columns);
-
-  const std::vector<UnboundComparisonPredicate> predicates =
-      parser.extractComparisonPredicates(joined_schema);
-  const std::vector<UnboundSelectItem> select_items =
-      parser.extractSelectItems();
+  binder::BoundSelectQuery query = binder::bindSelectQuery(parser);
 
   std::vector<std::unique_ptr<TypedRowOperator>> sources;
-  for (auto& table : tables) {
+  for (std::size_t table_index = 0; table_index < query.tables.size();
+       ++table_index) {
     std::unique_ptr<TypedRowOperator> source =
-        buildReadSource(pool, table, predicates);
+        buildReadSource(pool, query.tables[table_index],
+                        query.table_predicates[table_index]);
     sources.push_back(std::move(source));
-  }
-
-  // build bound predicates
-  const std::vector<BoundComparisonPredicate> bound_predicates =
-      binder::bindPredicates(predicates, tables);
-
-  const std::vector<BoundSelectItem> bound_select_items =
-      binder::bindSelectItems(select_items, tables);
-  bool has_aggregate = false;
-  bool has_projection = false;
-  for (const auto& item : bound_select_items) {
-    has_aggregate =
-        has_aggregate || std::holds_alternative<BoundAggregateCall>(item);
-    has_projection =
-        has_projection || std::holds_alternative<BoundColumnRef>(item);
-  }
-  if (has_aggregate && has_projection) {
-    throw std::runtime_error(
-        "Mixing aggregate and non-aggregate select items is not supported.");
   }
 
   // join
@@ -675,18 +638,16 @@ std::vector<TypedRow> executor::read(BufferPool& pool,
   if (sources.size() == 1) {
     pipeline = std::move(sources.front());
   } else if (std::optional<IndexLookupJoinPlan> index_lookup_join_plan =
-                 findIndexLookupJoinPlanForTwoTableJoin(bound_predicates,
-                                                        tables);
+                 findIndexLookupJoinPlanForTwoTableJoin(query.predicates,
+                                                        query.tables);
              index_lookup_join_plan.has_value()) {
-    std::vector<BoundComparisonPredicate> inner_predicates =
-        binder::bindPredicatesResolvableByTable(predicates, tables[1]);
     pipeline = std::make_unique<IndexLookupJoinOperator>(
-        std::move(sources[0]), pool, tables[1],
+        std::move(sources[0]), pool, query.tables[1],
         std::move(index_lookup_join_plan->join_keys),
         std::move(index_lookup_join_plan->constant_keys),
-        std::move(inner_predicates));
+        query.table_predicates[1]);
   } else if (std::optional<HashJoinKey> key =
-                 findHashJoinKeyForTwoTableJoin(bound_predicates, tables);
+                 findHashJoinKeyForTwoTableJoin(query.predicates, query.tables);
              key.has_value()) {
     pipeline = std::make_unique<HashJoinOperator>(
         std::move(sources[0]), std::move(sources[1]), key.value());
@@ -696,45 +657,39 @@ std::vector<TypedRow> executor::read(BufferPool& pool,
 
   // filter
   pipeline =
-      std::make_unique<FilterOperator>(std::move(pipeline), bound_predicates);
+      std::make_unique<FilterOperator>(std::move(pipeline), query.predicates);
   std::vector<TypedRow> items;
+  const bool has_aggregate =
+      std::any_of(query.select_items.begin(), query.select_items.end(),
+                  [](const BoundSelectItem& item) {
+                    return std::holds_alternative<BoundAggregateCall>(item);
+                  });
   if (has_aggregate) {
-    std::vector<OrderBySpec> order_by_specs =
-        parser.extractOrderBySpecs(joined_schema);
-    if (!order_by_specs.empty()) {
-      throw std::runtime_error(
-          "ORDER BY is not supported for aggregate queries.");
-    }
-
     pipeline = std::make_unique<AggregateOperator>(
         std::move(pipeline),
-        select_item::extractAggregateCalls(bound_select_items));
+        select_item::extractAggregateCalls(query.select_items));
 
-    std::optional<std::size_t> limit_count = parser.extractLimitCount();
-    if (limit_count.has_value()) {
+    if (query.limit_count.has_value()) {
       pipeline = std::make_unique<LimitOperator>(std::move(pipeline),
-                                                 limit_count.value());
+                                                 query.limit_count.value());
     }
     items = collectItems<TypedRow>(*pipeline);
   } else {
     // order by
-    std::vector<OrderBySpec> order_by_specs =
-        parser.extractOrderBySpecs(joined_schema);
-    if (!order_by_specs.empty()) {
+    if (!query.order_by_specs.empty()) {
       pipeline = std::make_unique<OrderByOperator>(std::move(pipeline),
-                                                   std::move(order_by_specs));
+                                                   query.order_by_specs);
     }
 
     // limit
-    std::optional<std::size_t> limit_count = parser.extractLimitCount();
-    if (limit_count.has_value()) {
+    if (query.limit_count.has_value()) {
       pipeline = std::make_unique<LimitOperator>(std::move(pipeline),
-                                                 limit_count.value());
+                                                 query.limit_count.value());
     }
 
     // projection
     std::vector<std::size_t> projection_indices =
-        select_item::extractProjectionIndices(bound_select_items);
+        select_item::extractProjectionIndices(query.select_items);
     ProjectionOperator projection(std::move(pipeline), projection_indices);
     items = collectItems<TypedRow>(projection);
   }
