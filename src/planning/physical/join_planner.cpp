@@ -72,12 +72,7 @@ std::optional<JoinColumnPair> findHashJoinKeyForTwoTableJoin(
   return std::nullopt;
 }
 
-struct IndexLookupJoinCandidate {
-  std::vector<JoinColumnPair> join_keys;
-  std::vector<ColumnValuePair> constants;
-};
-
-std::optional<IndexLookupJoinCandidate> findIndexLookupJoinPlanForTwoTableJoin(
+std::optional<IndexLookupJoinPlan> findIndexLookupJoinPlanForTwoTableJoin(
     const std::vector<BoundComparisonPredicate>& predicates,
     const std::vector<Table>& tables) {
   if (tables.size() != 2 || tables[1].indexedColumnIndexes().empty()) {
@@ -105,7 +100,7 @@ std::optional<IndexLookupJoinCandidate> findIndexLookupJoinPlanForTwoTableJoin(
     return std::nullopt;
   };
 
-  IndexLookupJoinCandidate candidate;
+  IndexLookupJoinPlan plan;
   std::vector<bool> covered_inner_columns(inner_column_count, false);
   const auto mark_covered = [&](std::size_t inner_column_index) {
     if (inner_column_index < covered_inner_columns.size()) {
@@ -135,13 +130,13 @@ std::optional<IndexLookupJoinCandidate> findIndexLookupJoinPlanForTwoTableJoin(
           to_inner_index(right_column->column_index);
 
       if (left_outer.has_value() && right_inner.has_value()) {
-        candidate.join_keys.push_back(
+        plan.join_keys.push_back(
             JoinColumnPair{left_outer.value(), right_inner.value()});
         mark_covered(right_inner.value());
         continue;
       }
       if (right_outer.has_value() && left_inner.has_value()) {
-        candidate.join_keys.push_back(
+        plan.join_keys.push_back(
             JoinColumnPair{right_outer.value(), left_inner.value()});
         mark_covered(left_inner.value());
         continue;
@@ -161,8 +156,7 @@ std::optional<IndexLookupJoinCandidate> findIndexLookupJoinPlanForTwoTableJoin(
       continue;
     }
 
-    candidate.constants.push_back(
-        ColumnValuePair{inner_index.value(), *value});
+    plan.constants.push_back(ColumnValuePair{inner_index.value(), *value});
     mark_covered(inner_index.value());
   }
 
@@ -174,35 +168,33 @@ std::optional<IndexLookupJoinCandidate> findIndexLookupJoinPlanForTwoTableJoin(
     }
   }
 
-  if (candidate.join_keys.empty()) {
+  if (plan.join_keys.empty()) {
     return std::nullopt;
   }
-  return candidate;
+  return plan;
 }
 
 }  // namespace
 
 JoinPlan planJoin(const binder::BoundSelectQuery& query) {
   if (query.tables.size() == 1) {
-    return JoinPlan{JoinType::None, std::nullopt, {}, {}};
+    return NoJoinPlan{};
   }
 
-  if (std::optional<IndexLookupJoinCandidate> candidate =
+  if (std::optional<IndexLookupJoinPlan> plan =
           findIndexLookupJoinPlanForTwoTableJoin(query.predicates,
                                                  query.tables);
-      candidate.has_value()) {
-    return JoinPlan{JoinType::IndexLookup, std::nullopt,
-                    std::move(candidate->join_keys),
-                    std::move(candidate->constants)};
+      plan.has_value()) {
+    return std::move(plan.value());
   }
 
   if (std::optional<JoinColumnPair> key =
           findHashJoinKeyForTwoTableJoin(query.predicates, query.tables);
       key.has_value()) {
-    return JoinPlan{JoinType::Hash, key.value(), {}, {}};
+    return HashJoinPlan{key.value()};
   }
 
-  return JoinPlan{JoinType::Loop, std::nullopt, {}, {}};
+  return LoopJoinPlan{};
 }
 
 }  // namespace physical
