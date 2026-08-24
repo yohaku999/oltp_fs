@@ -73,8 +73,8 @@ std::optional<JoinColumnPair> findHashJoinKeyForTwoTableJoin(
 }
 
 struct IndexLookupJoinCandidate {
-  std::vector<JoinColumnPair> join_columns;
-  std::vector<ConstantColumnValue> constants;
+  std::vector<JoinColumnPair> join_keys;
+  std::vector<ColumnValuePair> constants;
 };
 
 std::optional<IndexLookupJoinCandidate> findIndexLookupJoinPlanForTwoTableJoin(
@@ -135,13 +135,13 @@ std::optional<IndexLookupJoinCandidate> findIndexLookupJoinPlanForTwoTableJoin(
           to_inner_index(right_column->column_index);
 
       if (left_outer.has_value() && right_inner.has_value()) {
-        candidate.join_columns.push_back(
+        candidate.join_keys.push_back(
             JoinColumnPair{left_outer.value(), right_inner.value()});
         mark_covered(right_inner.value());
         continue;
       }
       if (right_outer.has_value() && left_inner.has_value()) {
-        candidate.join_columns.push_back(
+        candidate.join_keys.push_back(
             JoinColumnPair{right_outer.value(), left_inner.value()});
         mark_covered(left_inner.value());
         continue;
@@ -162,7 +162,7 @@ std::optional<IndexLookupJoinCandidate> findIndexLookupJoinPlanForTwoTableJoin(
     }
 
     candidate.constants.push_back(
-        ConstantColumnValue{inner_index.value(), *value});
+        ColumnValuePair{inner_index.value(), *value});
     mark_covered(inner_index.value());
   }
 
@@ -174,7 +174,7 @@ std::optional<IndexLookupJoinCandidate> findIndexLookupJoinPlanForTwoTableJoin(
     }
   }
 
-  if (candidate.join_columns.empty()) {
+  if (candidate.join_keys.empty()) {
     return std::nullopt;
   }
   return candidate;
@@ -192,14 +192,14 @@ JoinPlan planJoin(const binder::BoundSelectQuery& query) {
                                                  query.tables);
       candidate.has_value()) {
     return JoinPlan{JoinType::IndexLookup, std::nullopt,
-                    std::move(candidate->join_columns),
+                    std::move(candidate->join_keys),
                     std::move(candidate->constants)};
   }
 
-  if (std::optional<JoinColumnPair> columns =
+  if (std::optional<JoinColumnPair> key =
           findHashJoinKeyForTwoTableJoin(query.predicates, query.tables);
-      columns.has_value()) {
-    return JoinPlan{JoinType::Hash, columns.value(), {}, {}};
+      key.has_value()) {
+    return JoinPlan{JoinType::Hash, key.value(), {}, {}};
   }
 
   return JoinPlan{JoinType::Loop, std::nullopt, {}, {}};

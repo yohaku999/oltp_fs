@@ -9,7 +9,8 @@
  */
 HashJoinOperator::HashJoinOperator(
     std::unique_ptr<TypedRowOperator> outer_child,
-    std::unique_ptr<TypedRowOperator> inner_child, HashJoinKey join_key)
+    std::unique_ptr<TypedRowOperator> inner_child,
+    physical::JoinColumnPair join_key)
     : outer_child_(std::move(outer_child)),
       inner_child_(std::move(inner_child)),
       join_key_(join_key) {}

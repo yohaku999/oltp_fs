@@ -14,8 +14,9 @@
 
 IndexLookupJoinOperator::IndexLookupJoinOperator(
     std::unique_ptr<TypedRowOperator> outer_child, BufferPool& pool,
-    Table& inner_table, std::vector<IndexLookupJoinKey> join_keys,
-    std::vector<IndexLookupJoinConstantKey> constant_keys,
+    Table& inner_table,
+    std::vector<physical::JoinColumnPair> join_keys,
+    std::vector<physical::ColumnValuePair> constant_keys,
     std::vector<BoundComparisonPredicate> inner_predicates)
     : outer_child_(std::move(outer_child)),
       pool_(pool),
@@ -51,11 +52,11 @@ std::optional<std::string> IndexLookupJoinOperator::buildLookupKey(
     }
   };
 
-  for (const IndexLookupJoinConstantKey& constant_key : constant_keys_) {
-    set_key_value(constant_key.inner_column_index, constant_key.value);
+  for (const physical::ColumnValuePair& constant_key : constant_keys_) {
+    set_key_value(constant_key.column_index, constant_key.value);
   }
 
-  for (const IndexLookupJoinKey& join_key : join_keys_) {
+  for (const physical::JoinColumnPair& join_key : join_keys_) {
     if (join_key.outer_column_index >= outer_row.values.size()) {
       throw std::runtime_error(
           "Index lookup join outer column index is out of range.");

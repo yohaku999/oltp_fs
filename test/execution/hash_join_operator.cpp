@@ -44,7 +44,7 @@ TEST(HashJoinOperatorTest, JoinsRowsUsingConfiguredColumnIndexes) {
   HashJoinOperator join(
       std::make_unique<StubRowOperator>(std::move(outer_rows)),
       std::make_unique<StubRowOperator>(std::move(inner_rows)),
-      HashJoinKey{1, 0});
+      physical::JoinColumnPair{1, 0});
 
   join.open();
 

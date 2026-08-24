@@ -15,16 +15,16 @@ struct JoinColumnPair {
   std::size_t inner_column_index;
 };
 
-struct ConstantColumnValue {
-  std::size_t inner_column_index;
+struct ColumnValuePair {
+  std::size_t column_index;
   FieldValue value;
 };
 
 struct JoinPlan {
   JoinType type;
-  std::optional<JoinColumnPair> hash_join_columns;
-  std::vector<JoinColumnPair> index_lookup_join_columns;
-  std::vector<ConstantColumnValue> index_lookup_constants;
+  std::optional<JoinColumnPair> hash_join_key;
+  std::vector<JoinColumnPair> index_lookup_join_keys;
+  std::vector<ColumnValuePair> index_lookup_constants;
 };
 
 }  // namespace physical
