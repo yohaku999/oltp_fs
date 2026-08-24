@@ -2,7 +2,7 @@
 
 #include <utility>
 
-#include "execution/parsers/parser_ast_helpers.h"
+#include "parser/parser_ast_helpers.h"
 #include "schema/schema.h"
 
 DeleteParser::DeleteParser(std::string sql)

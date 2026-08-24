@@ -3,7 +3,7 @@
 #include <stdexcept>
 #include <utility>
 
-#include "execution/parsers/parser_ast_helpers.h"
+#include "parser/parser_ast_helpers.h"
 #include "schema/schema.h"
 
 UpdateParser::UpdateParser(std::string sql)

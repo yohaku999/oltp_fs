@@ -9,10 +9,10 @@
 #include <vector>
 
 #include "catalog/table.h"
-#include "execution/binder.h"
+#include "planning/binder.h"
 #include "execution/comparison_predicate.h"
 #include "execution/executor.h"
-#include "execution/parsers/insert_parser.h"
+#include "parser/insert_parser.h"
 #include "storage/buffer/bufferpool.h"
 #include "storage/disk/pagedfile.h"
 #include "storage/wal/wal.h"

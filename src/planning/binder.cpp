@@ -1,4 +1,4 @@
-#include "execution/binder.h"
+#include "planning/binder.h"
 
 #include <optional>
 #include <stdexcept>
@@ -6,7 +6,7 @@
 #include <utility>
 #include <vector>
 
-#include "execution/parsers/select_parser.h"
+#include "parser/select_parser.h"
 #include "schema/schema.h"
 
 namespace binder {

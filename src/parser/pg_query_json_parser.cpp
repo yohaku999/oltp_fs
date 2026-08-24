@@ -1,4 +1,4 @@
-#include "execution/parsers/pg_query_json_parser.h"
+#include "parser/pg_query_json_parser.h"
 
 #include <stdexcept>
 #include <utility>

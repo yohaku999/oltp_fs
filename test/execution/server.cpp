@@ -21,8 +21,8 @@
 
 #include "catalog/table.h"
 #include "execution/executor.h"
-#include "execution/parsers/create_table_parser.h"
-#include "execution/parsers/insert_parser.h"
+#include "parser/create_table_parser.h"
+#include "parser/insert_parser.h"
 #include "storage/buffer/bufferpool.h"
 #include "storage/wal/wal.h"
 

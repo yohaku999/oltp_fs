@@ -10,9 +10,9 @@
 #include <nlohmann/json.hpp>
 
 #include "execution/executor.h"
-#include "execution/parsers/delete_parser.h"
-#include "execution/parsers/insert_parser.h"
-#include "execution/parsers/select_parser.h"
+#include "parser/delete_parser.h"
+#include "parser/insert_parser.h"
+#include "parser/select_parser.h"
 #include "storage/buffer/bufferpool.h"
 #include "storage/page/page.h"
 #include "storage/wal/wal.h"

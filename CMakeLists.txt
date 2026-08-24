@@ -56,17 +56,17 @@ add_library(dbfs_src
     src/storage/wal/wal_record.cpp
     src/storage/wal/wal_body.cpp
     src/storage/wal/wal.cpp
-    src/execution/binder.cpp
+    src/planning/binder.cpp
     src/execution/comparison_predicate.cpp
     src/execution/select_item.cpp
-    src/execution/parsers/parser_ast_helpers.cpp
-    src/execution/parsers/pg_query_json_parser.cpp
-    src/execution/parsers/create_index_parser.cpp
-    src/execution/parsers/create_table_parser.cpp
-    src/execution/parsers/delete_parser.cpp
-    src/execution/parsers/drop_table_parser.cpp
-    src/execution/parsers/insert_parser.cpp
-    src/execution/parsers/update_parser.cpp
+    src/parser/parser_ast_helpers.cpp
+    src/parser/pg_query_json_parser.cpp
+    src/parser/create_index_parser.cpp
+    src/parser/create_table_parser.cpp
+    src/parser/delete_parser.cpp
+    src/parser/drop_table_parser.cpp
+    src/parser/insert_parser.cpp
+    src/parser/update_parser.cpp
     src/execution/operators/heap_fetch_operator.cpp
     src/execution/operators/hash_join_operator.cpp
     src/execution/operators/index_lookup_join_operator.cpp
@@ -76,7 +76,7 @@ add_library(dbfs_src
     src/execution/operators/loop_join_operator.cpp
     src/execution/operators/orderby_operator.cpp
     src/execution/operators/seq_scan_operator.cpp
-    src/execution/parsers/select_parser.cpp
+    src/parser/select_parser.cpp
     src/catalog/table_metadata.cpp
     src/catalog/table.cpp
     src/logging.cpp

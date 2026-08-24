@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 
-#include "execution/parsers/pg_query_json_parser.h"
+#include "parser/pg_query_json_parser.h"
 
 class CreateIndexParser : private PgQueryJsonParser {
  public:
