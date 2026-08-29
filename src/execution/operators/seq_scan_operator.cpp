@@ -2,18 +2,19 @@
 
 #include "schema/schema.h"
 #include "storage/buffer/bufferpool.h"
-#include "execution/heapfile.h"
+#include "storage/heap/heapfile.h"
 #include "storage/page/cell.h"
 #include "storage/page/page.h"
 #include "storage/record/record_cell.h"
 
 
 SeqScanOperator::SeqScanOperator(
-    BufferPool& pool, HeapFile& heap_file, const Schema& schema,
+    BufferPool& pool, HeapFile heap_file, const Schema& schema,
     std::vector<BoundComparisonPredicate> predicates)
     : schema_(schema),
       predicates_(std::move(predicates)),
-      scan_(heap_file.scan(pool)) {}
+      heap_file_(std::move(heap_file)),
+      scan_(heap_file_.scan(pool)) {}
 
 void SeqScanOperator::open() {
   is_open_ = true;

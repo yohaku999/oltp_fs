@@ -18,7 +18,7 @@
 #include "storage/wal/wal.h"
 #include "storage/wal/wal_body.h"
 #include "storage/wal/wal_record.h"
-#include "execution/heapscan.h"
+#include "storage/heap/heapscan.h"
 
 class HeapFile {
  public:

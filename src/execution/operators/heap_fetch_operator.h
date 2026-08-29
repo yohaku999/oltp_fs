@@ -6,16 +6,16 @@
 #include <vector>
 
 class BufferPool;
-class HeapFile;
 class Schema;
 struct BoundComparisonPredicate;
 
 #include "execution/operator.h"
+#include "storage/heap/heapfile.h"
 
 class HeapFetchOperator : public TypedRowOperator {
  public:
   HeapFetchOperator(std::unique_ptr<RidOperator> child, BufferPool& pool,
-                    HeapFile& heap_file, const Schema& schema,
+                    HeapFile heap_file, const Schema& schema,
                     std::vector<BoundComparisonPredicate> predicates = {});
   void open() override;
   std::optional<TypedRow> next() override;
@@ -24,7 +24,7 @@ class HeapFetchOperator : public TypedRowOperator {
  private:
   std::unique_ptr<RidOperator> child_;
   BufferPool& pool_;
-  HeapFile& heap_file_;
+  HeapFile heap_file_;
   const Schema& schema_;
   std::vector<BoundComparisonPredicate> predicates_;
   OperatorExecutionLogger logger_{"HeapFetchOperator"};

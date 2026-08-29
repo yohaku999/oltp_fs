@@ -8,6 +8,7 @@
 #include "execution/operators/loop_join_operator.h"
 #include "planning/binder.h"
 #include "storage/buffer/bufferpool.h"
+#include "storage/local_storage_manager.h"
 
 namespace execution {
 
@@ -26,6 +27,7 @@ Overloaded(Visitors...) -> Overloaded<Visitors...>;
 std::unique_ptr<TypedRowOperator> buildJoinPipeline(
     physical::JoinPlan plan,
     std::vector<std::unique_ptr<TypedRowOperator>> sources, BufferPool& pool,
+    const LocalStorageManager& storage,
     binder::BoundSelectQuery& query) {
   return std::visit(
       Overloaded{
@@ -34,8 +36,12 @@ std::unique_ptr<TypedRowOperator> buildJoinPipeline(
           },
           [&](physical::IndexLookupJoinPlan& index_plan)
               -> std::unique_ptr<TypedRowOperator> {
+            const Table& inner_table = query.tables[1];
             return std::make_unique<IndexLookupJoinOperator>(
-                std::move(sources[0]), pool, query.tables[1],
+                std::move(sources[0]), pool,
+                storage.openHeap(inner_table.heapFileName()),
+                storage.openIndex(inner_table.requireIndex().file_name),
+                inner_table.schema(), inner_table.indexedColumnIndexes(),
                 std::move(index_plan.join_keys),
                 std::move(index_plan.constants), query.table_predicates[1]);
           },

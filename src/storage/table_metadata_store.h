@@ -1,18 +1,20 @@
 #pragma once
 
-#include <optional>
 #include <string>
 #include <vector>
 
 #include "schema/schema.h"
 
+class Table;
+
 struct PersistedIndexMetadata {
-  std::string index_path;
+  std::string file_name;
   std::vector<std::string> indexed_column_names;
 };
 
 struct PersistedTableMetadata {
   Schema schema;
+  std::string heap_file_name;
   std::vector<PersistedIndexMetadata> indexes;
 };
 
@@ -22,8 +24,9 @@ class TableMetadataStore {
 
   static bool exists(const std::string& table_name);
 
-  static void write(const std::string& table_name, const Schema& schema,
-                    const std::vector<PersistedIndexMetadata>& indexes);
+  static void write(const Table& table);
+
+  static void remove(const std::string& table_name);
 
   static PersistedTableMetadata read(const std::string& table_name);
 

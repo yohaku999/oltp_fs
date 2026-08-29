@@ -1,10 +1,13 @@
-#include "catalog/table_metadata.h"
+#include "storage/table_metadata_store.h"
 
 #include <filesystem>
 #include <fstream>
 #include <nlohmann/json.hpp>
 #include <stdexcept>
 #include <unordered_map>
+#include <utility>
+
+#include "catalog/table.h"
 
 namespace {
 
@@ -14,7 +17,7 @@ namespace {
  * TPC-C creates tables and indexes during setup, then runs the measured
  * workload without DDL. Under that assumption, table metadata is effectively
  * immutable during the measured phase, so caching avoids repeated metadata JSON
- * file reads/parses from Table::getTable. 
+ * file reads/parses from TableRepository::get.
  * 
  * This is intentionally not a production catalog cache:
  * - no invalidation for external metadata file changes
@@ -45,24 +48,27 @@ bool TableMetadataStore::exists(const std::string& table_name) {
   return std::filesystem::exists(pathFor(table_name));
 }
 
-void TableMetadataStore::write(
-    const std::string& table_name, const Schema& schema,
-    const std::vector<PersistedIndexMetadata>& indexes) {
+void TableMetadataStore::write(const Table& table) {
   nlohmann::json metadata;
+  metadata["heapFileName"] = table.heapFileName();
   metadata["indexes"] = nlohmann::json::array();
-  for (const auto& index : indexes) {
+  std::vector<PersistedIndexMetadata> persisted_indexes;
+  persisted_indexes.reserve(table.indexes().size());
+  for (const IndexMetadata& index : table.indexes()) {
     metadata["indexes"].push_back(
-        {{"indexFile", index.index_path},
-         {"indexedColumns", index.indexed_column_names}});
+        {{"fileName", index.file_name},
+         {"indexedColumns", index.column_names}});
+    persisted_indexes.push_back(
+        PersistedIndexMetadata{index.file_name, index.column_names});
   }
   metadata["columns"] = nlohmann::json::array();
-  for (const auto& column : schema.columns()) {
+  for (const Column& column : table.schema().columns()) {
     metadata["columns"].push_back(
         {{"name", column.getName()},
          {"type", Column::typeToString(column.getType())}});
   }
 
-  const std::string meta_path = pathFor(table_name);
+  const std::string meta_path = pathFor(table.name());
   std::ofstream output(prepareMetadataPath(meta_path));
   if (!output.is_open()) {
     throw std::runtime_error("failed to open metadata file for write: " +
@@ -73,8 +79,19 @@ void TableMetadataStore::write(
     throw std::runtime_error("failed to write metadata file: " + meta_path);
   }
 
-  metadata_cache.insert_or_assign(table_name,
-                                  PersistedTableMetadata{schema, indexes});
+  metadata_cache.insert_or_assign(
+      table.name(), PersistedTableMetadata{table.schema(), table.heapFileName(),
+                                           std::move(persisted_indexes)});
+}
+
+void TableMetadataStore::remove(const std::string& table_name) {
+  metadata_cache.erase(table_name);
+  std::error_code error;
+  std::filesystem::remove(pathFor(table_name), error);
+  if (error) {
+    throw std::runtime_error("failed to remove table metadata: " +
+                             error.message());
+  }
 }
 
 PersistedTableMetadata TableMetadataStore::read(const std::string& table_name) {
@@ -99,6 +116,22 @@ PersistedTableMetadata TableMetadataStore::readFromPath(
   nlohmann::json metadata;
   input >> metadata;
 
+  const std::filesystem::path metadata_path(meta_path);
+  std::string table_name = metadata_path.filename().string();
+  constexpr const char* metadata_suffix = ".meta.json";
+  if (table_name.size() >= std::char_traits<char>::length(metadata_suffix)) {
+    table_name.erase(table_name.size() -
+                     std::char_traits<char>::length(metadata_suffix));
+  }
+  const std::string heap_file_name =
+      metadata.contains("heapFileName") &&
+              metadata["heapFileName"].is_string()
+          ? metadata["heapFileName"].get<std::string>()
+          : metadata.contains("heapStorageId") &&
+                    metadata["heapStorageId"].is_string()
+                ? metadata["heapStorageId"].get<std::string>()
+                : table_name + ".db";
+
   if (!metadata.contains("columns") || !metadata["columns"].is_array()) {
     throw std::runtime_error("invalid table metadata: missing columns array");
   }
@@ -106,10 +139,18 @@ PersistedTableMetadata TableMetadataStore::readFromPath(
   std::vector<PersistedIndexMetadata> indexes;
   if (metadata.contains("indexes") && metadata["indexes"].is_array()) {
     for (const auto& index_json : metadata["indexes"]) {
-      if (!index_json.contains("indexFile") ||
-          !index_json["indexFile"].is_string()) {
+      const bool has_file_name =
+          index_json.contains("fileName") &&
+          index_json["fileName"].is_string();
+      const bool has_legacy_storage_id =
+          index_json.contains("storageId") &&
+          index_json["storageId"].is_string();
+      const bool has_legacy_path =
+          index_json.contains("indexFile") &&
+          index_json["indexFile"].is_string();
+      if (!has_file_name && !has_legacy_storage_id && !has_legacy_path) {
         throw std::runtime_error(
-            "invalid table metadata: index requires indexFile");
+            "invalid table metadata: index requires fileName");
       }
       std::vector<std::string> indexed_column_names;
       if (index_json.contains("indexedColumns") &&
@@ -127,9 +168,17 @@ PersistedTableMetadata TableMetadataStore::readFromPath(
         indexed_column_names.push_back(
             index_json["indexedColumn"].get<std::string>());
       }
-      indexes.push_back(
-          PersistedIndexMetadata{index_json["indexFile"].get<std::string>(),
-                                 std::move(indexed_column_names)});
+      const std::string file_name =
+          has_file_name
+              ? index_json["fileName"].get<std::string>()
+              : has_legacy_storage_id
+                    ? index_json["storageId"].get<std::string>()
+                    : std::filesystem::path(
+                          index_json["indexFile"].get<std::string>())
+                          .filename()
+                          .string();
+      indexes.push_back(PersistedIndexMetadata{
+          file_name, std::move(indexed_column_names)});
     }
   }
 
@@ -146,5 +195,6 @@ PersistedTableMetadata TableMetadataStore::readFromPath(
         Column::typeFromString(column_json["type"].get<std::string>()));
   }
 
-  return PersistedTableMetadata{Schema(std::move(columns)), std::move(indexes)};
+  return PersistedTableMetadata{Schema(std::move(columns)), heap_file_name,
+                                std::move(indexes)};
 }

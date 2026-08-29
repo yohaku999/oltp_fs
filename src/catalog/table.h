@@ -1,71 +1,39 @@
 #pragma once
 
-#include <filesystem>
-#include <functional>
-#include <optional>
-#include <stdexcept>
+#include <cstddef>
 #include <string>
-#include <utility>
 #include <vector>
 
-#include "catalog/table_metadata.h"
-#include "execution/heapfile.h"
 #include "schema/schema.h"
-#include "storage/disk/pagedfile.h"
-#include "storage/index/rid.h"
-#include "tuple/typed_row.h"
 
-class BufferPool;
-class WAL;
-
-struct ExactMatchIndexColumnValue {
-  std::string column_name;
-  FieldValue value;
+struct IndexMetadata {
+  std::string file_name;
+  std::vector<std::string> column_names;
 };
 
 class Table {
  public:
-  static Table initialize(const std::string& table_name, const Schema& schema);
-
-  static Table getTable(const std::string& table_name);
-
-  static bool isPersisted(const std::string& table_name);
-
-  static void removeBackingFilesFor(const std::string& table_name);
-
-  void createIndex(const std::vector<std::string>& column_names);
+  Table(std::string name, Schema schema, std::string heap_file_name,
+        std::vector<IndexMetadata> indexes = {});
 
   const std::string& name() const { return name_; }
   const Schema& schema() const { return schema_; }
+  const std::string& heapFileName() const { return heap_file_name_; }
+  const std::vector<IndexMetadata>& indexes() const { return indexes_; }
+
+  bool hasIndex() const { return !indexes_.empty(); }
   bool hasIndexForColumn(const std::string& column_name) const;
-  std::string extractIndexKey(const TypedRow& row) const;
-  std::optional<std::string> tryBuildExactMatchIndexKey(
-      const std::vector<ExactMatchIndexColumnValue>& exact_match_values) const;
-  const std::vector<std::string>& indexedColumnNames() const {
-    return indexed_column_names_;
-  }
+  const IndexMetadata& requireIndex() const;
+  const std::vector<std::string>& indexedColumnNames() const;
   std::vector<std::size_t> indexedColumnIndexes() const;
-  std::optional<std::reference_wrapper<PagedFile>> indexFile();
-  PagedFile& requireIndexFile();
-  HeapFile& heapFile() { return heap_file_; }
+
+  void addIndex(IndexMetadata index);
 
  private:
-  Table(std::string name, Schema schema, std::optional<std::string> index_path,
-        std::vector<std::string> indexed_column_names);
-
-  static std::string defaultIndexPath(
-      const std::string& table_name,
-      const std::vector<std::string>& indexed_column_names);
-
-  static std::string defaultHeapPath(const std::string& table_name);
-
-  static void removeFileIfExists(const std::string& path);
-
-  static bool anyBackingFileExists(const std::string& table_name);
+  void validateIndex(const IndexMetadata& index) const;
 
   std::string name_;
   Schema schema_;
-  std::vector<std::string> indexed_column_names_;
-  std::optional<PagedFile> index_file_;
-  HeapFile heap_file_;
+  std::string heap_file_name_;
+  std::vector<IndexMetadata> indexes_;
 };

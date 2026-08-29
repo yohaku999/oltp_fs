@@ -3,10 +3,9 @@
 #include <stdexcept>
 #include <utility>
 
-#include "catalog/table.h"
 #include "execution/comparison_predicate.h"
-#include "execution/heapfile.h"
 #include "storage/buffer/bufferpool.h"
+#include "storage/heap/heapfile.h"
 #include "storage/index/btreecursor.h"
 #include "storage/index/index_key.h"
 #include "storage/index/rid.h"
@@ -14,13 +13,17 @@
 
 IndexLookupJoinOperator::IndexLookupJoinOperator(
     std::unique_ptr<TypedRowOperator> outer_child, BufferPool& pool,
-    Table& inner_table,
+    HeapFile inner_heap_file, PagedFile inner_index_file,
+    Schema inner_schema, std::vector<std::size_t> indexed_column_indexes,
     std::vector<physical::JoinColumnPair> join_keys,
     std::vector<physical::ColumnValuePair> constant_keys,
     std::vector<BoundComparisonPredicate> inner_predicates)
     : outer_child_(std::move(outer_child)),
       pool_(pool),
-      inner_table_(inner_table),
+      inner_heap_file_(std::move(inner_heap_file)),
+      inner_index_file_(std::move(inner_index_file)),
+      inner_schema_(std::move(inner_schema)),
+      indexed_column_indexes_(std::move(indexed_column_indexes)),
       join_keys_(std::move(join_keys)),
       constant_keys_(std::move(constant_keys)),
       inner_predicates_(std::move(inner_predicates)) {}
@@ -36,16 +39,14 @@ void IndexLookupJoinOperator::open() {
 
 std::optional<std::string> IndexLookupJoinOperator::buildLookupKey(
     const TypedRow& outer_row) const {
-  const std::vector<std::size_t> indexed_column_indexes =
-      inner_table_.indexedColumnIndexes();
   std::vector<std::optional<FieldValue>> key_values(
-      indexed_column_indexes.size());
+      indexed_column_indexes_.size());
 
   const auto set_key_value = [&](std::size_t inner_column_index,
                                  FieldValue value) {
-    for (std::size_t index = 0; index < indexed_column_indexes.size();
+    for (std::size_t index = 0; index < indexed_column_indexes_.size();
          ++index) {
-      if (indexed_column_indexes[index] == inner_column_index) {
+      if (indexed_column_indexes_[index] == inner_column_index) {
         key_values[index] = std::move(value);
         return;
       }
@@ -66,13 +67,13 @@ std::optional<std::string> IndexLookupJoinOperator::buildLookupKey(
   }
 
   std::string lookup_key;
-  const auto& inner_columns = inner_table_.schema().columns();
-  for (std::size_t index = 0; index < indexed_column_indexes.size(); ++index) {
+  const auto& inner_columns = inner_schema_.columns();
+  for (std::size_t index = 0; index < indexed_column_indexes_.size(); ++index) {
     if (!key_values[index].has_value()) {
       return std::nullopt;
     }
 
-    const std::size_t inner_column_index = indexed_column_indexes[index];
+    const std::size_t inner_column_index = indexed_column_indexes_[index];
     lookup_key += index_key::encodeFieldValue(
         key_values[index].value(),
         inner_columns.at(inner_column_index).getType());
@@ -94,14 +95,14 @@ std::vector<TypedRow> IndexLookupJoinOperator::lookupInnerRows(
 
   const BTreeCursor::Boundary boundary{lookup_key.value(), true};
   const std::vector<IndexEntry> entries = BTreeCursor::findEntries(
-      pool_, inner_table_.requireIndexFile(), {boundary, boundary}, false);
+      pool_, inner_index_file_, {boundary, boundary}, false);
 
   std::vector<TypedRow> rows;
   rows.reserve(entries.size());
   for (const IndexEntry& entry : entries) {
-    std::optional<TypedRow> inner_row = inner_table_.heapFile().withRecord(
+    std::optional<TypedRow> inner_row = inner_heap_file_.withRecord(
         pool_, entry.rid, [&](RecordCellView record) {
-          return record.getTypedRow(inner_table_.schema());
+          return record.getTypedRow(inner_schema_);
         });
     if (!inner_row.has_value()) {
       continue;

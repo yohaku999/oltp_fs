@@ -6,16 +6,16 @@
 #include <vector>
 
 class BufferPool;
-class PagedFile;
 
 #include "execution/comparison_predicate.h"
 #include "execution/operator.h"
+#include "storage/disk/pagedfile.h"
 #include "storage/index/btreecursor.h"
 
 class IndexScanOperator : public RidOperator {
  public:
   IndexScanOperator(
-      BufferPool& pool, PagedFile& index_file,
+      BufferPool& pool, PagedFile index_file,
       std::pair<BTreeCursor::Boundary, BTreeCursor::Boundary> boundaries,
       std::vector<std::vector<BoundComparisonPredicate>>
           index_ordered_predicates);
@@ -26,7 +26,7 @@ class IndexScanOperator : public RidOperator {
 
  private:
   BufferPool& pool_;
-  PagedFile& indexFile_;
+  PagedFile index_file_;
   std::pair<BTreeCursor::Boundary, BTreeCursor::Boundary> boundaries_;
   std::vector<std::vector<BoundComparisonPredicate>> index_ordered_predicates_;
   OperatorExecutionLogger logger_{"IndexScanOperator"};

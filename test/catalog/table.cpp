@@ -10,13 +10,16 @@
 #include <nlohmann/json.hpp>
 
 #include "execution/executor.h"
+#include "storage/heap/heapfile.h"
 #include "parser/delete_parser.h"
 #include "parser/insert_parser.h"
 #include "parser/select_parser.h"
 #include "storage/buffer/bufferpool.h"
+#include "storage/disk/pagedfile.h"
 #include "storage/page/page.h"
 #include "storage/wal/wal.h"
 #include "storage/wal/wal_record.h"
+#include "../test_database.h"
 
 class TableTest : public ::testing::Test {
  protected:
@@ -27,7 +30,7 @@ class TableTest : public ::testing::Test {
 
   void SetUp() override {
     std::filesystem::create_directories("data");
-    Table::removeBackingFilesFor(kTableName);
+    test_db::removeTable(kTableName);
     std::remove(kWalPath);
     wal_ = WAL::initializeNew(kWalPath);
     pool_ = std::make_unique<BufferPool>(*wal_);
@@ -36,16 +39,16 @@ class TableTest : public ::testing::Test {
   void TearDown() override {
     pool_.reset();
     wal_.reset();
-    Table::removeBackingFilesFor(kTableName);
+    test_db::removeTable(kTableName);
     std::remove(kWalPath);
   }
 
   static Table createSingleColumnTable() {
-    Table table = Table::initialize(
+    Table table = test_db::createTable(
         kTableName,
         Schema(std::vector<Column>{Column("id", Column::Type::Integer),
                                    Column("value", Column::Type::Varchar)}));
-    table.createIndex({"id"});
+    test_db::createIndex(table, {"id"});
     return table;
   }
 
@@ -98,15 +101,32 @@ class TableTest : public ::testing::Test {
   }
 };
 
-TEST_F(TableTest, InitializeCreatesReadableTableBootstrap) {
-  EXPECT_FALSE(Table::isPersisted(kTableName));
+TEST_F(TableTest, ConstructionOnlyDefinesCatalogMetadata) {
+  const std::string heap_file_name = "catalog_only_table.db";
+  const LocalStorageManager storage;
+  if (storage.exists(heap_file_name)) {
+    storage.remove(heap_file_name);
+  }
+
+  Table table(
+      "catalog_only_table",
+      Schema(std::vector<Column>{Column("id", Column::Type::Integer)}),
+      heap_file_name);
+
+  EXPECT_EQ(table.heapFileName(), heap_file_name);
+  EXPECT_FALSE(storage.exists(heap_file_name));
+}
+
+TEST_F(TableTest, CatalogAndStorageCreateReadableTableBootstrap) {
+  EXPECT_FALSE(test_db::isPersisted(kTableName));
 
   Schema schema(std::vector<Column>{Column("id", Column::Type::Integer),
                                     Column("value", Column::Type::Varchar)});
-  Table table = Table::initialize(kTableName, schema);
+  Table table = test_db::createTable(kTableName, schema);
 
-  EXPECT_TRUE(Table::isPersisted(kTableName));
-  EXPECT_TRUE(table.heapFile().isPageIDUsed(0));
+  EXPECT_TRUE(test_db::isPersisted(kTableName));
+  EXPECT_TRUE(
+      LocalStorageManager().openHeap(table.heapFileName()).isPageIDUsed(0));
 
   std::ifstream meta_file("data/table_test_table.meta.json");
   ASSERT_TRUE(meta_file.is_open());
@@ -116,7 +136,7 @@ TEST_F(TableTest, InitializeCreatesReadableTableBootstrap) {
   ASSERT_TRUE(metadata["indexes"].is_array());
   EXPECT_TRUE(metadata["indexes"].empty());
 
-  Table reopened = Table::getTable(kTableName);
+  Table reopened = test_db::getTable(kTableName);
   EXPECT_EQ(reopened.name(), kTableName);
   ASSERT_EQ(reopened.schema().columns().size(), 2u);
   EXPECT_EQ(reopened.schema().columns()[0].getName(), "id");
@@ -125,32 +145,37 @@ TEST_F(TableTest, InitializeCreatesReadableTableBootstrap) {
   EXPECT_EQ(reopened.schema().columns()[1].getType(), Column::Type::Varchar);
   EXPECT_TRUE(reopened.indexedColumnNames().empty());
 
-  table.createIndex({"id"});
+  test_db::createIndex(table, {"id"});
   EXPECT_TRUE(table.hasIndexForColumn("id"));
-  ASSERT_TRUE(table.indexFile().has_value());
-  EXPECT_EQ(table.indexFile()->get().getRootPageID(), 0u);
-  EXPECT_TRUE(table.indexFile()->get().isPageIDUsed(0));
+  ASSERT_TRUE(table.hasIndex());
+  PagedFile index_file =
+      LocalStorageManager().openIndex(table.requireIndex().file_name);
+  EXPECT_EQ(index_file.getRootPageID(), 0u);
+  EXPECT_TRUE(index_file.isPageIDUsed(0));
 
   std::ifstream indexed_meta_file("data/table_test_table.meta.json");
   ASSERT_TRUE(indexed_meta_file.is_open());
   indexed_meta_file >> metadata;
   ASSERT_EQ(metadata["indexes"].size(), 1u);
-  EXPECT_EQ(metadata["indexes"][0]["indexFile"].get<std::string>(),
-            "data/table_test_table.id.index");
+  EXPECT_EQ(metadata["heapFileName"].get<std::string>(),
+            "table_test_table.db");
+  EXPECT_EQ(metadata["indexes"][0]["fileName"].get<std::string>(),
+            "table_test_table.id.index");
   ASSERT_TRUE(metadata["indexes"][0].contains("indexedColumns"));
   ASSERT_TRUE(metadata["indexes"][0]["indexedColumns"].is_array());
   ASSERT_EQ(metadata["indexes"][0]["indexedColumns"].size(), 1u);
   EXPECT_EQ(metadata["indexes"][0]["indexedColumns"][0].get<std::string>(),
             "id");
 
-  Table indexed_reopened = Table::getTable(kTableName);
+  Table indexed_reopened = test_db::getTable(kTableName);
   EXPECT_EQ(indexed_reopened.indexedColumnNames(),
             (std::vector<std::string>{"id"}));
-  ASSERT_TRUE(indexed_reopened.indexFile().has_value());
+  ASSERT_TRUE(indexed_reopened.hasIndex());
+  EXPECT_EQ(indexed_reopened.requireIndex().file_name,
+            table.requireIndex().file_name);
 
   std::array<char, Page::PAGE_SIZE_BYTE> index_page_buffer{};
-  EXPECT_NO_THROW(
-      table.indexFile()->get().readPageIntoBuffer(0, index_page_buffer.data()));
+  EXPECT_NO_THROW(index_file.readPageIntoBuffer(0, index_page_buffer.data()));
 
   Page index_root(index_page_buffer.data(), 0);
   EXPECT_TRUE(index_root.isLeaf());
@@ -163,12 +188,12 @@ TEST_F(TableTest, GetTableDoesNotCreateMissingDataDirectory) {
         Column("id", Column::Type::Integer),
         Column("value", Column::Type::Varchar),
     });
-    Table table = Table::initialize(kTableName, schema);
+    Table table = test_db::createTable(kTableName, schema);
   }
 
   std::filesystem::remove_all("data");
 
-  EXPECT_THROW(Table::getTable(kTableName), std::runtime_error);
+  EXPECT_THROW(test_db::getTable(kTableName), std::runtime_error);
   EXPECT_FALSE(std::filesystem::exists("data"));
 }
 
@@ -187,13 +212,13 @@ TEST_F(TableTest, InsertIndexFindRIDAndReadRowRoundTrip) {
 }
 
 TEST_F(TableTest, HasIndexForColumnChecksCompositeIndexMembership) {
-  Table table = Table::initialize(
+  Table table = test_db::createTable(
       kTableName,
       Schema(std::vector<Column>{Column("warehouse_id", Column::Type::Integer),
                                  Column("district_id", Column::Type::Integer),
                                  Column("value", Column::Type::Varchar)}));
 
-  table.createIndex({"warehouse_id", "district_id"});
+  test_db::createIndex(table, {"warehouse_id", "district_id"});
 
   EXPECT_TRUE(table.hasIndexForColumn("warehouse_id"));
   EXPECT_TRUE(table.hasIndexForColumn("district_id"));

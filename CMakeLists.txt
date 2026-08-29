@@ -45,6 +45,7 @@ add_dependencies(pg_query libpg_query_proj)
 add_library(dbfs_src
     src/storage/buffer/bufferpool.cpp
     src/storage/disk/pagedfile.cpp
+    src/storage/local_storage_manager.cpp
     src/storage/page/page.cpp
     src/storage/index/index_page.cpp
     src/storage/index/intermediate_cell.cpp
@@ -79,7 +80,8 @@ add_library(dbfs_src
     src/execution/operators/orderby_operator.cpp
     src/execution/operators/seq_scan_operator.cpp
     src/parser/select_parser.cpp
-    src/catalog/table_metadata.cpp
+    src/storage/table_metadata_store.cpp
+    src/catalog/table_repository.cpp
     src/catalog/table.cpp
     src/logging.cpp
     src/server/server.cpp

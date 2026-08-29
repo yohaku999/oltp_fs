@@ -10,6 +10,8 @@
 
 #include "../logging.h"
 #include "catalog/table.h"
+#include "catalog/table_repository.h"
+#include "storage/heap/heapfile.h"
 #include "execution/join_pipeline_builder.h"
 #include "execution/operator.h"
 #include "execution/operators/aggregate_operator.h"
@@ -30,8 +32,10 @@
 #include "planning/binder.h"
 #include "planning/physical/join_planner.h"
 #include "storage/buffer/bufferpool.h"
+#include "storage/disk/pagedfile.h"
 #include "storage/index/btreecursor.h"
 #include "storage/index/index_key.h"
+#include "storage/local_storage_manager.h"
 #include "storage/page/cell.h"
 #include "storage/record/record_cell.h"
 #include "storage/record/record_serializer.h"
@@ -45,22 +49,12 @@ struct PredicateValueAndType {
 
 PredicateValueAndType extractValueAndType(
     const BoundComparisonPredicate& predicate) {
-  const BoundColumnRef* left_column =
-      std::get_if<BoundColumnRef>(&predicate.left);
-  const BoundColumnRef* right_column =
-      std::get_if<BoundColumnRef>(&predicate.right);
-  const FieldValue* left_value = std::get_if<FieldValue>(&predicate.left);
-  const FieldValue* right_value = std::get_if<FieldValue>(&predicate.right);
-
-  if (left_column != nullptr && right_value != nullptr) {
-    return {*right_value, left_column->type};
+  if (const auto* left_column =
+          std::get_if<BoundColumnRef>(&predicate.left)) {
+    return {std::get<FieldValue>(predicate.right), left_column->type};
   }
-  if (right_column != nullptr && left_value != nullptr) {
-    return {*left_value, right_column->type};
-  }
-
-  throw std::logic_error(
-      "Index lookup predicates must compare a column with a value.");
+  const auto& right_column = std::get<BoundColumnRef>(predicate.right);
+  return {std::get<FieldValue>(predicate.left), right_column.type};
 }
 
 std::vector<BoundComparisonPredicate>::const_iterator findPredicateByOp(
@@ -80,11 +74,7 @@ buildTraversalBoundaries(
 
   for (size_t i = 0; i < ordered_predicates.size(); ++i) {
     const auto& predicates_for_key = ordered_predicates[i];
-    if (predicates_for_key.empty() && i == 0) {
-      throw std::logic_error(
-          "The leading key must have at least one predicate for index lookup.");
-    }
-    if (predicates_for_key.empty() && i != 0) {
+    if (predicates_for_key.empty()) {
       // If a non-leading key has no predicate, later keys cannot narrow the
       // traversal boundary.
       break;
@@ -194,9 +184,9 @@ TypedRow applyUpdateAssignments(
   return updated_row;
 }
 
-std::optional<TypedRow> readTypedRow(BufferPool& pool, Table& table,
-                                     const RID& rid) {
-  return table.heapFile().withRecord(
+std::optional<TypedRow> readTypedRow(BufferPool& pool, const Table& table,
+                                     HeapFile& heap, const RID& rid) {
+  return heap.withRecord(
       pool, rid, [&](RecordCellView record) {
         return record.getTypedRow(table.schema());
       });
@@ -292,7 +282,17 @@ std::vector<BoundComparisonPredicate> buildIndexKeyEqualityPredicates(
  * Collect RIDs of records narrowed by the given predicates.
  */
 std::vector<RID> collectRidsNarrowedByPredicates(
-    BufferPool& pool, Table& table,
+    BufferPool& pool, const Table& table, HeapFile& heap,
+    const std::vector<UnboundComparisonPredicate>&) {
+  dbfs_log::execution().debug(
+      "Building sequential scan operator for table {} because it has no "
+      "index.",
+      table.name());
+  return heap.collectRids(pool);
+}
+
+std::vector<RID> collectRidsNarrowedByPredicates(
+    BufferPool& pool, const Table& table, HeapFile& heap, PagedFile& index,
     const std::vector<UnboundComparisonPredicate>& predicates) {
   const std::vector<BoundComparisonPredicate> bound_predicates =
       binder::bindPredicatesResolvableByTable(predicates, table);
@@ -302,51 +302,22 @@ std::vector<RID> collectRidsNarrowedByPredicates(
         "Building sequential scan operator for table {} because index scan "
         "prerequisites are not met.",
         table.name());
-    return table.heapFile().collectRids(pool);
+    return heap.collectRids(pool);
   }
 
   IndexScanOperator scan(
-      pool, table.requireIndexFile(),
+      pool, index,
       buildTraversalBoundaries(index_plan.ordered_predicates),
       std::move(index_plan.ordered_predicates));
   return collectItems<RID>(scan);
 }
 
-
-void insertRow(BufferPool& pool, Table& table, const TypedRow& row) {
-  const auto index_file = table.indexFile();
-  std::optional<std::string> key;
-
-  // check pk douplication
-  if (index_file.has_value()) {
-    key = table.extractIndexKey(row);
-    dbfs_log::execution().debug("Inserting record with key {} into table {}.",
-                                index_key::formatForDebug(key.value()),
-                                table.name());
-    if (BTreeCursor::containsKey(pool, index_file->get(), key.value())) {
-      throw std::runtime_error(
-          "Duplicate key is not allowed for indexed table: " + table.name());
-    }
-  } else {
-    dbfs_log::execution().debug("Inserting record into table {}.",
-                                table.name());
-  }
-
-  const RecordCell cell = RecordSerializer::serialize(table.schema(), row);
-  const RID inserted_rid = table.heapFile().insertRecord(pool, cell);
-
-  // update index accordingly.
-  if (index_file.has_value()) {
-    BTreeCursor::insertIntoIndex(pool, index_file->get(), key.value(),
-                                 inserted_rid.heap_page_id,
-                                 inserted_rid.slot_id);
-  }
-}
-
-std::size_t updateMatchingRows(
-    BufferPool& pool, Table& table,
+template <typename OnRecordRelocated>
+void updateMatchingRows(
+    BufferPool& pool, const Table& table, HeapFile& heap,
+    const std::vector<RID>& rids,
     const std::vector<UnboundComparisonPredicate>& predicates,
-    const UpdateParser& parser) {
+    const UpdateParser& parser, OnRecordRelocated on_record_relocated) {
   const std::vector<BoundUpdateAssignment> bound_assignments =
       binder::bindUpdateAssignments(parser.extractAssignments(table.schema()),
                                     table);
@@ -361,15 +332,11 @@ std::size_t updateMatchingRows(
     }
   }
 
-  const std::vector<RID> rids =
-      collectRidsNarrowedByPredicates(pool, table, predicates);
   const std::vector<BoundComparisonPredicate> bound_predicates =
       binder::bindPredicates(predicates, {table});
-  const auto index_file = table.indexFile();
-  std::size_t updated_count = 0;
-
   for (const RID& rid : rids) {
-    std::optional<TypedRow> original_row = readTypedRow(pool, table, rid);
+    std::optional<TypedRow> original_row =
+        readTypedRow(pool, table, heap, rid);
     if (!original_row.has_value()) {
       continue;
     }
@@ -385,41 +352,49 @@ std::size_t updateMatchingRows(
     const RecordCell updated_cell =
         RecordSerializer::serialize(table.schema(), updated_row);
 
-    std::optional<std::string> index_key;
-    if (index_file.has_value()) {
-      const std::string old_key = table.extractIndexKey(*original_row);
-      const std::string new_key = table.extractIndexKey(updated_row);
-      if (old_key != new_key) {
-        throw std::runtime_error("Updating indexed columns is not supported: " +
-                                 table.name());
-      }
-      index_key = old_key;
-    }
-
-    const bool updated_in_place = table.heapFile().tryUpdateRecord(
+    const bool updated_in_place = heap.tryUpdateRecord(
         rid, pool, original_cell, updated_cell);
     if (updated_in_place) {
-      ++updated_count;
       continue;
     }
     // when page overflowed
-    const RID new_rid =
-        table.heapFile().insertRecord(pool, updated_cell);
+    const RID new_rid = heap.insertRecord(pool, updated_cell);
+    on_record_relocated(*original_row, new_rid);
+    heap.invalidateRecord(pool, rid, original_cell);
+  }
+}
 
-    if (index_file.has_value()) {
-      BTreeCursor::replaceRID(pool, index_file->get(), index_key.value(),
-                                   new_rid);
+template <typename BeforeRecordRemoval>
+int removeMatchingRows(
+    BufferPool& pool, const Table& table, HeapFile& heap,
+    const std::vector<RID>& rids,
+    const std::vector<UnboundComparisonPredicate>& predicates,
+    BeforeRecordRemoval before_record_removal) {
+  const std::vector<BoundComparisonPredicate> bound_predicates =
+      binder::bindPredicates(predicates, {table});
+  int removed_count = 0;
+
+  for (const RID& rid : rids) {
+    std::optional<TypedRow> row = readTypedRow(pool, table, heap, rid);
+    if (!row.has_value()) {
+      continue;
     }
 
-    table.heapFile().invalidateRecord(pool, rid, original_cell);
-    ++updated_count;
-  }
+    if (!passesPredicates(*row, bound_predicates)) {
+      continue;
+    }
 
-  return updated_count;
+    before_record_removal(*row);
+    const RecordCell before =
+        RecordSerializer::serialize(table.schema(), *row);
+    heap.invalidateRecord(pool, rid, before);
+    ++removed_count;
+  }
+  return removed_count;
 }
 
 std::unique_ptr<TypedRowOperator> buildReadSource(
-    BufferPool& pool, Table& table,
+    BufferPool& pool, const LocalStorageManager& storage, const Table& table,
     std::vector<BoundComparisonPredicate> bound_predicates) {
   IndexLookupPlan index_plan = planIndexLookup(table, bound_predicates);
   if (!index_plan.can_use_index) {
@@ -427,17 +402,49 @@ std::unique_ptr<TypedRowOperator> buildReadSource(
         "Building sequential scan operator for table {} because index scan "
         "prerequisites are not met.",
         table.name());
-    return std::make_unique<SeqScanOperator>(pool, table.heapFile(),
-                                             table.schema(), bound_predicates);
+    return std::make_unique<SeqScanOperator>(
+        pool, storage.openHeap(table.heapFileName()), table.schema(),
+        bound_predicates);
   }
 
   auto scan = std::make_unique<IndexScanOperator>(
-      pool, table.requireIndexFile(),
+      pool, storage.openIndex(table.requireIndex().file_name),
       buildTraversalBoundaries(index_plan.ordered_predicates),
       std::move(index_plan.ordered_predicates));
   return std::make_unique<HeapFetchOperator>(std::move(scan), pool,
-                                             table.heapFile(), table.schema(),
+                                             storage.openHeap(
+                                                 table.heapFileName()),
+                                             table.schema(),
                                              bound_predicates);
+}
+
+void createIndexForTable(TableRepository& catalog,
+                         const LocalStorageManager& storage, Table& table,
+                         const std::vector<std::string>& column_names) {
+  if (table.hasIndex()) {
+    if (table.indexedColumnNames() == column_names) {
+      return;
+    }
+    dbfs_log::catalog().warn(
+        "Ignoring additional index on table {} because only one index is "
+        "supported.",
+        table.name());
+    return;
+  }
+
+  const std::string index_file_name =
+      storage.indexFileNameFor(table.name(), column_names);
+  Table updated = table;
+  updated.addIndex(IndexMetadata{index_file_name, column_names});
+
+  storage.createIndex(index_file_name);
+  try {
+    catalog.update(updated);
+  } catch (...) {
+    storage.remove(index_file_name);
+    throw;
+  }
+  table = std::move(updated);
 }
 
 }  // namespace
@@ -453,20 +460,22 @@ std::unique_ptr<TypedRowOperator> buildReadSource(
  */
 std::vector<TypedRow> executor::read(BufferPool& pool,
                                      const SelectParser& parser) {
-  binder::BoundSelectQuery query = binder::bindSelectQuery(parser);
+  const TableRepository catalog;
+  const LocalStorageManager storage;
+  binder::BoundSelectQuery query = binder::bindSelectQuery(parser, catalog);
 
   std::vector<std::unique_ptr<TypedRowOperator>> sources;
   for (std::size_t table_index = 0; table_index < query.tables.size();
        ++table_index) {
     std::unique_ptr<TypedRowOperator> source =
-        buildReadSource(pool, query.tables[table_index],
+        buildReadSource(pool, storage, query.tables[table_index],
                         query.table_predicates[table_index]);
     sources.push_back(std::move(source));
   }
 
   physical::JoinPlan join_plan = physical::planJoin(query);
   std::unique_ptr<TypedRowOperator> pipeline = execution::buildJoinPipeline(
-      std::move(join_plan), std::move(sources), pool, query);
+      std::move(join_plan), std::move(sources), pool, storage, query);
 
   // filter
   pipeline =
@@ -511,81 +520,101 @@ std::vector<TypedRow> executor::read(BufferPool& pool,
 }
 
 void executor::create_table(const CreateTableParser& parser) {
-  Table table =
-      Table::initialize(parser.extractTableName(), parser.extractSchema());
+  TableRepository catalog;
+  const LocalStorageManager storage;
+  const std::string table_name = parser.extractTableName();
+  const std::string heap_file_name = storage.heapFileNameFor(table_name);
+
+  Table table(table_name, parser.extractSchema(), heap_file_name);
+  storage.createHeap(heap_file_name);
+  try {
+    catalog.insert(table);
+  } catch (...) {
+    storage.remove(heap_file_name);
+    throw;
+  }
 
   const std::vector<std::string> primary_key_columns =
       parser.extractPrimaryKeyColumnNames();
   if (!primary_key_columns.empty()) {
-    table.createIndex(primary_key_columns);
+    createIndexForTable(catalog, storage, table, primary_key_columns);
   }
 }
 
 void executor::create_index(const CreateIndexParser& parser) {
   const std::vector<std::string> column_names = parser.extractColumnNames();
-  if (column_names.empty()) {
-    throw std::runtime_error(
-        "CREATE INDEX requires at least one index column.");
-  }
-
-  Table table = Table::getTable(parser.extractTableName());
-  table.createIndex(column_names);
+  TableRepository catalog;
+  const LocalStorageManager storage;
+  Table table = catalog.get(parser.extractTableName());
+  createIndexForTable(catalog, storage, table, column_names);
 }
 
 void executor::drop_table(const DropTableParser& parser) {
-  Table::removeBackingFilesFor(parser.extractTableName());
+  TableRepository catalog;
+  const LocalStorageManager storage;
+  const std::string table_name = parser.extractTableName();
+  Table table = catalog.get(table_name);
+  for (const IndexMetadata& index : table.indexes()) {
+    storage.remove(index.file_name);
+  }
+  storage.remove(table.heapFileName());
+  catalog.erase(table_name);
 }
 
 void executor::insert(BufferPool& pool, Table& table,
                       const InsertParser& parser) {
   const TypedRow row = parser.extractRow(table.schema());
-  insertRow(pool, table, row);
+  const LocalStorageManager storage;
+  HeapFile heap = storage.openHeap(table.heapFileName());
+  const RecordCell cell = RecordSerializer::serialize(table.schema(), row);
+  if (!table.hasIndex()) {
+    dbfs_log::execution().debug("Inserting record into table {}.",
+                                table.name());
+    heap.insertRecord(pool, cell);
+    return;
+  }
+
+  PagedFile index = storage.openIndex(table.requireIndex().file_name);
+  const std::string key = index_key::encodeRow(
+      table.schema(), row, table.indexedColumnIndexes());
+  dbfs_log::execution().debug("Inserting record with key {} into table {}.",
+                              index_key::formatForDebug(key), table.name());
+  if (BTreeCursor::containsKey(pool, index, key)) {
+    throw std::runtime_error(
+        "Duplicate key is not allowed for indexed table: " + table.name());
+  }
+
+  const RID inserted_rid = heap.insertRecord(pool, cell);
+  BTreeCursor::insertIntoIndex(pool, index, key, inserted_rid.heap_page_id,
+                               inserted_rid.slot_id);
 }
 
 int executor::remove(BufferPool& pool, Table& table,
                       const DeleteParser& parser) {
+  const LocalStorageManager storage;
+  HeapFile heap = storage.openHeap(table.heapFileName());
   const std::vector<UnboundComparisonPredicate> predicates =
       parser.extractComparisonPredicates(table.schema());
-  const std::vector<RID> rids =
-      collectRidsNarrowedByPredicates(pool, table, predicates);
-  const std::vector<BoundComparisonPredicate> bound_predicates =
-      binder::bindPredicates(predicates, {table});
-  std::size_t removed_count = 0;
-
-  for (const RID& rid : rids) {
-    std::optional<TypedRow> row = readTypedRow(pool, table, rid);
-    if (!row.has_value()) {
-      continue;
-    }
-
-    if (!passesPredicates(*row, bound_predicates)) {
-      continue;
-    }
-
-    // delete corresponding key from index file.
-    const auto index_file = table.indexFile();
-    if (index_file.has_value()) {
-      // create index key predicates from row, since index search result can
-      // have redundant RIDs by its nature. OPTIMIZE : Even if we are doing an
-      // online delete, we can still use the original values to construct index
-      // key predicates and delete the index entry, instead of leaving the index
-      // entry dangling and cleaning it up later by a separate process.
-      const std::vector<BoundComparisonPredicate> index_key_predicates =
-          buildIndexKeyEqualityPredicates(table, *row);
-      const std::vector<std::vector<BoundComparisonPredicate>>
-          ordered_predicates = prepareIndexKeyPredicates(
-              index_key_predicates, table.indexedColumnIndexes());
-      const auto& boundaries = buildTraversalBoundaries(ordered_predicates);
-      BTreeCursor::findEntries(pool, index_file->get(), boundaries, true);
-    }
-
-    const RecordCell before =
-    RecordSerializer::serialize(
-        table.schema(), *row);
-    table.heapFile().invalidateRecord(pool, rid, before);
-    ++removed_count;
+  if (!table.hasIndex()) {
+    const std::vector<RID> rids =
+        collectRidsNarrowedByPredicates(pool, table, heap, predicates);
+    return removeMatchingRows(pool, table, heap, rids, predicates,
+                              [](const TypedRow&) {});
   }
-  return removed_count;
+
+  PagedFile index = storage.openIndex(table.requireIndex().file_name);
+  const std::vector<RID> rids = collectRidsNarrowedByPredicates(
+      pool, table, heap, index, predicates);
+  return removeMatchingRows(
+      pool, table, heap, rids, predicates, [&](const TypedRow& row) {
+        const std::vector<BoundComparisonPredicate> index_key_predicates =
+            buildIndexKeyEqualityPredicates(table, row);
+        const std::vector<std::vector<BoundComparisonPredicate>>
+            ordered_predicates = prepareIndexKeyPredicates(
+                index_key_predicates, table.indexedColumnIndexes());
+        const auto boundaries = buildTraversalBoundaries(ordered_predicates);
+        BTreeCursor::findEntries(pool, index, boundaries, true);
+      });
 }
 
 /**
@@ -598,11 +627,26 @@ int executor::remove(BufferPool& pool, Table& table,
  */
 void executor::update(BufferPool& pool, Table& table,
                       const UpdateParser& parser) {
+  const LocalStorageManager storage;
+  HeapFile heap = storage.openHeap(table.heapFileName());
   const std::vector<UnboundComparisonPredicate> predicates =
       parser.extractComparisonPredicates(table.schema());
-  const std::size_t updated_count =
-      updateMatchingRows(pool, table, predicates, parser);
-  if (updated_count == 0) {
-    throw std::runtime_error("UPDATE matched no rows.");
+  if (!table.hasIndex()) {
+    const std::vector<RID> rids =
+        collectRidsNarrowedByPredicates(pool, table, heap, predicates);
+    updateMatchingRows(
+        pool, table, heap, rids, predicates, parser,
+        [](const TypedRow&, const RID&) {});
+  } else {
+    PagedFile index = storage.openIndex(table.requireIndex().file_name);
+    const std::vector<RID> rids = collectRidsNarrowedByPredicates(
+        pool, table, heap, index, predicates);
+    updateMatchingRows(
+        pool, table, heap, rids, predicates, parser,
+        [&](const TypedRow& original_row, const RID& new_rid) {
+          const std::string key = index_key::encodeRow(
+              table.schema(), original_row, table.indexedColumnIndexes());
+          BTreeCursor::replaceRID(pool, index, key, new_rid);
+        });
   }
 }

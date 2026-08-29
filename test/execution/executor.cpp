@@ -20,8 +20,10 @@
 #include "parser/select_parser.h"
 #include "parser/update_parser.h"
 #include "storage/buffer/bufferpool.h"
+#include "storage/disk/pagedfile.h"
 #include "storage/index/btreecursor.h"
 #include "storage/wal/wal.h"
+#include "../test_database.h"
 
 class ExecutorTest : public ::testing::Test {
  protected:
@@ -33,16 +35,16 @@ class ExecutorTest : public ::testing::Test {
   std::unique_ptr<Table> table_;
 
   void SetUp() override {
-    Table::removeBackingFilesFor(kTableName);
-    Table::removeBackingFilesFor(kJoinTableName);
+    test_db::removeTable(kTableName);
+    test_db::removeTable(kJoinTableName);
     std::remove(kWalPath);
     wal_ = WAL::initializeNew(kWalPath);
     pool_ = std::make_unique<BufferPool>(*wal_);
-    table_ = std::make_unique<Table>(Table::initialize(
+    table_ = std::make_unique<Table>(test_db::createTable(
         kTableName,
         Schema(std::vector<Column>{Column("id", Column::Type::Integer),
                                    Column("value", Column::Type::Varchar)})));
-    table_->createIndex({"id"});
+    test_db::createIndex(*table_, {"id"});
 
     for (const auto& [key, value] :
          std::vector<std::pair<int, std::string>>{{101, "row_101"},
@@ -59,8 +61,8 @@ class ExecutorTest : public ::testing::Test {
     table_.reset();
     pool_.reset();
     wal_.reset();
-    Table::removeBackingFilesFor(kTableName);
-    Table::removeBackingFilesFor(kJoinTableName);
+    test_db::removeTable(kTableName);
+    test_db::removeTable(kJoinTableName);
     std::remove(kWalPath);
   }
 
@@ -74,11 +76,11 @@ class ExecutorTest : public ::testing::Test {
   }
 
   Table initializeJoinTable() {
-    Table join_table = Table::initialize(
+    Table join_table = test_db::createTable(
         kJoinTableName,
         Schema(std::vector<Column>{Column("code", Column::Type::Integer),
                                    Column("label", Column::Type::Varchar)}));
-    join_table.createIndex({"code"});
+    test_db::createIndex(join_table, {"code"});
     return join_table;
   }
 
@@ -196,7 +198,7 @@ TEST_F(ExecutorTest, ReadSelectAppliesOrderByBeforeProjectionOnJoinedRows) {
 TEST_F(ExecutorTest, InsertParsesZeroIntegerLiteralValues) {
   const std::string table_name = uniqueTableName("zero_literal_table");
   {
-    Table zero_table = Table::initialize(
+    Table zero_table = test_db::createTable(
         table_name,
         Schema(std::vector<Column>{Column("id", Column::Type::Integer),
                                    Column("count", Column::Type::Integer),
@@ -217,7 +219,7 @@ TEST_F(ExecutorTest, InsertParsesZeroIntegerLiteralValues) {
     EXPECT_EQ(std::get<Column::VarcharType>(rows[0].values[2]), "ok");
   }
 
-  Table::removeBackingFilesFor(table_name);
+  test_db::removeTable(table_name);
 }
 
 TEST_F(ExecutorTest, ReadSelectHandlesThousandByThousandJoinInput) {
@@ -289,7 +291,7 @@ TEST_F(ExecutorTest, ReadSelectReturnsSumForDoubleColumn) {
                                            "PRIMARY KEY (id))"));
 
   {
-    Table table = Table::getTable(table_name);
+    Table table = test_db::getTable(table_name);
     executor::insert(
         *pool_, table,
         InsertParser("INSERT INTO " + table_name + " VALUES (1, 10.5)"));
@@ -307,7 +309,7 @@ TEST_F(ExecutorTest, ReadSelectReturnsSumForDoubleColumn) {
   EXPECT_DOUBLE_EQ(std::get<Column::DoubleType>(rows[0].values[0]), 12.75);
 
   executor::drop_table(DropTableParser("DROP TABLE " + table_name));
-  EXPECT_FALSE(Table::isPersisted(table_name));
+  EXPECT_FALSE(test_db::isPersisted(table_name));
 }
 
 TEST_F(ExecutorTest, ReadSelectReturnsCountStar) {
@@ -338,7 +340,7 @@ TEST_F(ExecutorTest, ReadSelectCountIgnoresNullValues) {
                                            "note varchar)"));
 
   {
-    Table table = Table::getTable(table_name);
+    Table table = test_db::getTable(table_name);
     executor::insert(
         *pool_, table,
         InsertParser("INSERT INTO " + table_name + " VALUES (1, 'alpha')"));
@@ -354,7 +356,7 @@ TEST_F(ExecutorTest, ReadSelectCountIgnoresNullValues) {
   EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[0]), 1);
 
   executor::drop_table(DropTableParser("DROP TABLE " + table_name));
-  EXPECT_FALSE(Table::isPersisted(table_name));
+  EXPECT_FALSE(test_db::isPersisted(table_name));
 }
 
 TEST_F(ExecutorTest, ReadSelectReturnsCountDistinctForSingleColumn) {
@@ -366,7 +368,7 @@ TEST_F(ExecutorTest, ReadSelectReturnsCountDistinctForSingleColumn) {
                                            "note varchar)"));
 
   {
-    Table table = Table::getTable(table_name);
+    Table table = test_db::getTable(table_name);
     executor::insert(
         *pool_, table,
         InsertParser("INSERT INTO " + table_name + " VALUES (1, 'alpha')"));
@@ -388,7 +390,7 @@ TEST_F(ExecutorTest, ReadSelectReturnsCountDistinctForSingleColumn) {
   EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[0]), 2);
 
   executor::drop_table(DropTableParser("DROP TABLE " + table_name));
-  EXPECT_FALSE(Table::isPersisted(table_name));
+  EXPECT_FALSE(test_db::isPersisted(table_name));
 }
 
 TEST_F(ExecutorTest, InsertAndGetMultipleRecords) {
@@ -456,7 +458,7 @@ TEST_F(ExecutorTest, InsertFillsOmittedColumnsWithNull) {
                                            "note varchar)"));
 
   {
-    Table table = Table::getTable(table_name);
+    Table table = test_db::getTable(table_name);
     executor::insert(
         *pool_, table,
         InsertParser("INSERT INTO " + table_name + " (id) VALUES (7)"));
@@ -471,7 +473,7 @@ TEST_F(ExecutorTest, InsertFillsOmittedColumnsWithNull) {
   EXPECT_TRUE(std::holds_alternative<std::monostate>(rows[0].values[1]));
 
   executor::drop_table(DropTableParser("DROP TABLE " + table_name));
-  EXPECT_FALSE(Table::isPersisted(table_name));
+  EXPECT_FALSE(test_db::isPersisted(table_name));
 }
 
 TEST_F(ExecutorTest, ReadSelectUsesIndexedPredicatePath) {
@@ -673,17 +675,14 @@ TEST_F(ExecutorTest, UpdateReplacesExistingValue) {
   EXPECT_EQ("updated-value", singleVarcharValue(rows.front()));
 }
 
-TEST_F(ExecutorTest, UpdateNonExistingKeyThrows) {
+TEST_F(ExecutorTest, UpdateNonExistingKeyDoesNothing) {
   Table& table = *table_;
   const int key = 777;
-  EXPECT_THROW(
-      {
-        executor::update(*pool_, table,
-                         UpdateParser("UPDATE executor_test_table SET value = "
-                                      "'does-not-exist' WHERE id = " +
-                                      std::to_string(key)));
-      },
-      std::runtime_error);
+  EXPECT_NO_THROW(executor::update(
+      *pool_, table,
+      UpdateParser("UPDATE executor_test_table SET value = "
+                   "'does-not-exist' WHERE id = " +
+                   std::to_string(key))));
 }
 
 TEST_F(ExecutorTest, UpdateMatchesAllRowsFromIndexedPredicates) {
@@ -760,7 +759,7 @@ TEST_F(ExecutorTest, UpdateAppliesSelfPlusLiteralExpression) {
                                            "PRIMARY KEY (id))"));
 
   {
-    Table table = Table::getTable(table_name);
+    Table table = test_db::getTable(table_name);
     executor::insert(
         *pool_, table,
         InsertParser("INSERT INTO " + table_name + " VALUES (1, 10.5)"));
@@ -779,7 +778,7 @@ TEST_F(ExecutorTest, UpdateAppliesSelfPlusLiteralExpression) {
   EXPECT_DOUBLE_EQ(std::get<Column::DoubleType>(rows[0].values[0]), 13.0);
 
   executor::drop_table(DropTableParser("DROP TABLE " + table_name));
-  EXPECT_FALSE(Table::isPersisted(table_name));
+  EXPECT_FALSE(test_db::isPersisted(table_name));
 }
 
 TEST_F(ExecutorTest, InsertPageOverflow) {
@@ -828,7 +827,9 @@ TEST_F(ExecutorTest, InsertPageOverflow) {
       if (restored != value) {
         std::cout << "Mismatch detected for key=" << key
                   << ". Dumping B+tree index state..." << std::endl;
-        BTreeCursor::dumpTree(*pool_, table.indexFile()->get(), std::cout);
+        PagedFile index_file =
+            LocalStorageManager().openIndex(table.requireIndex().file_name);
+        BTreeCursor::dumpTree(*pool_, index_file, std::cout);
       }
       EXPECT_EQ(value, restored) << "mismatch for key=" << key;
     }
@@ -837,15 +838,17 @@ TEST_F(ExecutorTest, InsertPageOverflow) {
               << ex.what() << std::endl;
     std::cout << "Dumping B+tree index state after test failure..."
               << std::endl;
-    Table table = Table::getTable(kTableName);
-    BTreeCursor::dumpTree(*pool_, table.indexFile()->get(), std::cout);
+    Table table = test_db::getTable(kTableName);
+    PagedFile index_file =
+        LocalStorageManager().openIndex(table.requireIndex().file_name);
+    BTreeCursor::dumpTree(*pool_, index_file, std::cout);
     throw;
   }
 }
 
 TEST_F(ExecutorTest, CreateAndDropTable) {
   const std::string new_table_name = "new_table";
-  Table::removeBackingFilesFor(new_table_name);
+  test_db::removeTable(new_table_name);
   CreateTableParser parser(
       "CREATE TABLE new_table (id INTEGER, name VARCHAR, notes TEXT)");
   executor::create_table(parser);
@@ -855,7 +858,7 @@ TEST_F(ExecutorTest, CreateAndDropTable) {
   // Brackets to limit the scope of reopened table and ensure file handles are
   // closed.
   {
-    Table new_table = Table::getTable(new_table_name);
+    Table new_table = test_db::getTable(new_table_name);
     ASSERT_EQ(new_table.name(), new_table_name);
     ASSERT_EQ(new_table.schema().columns().size(), 3u);
     EXPECT_EQ(new_table.schema().columns()[0].getName(), "id");
@@ -868,7 +871,7 @@ TEST_F(ExecutorTest, CreateAndDropTable) {
   }
 
   executor::drop_table(DropTableParser("DROP TABLE new_table"));
-  EXPECT_FALSE(Table::isPersisted(new_table_name));
+  EXPECT_FALSE(test_db::isPersisted(new_table_name));
 }
 
 TEST_F(ExecutorTest, CreateTableBuildsIndexFromSingleColumnPrimaryKey) {
@@ -881,13 +884,13 @@ TEST_F(ExecutorTest, CreateTableBuildsIndexFromSingleColumnPrimaryKey) {
                                            "PRIMARY KEY (id))"));
 
   {
-    Table new_table = Table::getTable(new_table_name);
+    Table new_table = test_db::getTable(new_table_name);
     EXPECT_EQ(new_table.indexedColumnNames(), (std::vector<std::string>{"id"}));
-    ASSERT_TRUE(new_table.indexFile().has_value());
+    ASSERT_TRUE(new_table.hasIndex());
   }
 
   executor::drop_table(DropTableParser("DROP TABLE " + new_table_name));
-  EXPECT_FALSE(Table::isPersisted(new_table_name));
+  EXPECT_FALSE(test_db::isPersisted(new_table_name));
 }
 
 TEST_F(ExecutorTest, CreateTableBuildsIndexFromInlinePrimaryKey) {
@@ -899,14 +902,14 @@ TEST_F(ExecutorTest, CreateTableBuildsIndexFromInlinePrimaryKey) {
       " (id int PRIMARY KEY, name text)"));
 
   {
-    Table new_table = Table::getTable(new_table_name);
+    Table new_table = test_db::getTable(new_table_name);
     EXPECT_EQ(new_table.indexedColumnNames(),
               (std::vector<std::string>{"id"}));
-    EXPECT_TRUE(new_table.indexFile().has_value());
+    EXPECT_TRUE(new_table.hasIndex());
   }
 
   executor::drop_table(DropTableParser("DROP TABLE " + new_table_name));
-  EXPECT_FALSE(Table::isPersisted(new_table_name));
+  EXPECT_FALSE(test_db::isPersisted(new_table_name));
 }
 
 TEST_F(ExecutorTest, CreateTableRejectsDuplicateCompositePrimaryKeyRows) {
@@ -923,8 +926,8 @@ TEST_F(ExecutorTest, CreateTableRejectsDuplicateCompositePrimaryKeyRows) {
       "PRIMARY KEY (warehouse_id, district_id, customer_id))"));
 
   {
-    Table table = Table::getTable(new_table_name);
-    ASSERT_TRUE(table.indexFile().has_value());
+    Table table = test_db::getTable(new_table_name);
+    ASSERT_TRUE(table.hasIndex());
     EXPECT_EQ(table.indexedColumnNames(),
               (std::vector<std::string>{"warehouse_id", "district_id",
                                         "customer_id"}));
@@ -939,7 +942,7 @@ TEST_F(ExecutorTest, CreateTableRejectsDuplicateCompositePrimaryKeyRows) {
   }
 
   executor::drop_table(DropTableParser("DROP TABLE " + new_table_name));
-  EXPECT_FALSE(Table::isPersisted(new_table_name));
+  EXPECT_FALSE(test_db::isPersisted(new_table_name));
 }
 
 TEST_F(ExecutorTest, ReadSelectUsesCompositePrimaryKeyPath) {
@@ -956,7 +959,7 @@ TEST_F(ExecutorTest, ReadSelectUsesCompositePrimaryKeyPath) {
       "PRIMARY KEY (warehouse_id, district_id, customer_id))"));
 
   {
-    Table table = Table::getTable(new_table_name);
+    Table table = test_db::getTable(new_table_name);
     executor::insert(*pool_, table,
                      InsertParser("INSERT INTO " + new_table_name +
                                   " VALUES (1, 2, 3, 'target')"));
@@ -977,7 +980,7 @@ TEST_F(ExecutorTest, ReadSelectUsesCompositePrimaryKeyPath) {
   EXPECT_EQ(std::get<Column::VarcharType>(rows[0].values[0]), "target");
 
   executor::drop_table(DropTableParser("DROP TABLE " + new_table_name));
-  EXPECT_FALSE(Table::isPersisted(new_table_name));
+  EXPECT_FALSE(test_db::isPersisted(new_table_name));
 }
 
 TEST_F(ExecutorTest, ReadSelectFiltersNonKeyColumnAfterCompositeKeyPrefixScan) {
@@ -995,7 +998,7 @@ TEST_F(ExecutorTest, ReadSelectFiltersNonKeyColumnAfterCompositeKeyPrefixScan) {
                         "PRIMARY KEY (c_w_id, c_d_id, c_id))"));
 
   {
-    Table table = Table::getTable(new_table_name);
+    Table table = test_db::getTable(new_table_name);
     for (int district_id = 1; district_id <= 10; ++district_id) {
       for (int customer_id = 1; customer_id <= 320; ++customer_id) {
         const bool is_target =
@@ -1037,7 +1040,7 @@ TEST_F(ExecutorTest, ReadSelectFiltersNonKeyColumnAfterCompositeKeyPrefixScan) {
   EXPECT_EQ(std::get<Column::IntegerType>(rows[2].values[1]), 319);
 
   executor::drop_table(DropTableParser("DROP TABLE " + new_table_name));
-  EXPECT_FALSE(Table::isPersisted(new_table_name));
+  EXPECT_FALSE(test_db::isPersisted(new_table_name));
 }
 
 TEST_F(ExecutorTest, ReadSelectFindsTpccCustomerByNameAfterLargePrefixScan) {
@@ -1055,7 +1058,7 @@ TEST_F(ExecutorTest, ReadSelectFindsTpccCustomerByNameAfterLargePrefixScan) {
                         "PRIMARY KEY (c_w_id, c_d_id, c_id))"));
 
   {
-    Table table = Table::getTable(new_table_name);
+    Table table = test_db::getTable(new_table_name);
     for (int district_id = 1; district_id <= 10; ++district_id) {
       for (int customer_id = 1; customer_id <= 3000; ++customer_id) {
         const bool is_target = district_id == 10 && customer_id == 990;
@@ -1078,7 +1081,7 @@ TEST_F(ExecutorTest, ReadSelectFindsTpccCustomerByNameAfterLargePrefixScan) {
   ASSERT_EQ(prefix_rows.size(), 3000u);
 
   {
-    Table table = Table::getTable(new_table_name);
+    Table table = test_db::getTable(new_table_name);
     const std::vector<std::pair<int, int>> updated_customers = {
         {2, 1116}, {7, 2811}, {9, 610}, {8, 863}, {7, 799}, {5, 1313}};
     for (const auto& [district_id, customer_id] : updated_customers) {
@@ -1110,7 +1113,7 @@ TEST_F(ExecutorTest, ReadSelectFindsTpccCustomerByNameAfterLargePrefixScan) {
   EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[1]), 990);
 
   executor::drop_table(DropTableParser("DROP TABLE " + new_table_name));
-  EXPECT_FALSE(Table::isPersisted(new_table_name));
+  EXPECT_FALSE(test_db::isPersisted(new_table_name));
 }
 
 TEST_F(ExecutorTest, ReadSelectFindsTpccCustomerByNameWithFullCustomerRows) {
@@ -1153,7 +1156,7 @@ TEST_F(ExecutorTest, ReadSelectFindsTpccCustomerByNameWithFullCustomerRows) {
   };
 
   {
-    Table table = Table::getTable(new_table_name);
+    Table table = test_db::getTable(new_table_name);
     for (int district_id = 1; district_id <= 10; ++district_id) {
       for (int customer_id = 1; customer_id <= 3000; ++customer_id) {
         const bool is_target = district_id == 10 && customer_id == 990;
@@ -1186,7 +1189,7 @@ TEST_F(ExecutorTest, ReadSelectFindsTpccCustomerByNameWithFullCustomerRows) {
   ASSERT_EQ(prefix_rows.size(), 3000u);
 
   {
-    Table table = Table::getTable(new_table_name);
+    Table table = test_db::getTable(new_table_name);
     const std::vector<std::tuple<int, int, bool>> updated_customers = {
         {2, 1116, false}, {7, 2811, false}, {9, 610, true},
         {8, 863, false},  {7, 799, false},  {5, 1313, true}};
@@ -1226,7 +1229,7 @@ TEST_F(ExecutorTest, ReadSelectFindsTpccCustomerByNameWithFullCustomerRows) {
   EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[2]), 990);
 
   executor::drop_table(DropTableParser("DROP TABLE " + new_table_name));
-  EXPECT_FALSE(Table::isPersisted(new_table_name));
+  EXPECT_FALSE(test_db::isPersisted(new_table_name));
 }
 
 TEST_F(ExecutorTest, ReadSelectRoundTripsTraceLikeWarehouseRow) {
@@ -1243,7 +1246,7 @@ TEST_F(ExecutorTest, ReadSelectRoundTripsTraceLikeWarehouseRow) {
                                            "PRIMARY KEY (w_id))"));
 
   {
-    Table warehouse = Table::getTable(new_table_name);
+    Table warehouse = test_db::getTable(new_table_name);
     ASSERT_EQ(warehouse.schema().columns().size(), 6u);
     EXPECT_EQ(warehouse.schema().columns()[0].getType(), Column::Type::Integer);
     EXPECT_EQ(warehouse.schema().columns()[1].getType(), Column::Type::Double);
@@ -1272,7 +1275,7 @@ TEST_F(ExecutorTest, ReadSelectRoundTripsTraceLikeWarehouseRow) {
     EXPECT_EQ(std::get<Column::VarcharType>(rows[0].values[5]), "123456789");
   }
 
-  EXPECT_TRUE(Table::isPersisted(new_table_name));
+  EXPECT_TRUE(test_db::isPersisted(new_table_name));
 }
 
 TEST_F(ExecutorTest, ReadSelectRoundTripsTraceLikeCustomerRow) {
@@ -1292,7 +1295,7 @@ TEST_F(ExecutorTest, ReadSelectRoundTripsTraceLikeCustomerRow) {
                         "PRIMARY KEY (c_w_id, c_d_id, c_id))"));
 
   {
-    Table customer = Table::getTable(new_table_name);
+    Table customer = test_db::getTable(new_table_name);
     ASSERT_EQ(customer.schema().columns().size(), 8u);
     EXPECT_EQ(customer.schema().columns()[0].getType(), Column::Type::Integer);
     EXPECT_EQ(customer.schema().columns()[1].getType(), Column::Type::Integer);
@@ -1328,5 +1331,5 @@ TEST_F(ExecutorTest, ReadSelectRoundTripsTraceLikeCustomerRow) {
     EXPECT_EQ(std::get<Column::VarcharType>(rows[0].values[7]), "OE");
   }
 
-  EXPECT_TRUE(Table::isPersisted(new_table_name));
+  EXPECT_TRUE(test_db::isPersisted(new_table_name));
 }

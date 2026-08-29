@@ -21,11 +21,11 @@ std::vector<BoundComparisonPredicate> flattenPredicates(
 }  // namespace
 
 IndexScanOperator::IndexScanOperator(
-    BufferPool& pool, PagedFile& index_file,
+    BufferPool& pool, PagedFile index_file,
     std::pair<BTreeCursor::Boundary, BTreeCursor::Boundary> boundaries,
     std::vector<std::vector<BoundComparisonPredicate>> index_ordered_predicates)
     : pool_(pool),
-      indexFile_(index_file),
+      index_file_(std::move(index_file)),
       boundaries_(boundaries),
       index_ordered_predicates_(std::move(index_ordered_predicates)),
       lookup_done_(false) {}
@@ -45,7 +45,7 @@ std::optional<RID> IndexScanOperator::next() {
     const std::vector<BoundComparisonPredicate> index_predicates =
         flattenPredicates(index_ordered_predicates_);
     const std::vector<IndexEntry> entries =
-        BTreeCursor::findEntries(pool_, indexFile_, boundaries_, false);
+        BTreeCursor::findEntries(pool_, index_file_, boundaries_, false);
     current_rids_.clear();
     current_rids_.reserve(entries.size());
     for (const IndexEntry& entry : entries) {

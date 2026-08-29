@@ -25,6 +25,7 @@
 #include "parser/insert_parser.h"
 #include "storage/buffer/bufferpool.h"
 #include "storage/wal/wal.h"
+#include "../test_database.h"
 
 namespace {
 
@@ -205,7 +206,7 @@ void waitForServerReady(int port) {
 void forceDataPagesToDisk(BufferPool& pool, WAL& wal) {
   executor::create_table(CreateTableParser(
       "CREATE TABLE evictor (id int NOT NULL, note varchar)"));
-  Table evictor = Table::getTable("evictor");
+  Table evictor = test_db::getTable("evictor");
   const std::string payload(256, 'x');
   wal.flush();
   for (int row_id = 0; row_id < 400; ++row_id) {
@@ -245,9 +246,9 @@ void prepareTpccLikeDataset(const std::filesystem::path& temp_dir) {
                         "ol_i_id int NOT NULL, "
                         "PRIMARY KEY (ol_o_id, ol_d_id, ol_w_id, ol_number))"));
 
-  Table warehouse = Table::getTable("warehouse");
-  Table stock = Table::getTable("stock");
-  Table order_line = Table::getTable("order_line");
+  Table warehouse = test_db::getTable("warehouse");
+  Table stock = test_db::getTable("stock");
+  Table order_line = test_db::getTable("order_line");
 
   executor::insert(*pool, warehouse,
                    InsertParser("INSERT INTO warehouse VALUES (1, 300000.0)"));
