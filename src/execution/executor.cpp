@@ -278,6 +278,31 @@ std::vector<BoundComparisonPredicate> buildIndexKeyEqualityPredicates(
   return predicates;
 }
 
+void appendInsertLog(BufferPool& pool, const RID& rid,
+                     const RecordCell& cell) {
+  pool.wal().write(
+      WALRecord::RecordType::INSERT, rid.heap_page_id,
+      InsertRedoBody(rid.slot_id, cell.serializedBytes()).encode());
+}
+
+void appendDeleteLog(BufferPool& pool, const RID& rid,
+                     const RecordCell& before) {
+  pool.wal().write(
+      WALRecord::RecordType::DELETE, rid.heap_page_id,
+      DeleteRedoBody(rid.slot_id, before.serializedBytes()).encode());
+}
+
+void appendUpdateLog(BufferPool& pool, const RID& rid,
+                     const RecordCell& before,
+                     const RecordCell& after) {
+  UpdateRedoBody update_body{};
+  update_body.offset = rid.slot_id;
+  update_body.before = before.serializedBytes();
+  update_body.after = after.serializedBytes();
+  pool.wal().write(WALRecord::RecordType::UPDATE, rid.heap_page_id,
+                   update_body.encode());
+}
+
 /**
  * Collect RIDs of records narrowed by the given predicates.
  */
@@ -352,15 +377,16 @@ void updateMatchingRows(
     const RecordCell updated_cell =
         RecordSerializer::serialize(table.schema(), updated_row);
 
-    const bool updated_in_place = heap.tryUpdateRecord(
-        rid, pool, original_cell, updated_cell);
+    const bool updated_in_place = heap.tryUpdateRecord(rid, pool, updated_cell);
     if (updated_in_place) {
+      appendUpdateLog(pool, rid, original_cell, updated_cell);
       continue;
     }
     // when page overflowed
     const RID new_rid = heap.insertRecord(pool, updated_cell);
     on_record_relocated(*original_row, new_rid);
-    heap.invalidateRecord(pool, rid, original_cell);
+    heap.invalidateRecord(pool, rid);
+    appendDeleteLog(pool, rid, original_cell);
   }
 }
 
@@ -387,7 +413,8 @@ int removeMatchingRows(
     before_record_removal(*row);
     const RecordCell before =
         RecordSerializer::serialize(table.schema(), *row);
-    heap.invalidateRecord(pool, rid, before);
+    heap.invalidateRecord(pool, rid);
+    appendDeleteLog(pool, rid, before);
     ++removed_count;
   }
   return removed_count;
@@ -570,7 +597,8 @@ void executor::insert(BufferPool& pool, Table& table,
   if (!table.hasIndex()) {
     dbfs_log::execution().debug("Inserting record into table {}.",
                                 table.name());
-    heap.insertRecord(pool, cell);
+    const RID inserted_rid = heap.insertRecord(pool, cell);
+    appendInsertLog(pool, inserted_rid, cell);
     return;
   }
 
@@ -585,6 +613,7 @@ void executor::insert(BufferPool& pool, Table& table,
   }
 
   const RID inserted_rid = heap.insertRecord(pool, cell);
+  appendInsertLog(pool, inserted_rid, cell);
   BTreeCursor::insertIntoIndex(pool, index, key, inserted_rid.heap_page_id,
                                inserted_rid.slot_id);
 }

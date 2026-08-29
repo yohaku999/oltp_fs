@@ -70,13 +70,9 @@ class HeapFile {
         "Record cell does not fit in an empty heap page.");
   }
 
-  void invalidateRecord(BufferPool& pool, const RID& rid,
-                          const RecordCell& before) {
+  void invalidateRecord(BufferPool& pool, const RID& rid) {
     Page* page = pool.pinPage(rid.heap_page_id, file_);
     page->invalidateSlot(rid.slot_id);
-    pool.wal().write(
-        WALRecord::RecordType::DELETE, rid.heap_page_id,
-        DeleteRedoBody(rid.slot_id, before.serializedBytes()).encode());
     pool.unpinPage(page, file_);
   }
 
@@ -99,17 +95,9 @@ class HeapFile {
   }
 
   bool tryUpdateRecord(const RID& rid, BufferPool& pool,
-                    const RecordCell& before, const RecordCell& after) {
+                       const RecordCell& after) {
     Page* page = pool.pinPage(rid.heap_page_id, file_);
     const bool is_updated = page->updateRecordCell(rid.slot_id, after);
-    if (is_updated) {
-      UpdateRedoBody update_body{};
-      update_body.offset = rid.slot_id;
-      update_body.before = before.serializedBytes();
-      update_body.after = after.serializedBytes();
-      pool.wal().write(WALRecord::RecordType::UPDATE, rid.heap_page_id,
-                       update_body.encode());
-    }
     pool.unpinPage(page, file_);
     return is_updated;
   }
@@ -128,9 +116,6 @@ class HeapFile {
     }
 
     const RID rid{page_id, static_cast<uint16_t>(*slot_id)};
-    pool.wal().write(
-        WALRecord::RecordType::INSERT, rid.heap_page_id,
-        InsertRedoBody(rid.slot_id, cell.serializedBytes()).encode());
     pool.unpinPage(page, file_);
     return rid;
   }
