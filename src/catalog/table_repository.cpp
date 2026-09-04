@@ -1,14 +1,16 @@
 #include "catalog/table_repository.h"
 
+#include <optional>
 #include <stdexcept>
 #include <utility>
 #include <vector>
 
 #include "storage/table_metadata_store.h"
 
-Table TableRepository::get(const std::string& table_name) const {
+std::optional<Table> TableRepository::find(
+    const std::string& table_name) const {
   if (!TableMetadataStore::exists(table_name)) {
-    throw std::runtime_error("Table is not in the catalog: " + table_name);
+    return std::nullopt;
   }
 
   PersistedTableMetadata persisted = TableMetadataStore::read(table_name);
@@ -20,6 +22,14 @@ Table TableRepository::get(const std::string& table_name) const {
   }
   return Table(table_name, std::move(persisted.schema),
                std::move(persisted.heap_file_name), std::move(indexes));
+}
+
+Table TableRepository::get(const std::string& table_name) const {
+  std::optional<Table> table = find(table_name);
+  if (!table.has_value()) {
+    throw std::runtime_error("Table is not in the catalog: " + table_name);
+  }
+  return std::move(*table);
 }
 
 void TableRepository::insert(const Table& table) {

@@ -13,4 +13,5 @@ class DropTableParser : private PgQueryJsonParser {
   ~DropTableParser() = default;
 
   std::string extractTableName() const;
+  bool hasIfExists() const;
 };

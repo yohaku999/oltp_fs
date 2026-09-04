@@ -18,3 +18,7 @@ std::string DropTableParser::extractTableName() const {
       .at("sval")
       .get<std::string>();
 }
+
+bool DropTableParser::hasIfExists() const {
+  return statementNode().at("DropStmt").value("missing_ok", false);
+}

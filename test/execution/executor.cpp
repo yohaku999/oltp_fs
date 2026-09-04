@@ -103,6 +103,20 @@ class ExecutorTest : public ::testing::Test {
   }
 };
 
+TEST_F(ExecutorTest, DropTableIfExistsIgnoresMissingTable) {
+  const std::string table_name = uniqueTableName("missing_table");
+
+  EXPECT_NO_THROW(executor::drop_table(
+      DropTableParser("DROP TABLE IF EXISTS " + table_name)));
+}
+
+TEST_F(ExecutorTest, DropTableRejectsMissingTableWithoutIfExists) {
+  const std::string table_name = uniqueTableName("missing_table");
+
+  EXPECT_THROW(executor::drop_table(DropTableParser("DROP TABLE " + table_name)),
+               std::runtime_error);
+}
+
 TEST_F(ExecutorTest, ReadSelectReturnsCartesianProductForMultipleTables) {
   Table join_table = initializeJoinTable();
 

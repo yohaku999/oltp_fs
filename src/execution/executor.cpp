@@ -580,11 +580,17 @@ void executor::drop_table(const DropTableParser& parser) {
   TableRepository catalog;
   const LocalStorageManager storage;
   const std::string table_name = parser.extractTableName();
-  Table table = catalog.get(table_name);
-  for (const IndexMetadata& index : table.indexes()) {
+  std::optional<Table> table = catalog.find(table_name);
+  if (!table.has_value()) {
+    if (parser.hasIfExists()) {
+      return;
+    }
+    throw std::runtime_error("Table is not in the catalog: " + table_name);
+  }
+  for (const IndexMetadata& index : table->indexes()) {
     storage.remove(index.file_name);
   }
-  storage.remove(table.heapFileName());
+  storage.remove(table->heapFileName());
   catalog.erase(table_name);
 }
 
