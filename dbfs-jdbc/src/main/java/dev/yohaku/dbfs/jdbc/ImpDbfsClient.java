@@ -152,6 +152,7 @@ final class ImplDbfsClient implements DbfsClient {
         Socket newSocket = new Socket();
         newSocket.connect(new InetSocketAddress(host, port), connectTimeoutMillis);
         newSocket.setSoTimeout(readTimeoutMillis);
+        newSocket.setTcpNoDelay(true);
         socket = newSocket;
         output = new DataOutputStream(new BufferedOutputStream(socket.getOutputStream()));
         input = new DataInputStream(new BufferedInputStream(socket.getInputStream()));

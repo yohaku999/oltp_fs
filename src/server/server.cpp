@@ -3,6 +3,7 @@
 #include <arpa/inet.h>
 #include <execinfo.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -274,6 +275,14 @@ void Server::start() {
     int client_fd = ::accept(server_fd, nullptr, nullptr);
     if (client_fd < 0) {
       continue;
+    }
+
+    int tcp_no_delay = 1;
+    if (::setsockopt(client_fd, IPPROTO_TCP, TCP_NODELAY, &tcp_no_delay,
+                     sizeof(tcp_no_delay)) < 0) {
+      ::close(client_fd);
+      throw std::runtime_error(std::string("setsockopt TCP_NODELAY failed: ") +
+                               std::strerror(errno));
     }
 
     std::thread([this, client_fd]() {
