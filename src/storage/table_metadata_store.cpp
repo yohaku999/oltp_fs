@@ -28,7 +28,7 @@ namespace {
  * If DBFS starts supporting runtime DDL seriously, replace this with an
  * explicit catalog cache and invalidation path.
  */
-std::unordered_map<std::string, PersistedTableMetadata> metadata_cache;
+std::unordered_map<std::string, Table> metadata_cache;
 
 std::string prepareMetadataPath(const std::string& path) {
   std::filesystem::path filesystem_path(path);
@@ -52,14 +52,10 @@ void TableMetadataStore::write(const Table& table) {
   nlohmann::json metadata;
   metadata["heapFileName"] = table.heapFileName();
   metadata["indexes"] = nlohmann::json::array();
-  std::vector<PersistedIndexMetadata> persisted_indexes;
-  persisted_indexes.reserve(table.indexes().size());
   for (const IndexMetadata& index : table.indexes()) {
     metadata["indexes"].push_back(
         {{"fileName", index.file_name},
          {"indexedColumns", index.column_names}});
-    persisted_indexes.push_back(
-        PersistedIndexMetadata{index.file_name, index.column_names});
   }
   metadata["columns"] = nlohmann::json::array();
   for (const Column& column : table.schema().columns()) {
@@ -79,9 +75,7 @@ void TableMetadataStore::write(const Table& table) {
     throw std::runtime_error("failed to write metadata file: " + meta_path);
   }
 
-  metadata_cache.insert_or_assign(
-      table.name(), PersistedTableMetadata{table.schema(), table.heapFileName(),
-                                           std::move(persisted_indexes)});
+  metadata_cache.insert_or_assign(table.name(), table);
 }
 
 void TableMetadataStore::remove(const std::string& table_name) {
@@ -94,19 +88,18 @@ void TableMetadataStore::remove(const std::string& table_name) {
   }
 }
 
-PersistedTableMetadata TableMetadataStore::read(const std::string& table_name) {
+Table TableMetadataStore::read(const std::string& table_name) {
   const auto cached = metadata_cache.find(table_name);
   if (cached != metadata_cache.end()) {
     return cached->second;
   }
 
-  PersistedTableMetadata metadata = readFromPath(pathFor(table_name));
-  metadata_cache.insert_or_assign(table_name, metadata);
-  return metadata;
+  Table table = readFromPath(pathFor(table_name));
+  metadata_cache.insert_or_assign(table_name, table);
+  return table;
 }
 
-PersistedTableMetadata TableMetadataStore::readFromPath(
-    const std::string& meta_path) {
+Table TableMetadataStore::readFromPath(const std::string& meta_path) {
   std::ifstream input(meta_path);
   if (!input.is_open()) {
     throw std::runtime_error("failed to open metadata file for read: " +
@@ -136,7 +129,7 @@ PersistedTableMetadata TableMetadataStore::readFromPath(
     throw std::runtime_error("invalid table metadata: missing columns array");
   }
 
-  std::vector<PersistedIndexMetadata> indexes;
+  std::vector<IndexMetadata> indexes;
   if (metadata.contains("indexes") && metadata["indexes"].is_array()) {
     for (const auto& index_json : metadata["indexes"]) {
       const bool has_file_name =
@@ -177,8 +170,8 @@ PersistedTableMetadata TableMetadataStore::readFromPath(
                           index_json["indexFile"].get<std::string>())
                           .filename()
                           .string();
-      indexes.push_back(PersistedIndexMetadata{
-          file_name, std::move(indexed_column_names)});
+      indexes.push_back(
+          IndexMetadata{file_name, std::move(indexed_column_names)});
     }
   }
 
@@ -195,6 +188,6 @@ PersistedTableMetadata TableMetadataStore::readFromPath(
         Column::typeFromString(column_json["type"].get<std::string>()));
   }
 
-  return PersistedTableMetadata{Schema(std::move(columns)), heap_file_name,
-                                std::move(indexes)};
+  return Table(table_name, Schema(std::move(columns)), heap_file_name,
+               std::move(indexes));
 }

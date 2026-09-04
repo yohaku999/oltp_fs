@@ -3,7 +3,6 @@
 #include <optional>
 #include <stdexcept>
 #include <utility>
-#include <vector>
 
 #include "storage/table_metadata_store.h"
 
@@ -13,15 +12,7 @@ std::optional<Table> TableRepository::find(
     return std::nullopt;
   }
 
-  PersistedTableMetadata persisted = TableMetadataStore::read(table_name);
-  std::vector<IndexMetadata> indexes;
-  indexes.reserve(persisted.indexes.size());
-  for (PersistedIndexMetadata& index : persisted.indexes) {
-    indexes.push_back(IndexMetadata{std::move(index.file_name),
-                                    std::move(index.indexed_column_names)});
-  }
-  return Table(table_name, std::move(persisted.schema),
-               std::move(persisted.heap_file_name), std::move(indexes));
+  return TableMetadataStore::read(table_name);
 }
 
 Table TableRepository::get(const std::string& table_name) const {
