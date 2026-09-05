@@ -28,3 +28,7 @@ std::vector<std::string> CreateIndexParser::extractColumnNames() const {
   }
   return column_names;
 }
+
+bool CreateIndexParser::isUnique() const {
+  return statementNode().at("IndexStmt").value("unique", false);
+}

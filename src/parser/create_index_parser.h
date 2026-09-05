@@ -13,4 +13,5 @@ class CreateIndexParser : private PgQueryJsonParser {
   std::string extractIndexName() const;
   std::string extractTableName() const;
   std::vector<std::string> extractColumnNames() const;
+  bool isUnique() const;
 };
