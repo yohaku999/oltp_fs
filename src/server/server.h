@@ -4,8 +4,6 @@
 #include <mutex>
 #include <string>
 
-#include "catalog/table_repository.h"
-
 class BufferPool;
 class WAL;
 
@@ -17,7 +15,6 @@ class Server {
 
  private:
   int port_;
-  TableRepository catalog_;
   std::unique_ptr<WAL> wal_;
   std::unique_ptr<BufferPool> pool_;
   std::mutex request_mutex_;

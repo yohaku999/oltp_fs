@@ -81,7 +81,6 @@ add_library(dbfs_src
     src/execution/operators/seq_scan_operator.cpp
     src/parser/select_parser.cpp
     src/storage/table_metadata_store.cpp
-    src/catalog/table_repository.cpp
     src/catalog/table.cpp
     src/logging.cpp
     src/server/server.cpp

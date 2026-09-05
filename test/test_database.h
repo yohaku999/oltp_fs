@@ -7,21 +7,21 @@
 #include <vector>
 
 #include "catalog/table.h"
-#include "catalog/table_repository.h"
 #include "storage/local_storage_manager.h"
+#include "storage/table_metadata_store.h"
 
 namespace test_db {
 
 inline std::optional<Table> findTable(const std::string& table_name) {
-  try {
-    return TableRepository().get(table_name);
-  } catch (const std::runtime_error&) {
-    return std::nullopt;
-  }
+  return TableMetadataStore::read(table_name);
 }
 
 inline Table getTable(const std::string& table_name) {
-  return TableRepository().get(table_name);
+  std::optional<Table> table = TableMetadataStore::read(table_name);
+  if (!table.has_value()) {
+    throw std::runtime_error("Table is not in the catalog: " + table_name);
+  }
+  return std::move(*table);
 }
 
 inline bool isPersisted(const std::string& table_name) {
@@ -42,7 +42,6 @@ inline bool isPersisted(const std::string& table_name) {
 }
 
 inline void removeTable(const std::string& table_name) {
-  TableRepository catalog;
   const LocalStorageManager storage;
   const std::optional<Table> table = findTable(table_name);
   if (table.has_value()) {
@@ -54,7 +53,7 @@ inline void removeTable(const std::string& table_name) {
     if (storage.exists(table->heapFileName())) {
       storage.remove(table->heapFileName());
     }
-    catalog.erase(table_name);
+    TableMetadataStore::remove(table_name);
     return;
   }
 
@@ -65,13 +64,12 @@ inline void removeTable(const std::string& table_name) {
 }
 
 inline Table createTable(const std::string& table_name, const Schema& schema) {
-  TableRepository catalog;
   const LocalStorageManager storage;
   const std::string heap_file_name = storage.heapFileNameFor(table_name);
   Table table(table_name, schema, heap_file_name);
   storage.createHeap(heap_file_name);
   try {
-    catalog.insert(table);
+    TableMetadataStore::write(table);
   } catch (...) {
     storage.remove(heap_file_name);
     throw;
@@ -81,7 +79,6 @@ inline Table createTable(const std::string& table_name, const Schema& schema) {
 
 inline void createIndex(Table& table,
                         const std::vector<std::string>& column_names) {
-  TableRepository catalog;
   const LocalStorageManager storage;
   const std::string index_file_name =
       storage.indexFileNameFor(table.name(), column_names);
@@ -89,7 +86,7 @@ inline void createIndex(Table& table,
   updated.addIndex(IndexMetadata{index_file_name, column_names});
   storage.createIndex(index_file_name);
   try {
-    catalog.update(updated);
+    TableMetadataStore::write(updated);
   } catch (...) {
     storage.remove(index_file_name);
     throw;

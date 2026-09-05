@@ -13,18 +13,18 @@ namespace {
 
 /**
  * Benchmark-only process-local metadata cache.
- * 
+ *
  * TPC-C creates tables and indexes during setup, then runs the measured
  * workload without DDL. Under that assumption, table metadata is effectively
  * immutable during the measured phase, so caching avoids repeated metadata JSON
- * file reads/parses from TableRepository::get.
- * 
+ * file reads/parses from TableMetadataStore::read.
+ *
  * This is intentionally not a production catalog cache:
  * - no invalidation for external metadata file changes
  * - no timestamp/version checks
  * - no cross-process consistency
  * - not safe for workloads that run DDL concurrently with queries
- * 
+ *
  * If DBFS starts supporting runtime DDL seriously, replace this with an
  * explicit catalog cache and invalidation path.
  */
@@ -39,6 +39,20 @@ std::string prepareMetadataPath(const std::string& path) {
 }
 
 }  // namespace
+
+std::optional<Table> TableMetadataStore::read(const std::string& table_name) {
+  if (!exists(table_name)) {
+    return std::nullopt;
+  }
+  const auto cached = metadata_cache.find(table_name);
+  if (cached != metadata_cache.end()) {
+    return cached->second;
+  }
+
+  Table table = readFromPath(pathFor(table_name));
+  metadata_cache.insert_or_assign(table_name, table);
+  return table;
+}
 
 std::string TableMetadataStore::pathFor(const std::string& table_name) {
   return (std::filesystem::path("data") / (table_name + ".meta.json")).string();
@@ -86,17 +100,6 @@ void TableMetadataStore::remove(const std::string& table_name) {
     throw std::runtime_error("failed to remove table metadata: " +
                              error.message());
   }
-}
-
-Table TableMetadataStore::read(const std::string& table_name) {
-  const auto cached = metadata_cache.find(table_name);
-  if (cached != metadata_cache.end()) {
-    return cached->second;
-  }
-
-  Table table = readFromPath(pathFor(table_name));
-  metadata_cache.insert_or_assign(table_name, table);
-  return table;
 }
 
 Table TableMetadataStore::readFromPath(const std::string& meta_path) {

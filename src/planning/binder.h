@@ -11,7 +11,6 @@
 #include "execution/update_assignment.h"
 
 class SelectParser;
-class TableRepository;
 
 namespace binder {
 
@@ -24,8 +23,7 @@ struct BoundSelectQuery {
   std::optional<std::size_t> limit_count;
 };
 
-BoundSelectQuery bindSelectQuery(const SelectParser& parser,
-                                 const TableRepository& catalog);
+BoundSelectQuery bindSelectQuery(const SelectParser& parser);
 
 BoundColumnRef bindColumnRef(const ColumnRef& column_ref,
                              const std::vector<Table>& tables);

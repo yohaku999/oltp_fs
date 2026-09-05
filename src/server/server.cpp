@@ -21,8 +21,9 @@
 #include <vector>
 
 #include "catalog/table.h"
-#include "catalog/table_repository.h"
 #include "execution/executor.h"
+#include "execution/select_item.h"
+#include "logging.h"
 #include "parser/create_index_parser.h"
 #include "parser/create_table_parser.h"
 #include "parser/delete_parser.h"
@@ -30,9 +31,8 @@
 #include "parser/insert_parser.h"
 #include "parser/select_parser.h"
 #include "parser/update_parser.h"
-#include "execution/select_item.h"
-#include "logging.h"
 #include "storage/buffer/bufferpool.h"
+#include "storage/table_metadata_store.h"
 #include "storage/wal/wal.h"
 
 namespace {
@@ -141,13 +141,12 @@ Schema joinedSchemaForTables(const std::vector<Table>& tables) {
   return Schema(std::move(columns));
 }
 
-std::vector<std::string> selectColumnNames(
-    const SelectParser& parser, const TableRepository& catalog) {
+std::vector<std::string> selectColumnNames(const SelectParser& parser) {
   const std::vector<std::string> table_names = parser.extractTableNames();
   std::vector<Table> tables;
   tables.reserve(table_names.size());
   for (const std::string& table_name : table_names) {
-    tables.push_back(catalog.get(table_name));
+    tables.push_back(TableMetadataStore::read(table_name).value());
   }
 
   const Schema joined_schema = joinedSchemaForTables(tables);
@@ -422,7 +421,8 @@ std::string Server::handleRequest(const std::string& request) {
             "batchUpdate currently supports INSERT statements only";
       } else {
         InsertParser first_parser(first_sql);
-        Table table = catalog_.get(first_parser.extractTableName());
+        Table table =
+            TableMetadataStore::read(first_parser.extractTableName()).value();
         nlohmann::json update_counts = nlohmann::json::array();
 
         // Minimal TPC-C-oriented batch path. This reduces JDBC/server round
@@ -447,7 +447,7 @@ std::string Server::handleRequest(const std::string& request) {
   } else if (operation == "query" || leadingKeyword(sql) == "SELECT") {
     SelectParser parser(sql);
     const std::vector<TypedRow> rows = executor::read(*pool_, parser);
-    res["columns"] = selectColumnNames(parser, catalog_);
+    res["columns"] = selectColumnNames(parser);
     res["rows"] = nlohmann::json::array();
     for (const TypedRow& row : rows) {
       nlohmann::json json_row = nlohmann::json::array();
@@ -468,17 +468,17 @@ std::string Server::handleRequest(const std::string& request) {
     res["updateCount"] = 0;
   } else if (leadingKeyword(sql) == "INSERT") {
     InsertParser parser(sql);
-    Table table = catalog_.get(parser.extractTableName());
+    Table table = TableMetadataStore::read(parser.extractTableName()).value();
     executor::insert(*pool_, table, parser);
     res["updateCount"] = 1;
   } else if (leadingKeyword(sql) == "UPDATE") {
     UpdateParser parser(sql);
-    Table table = catalog_.get(parser.extractTableName());
+    Table table = TableMetadataStore::read(parser.extractTableName()).value();
     executor::update(*pool_, table, parser);
     res["updateCount"] = 1;
   } else if (leadingKeyword(sql) == "DELETE") {
     DeleteParser parser(sql);
-    Table table = catalog_.get(parser.extractTableName());
+    Table table = TableMetadataStore::read(parser.extractTableName()).value();
     executor::remove(*pool_, table, parser);
     res["updateCount"] = 1;
   } else {

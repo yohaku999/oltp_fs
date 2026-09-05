@@ -6,9 +6,9 @@
 #include <utility>
 #include <vector>
 
-#include "catalog/table_repository.h"
 #include "parser/select_parser.h"
 #include "schema/schema.h"
+#include "storage/table_metadata_store.h"
 
 namespace binder {
 
@@ -91,14 +91,13 @@ std::optional<BoundOperand> tryBindOperand(const UnboundOperand& operand,
 
 }  // namespace
 
-BoundSelectQuery bindSelectQuery(const SelectParser& parser,
-                                 const TableRepository& catalog) {
+BoundSelectQuery bindSelectQuery(const SelectParser& parser) {
   BoundSelectQuery bound_query;
 
   const std::vector<std::string> table_names = parser.extractTableNames();
   bound_query.tables.reserve(table_names.size());
   for (const auto& table_name : table_names) {
-    bound_query.tables.push_back(catalog.get(table_name));
+    bound_query.tables.push_back(TableMetadataStore::read(table_name).value());
   }
 
   std::vector<Column> columns;

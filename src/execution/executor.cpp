@@ -10,7 +10,6 @@
 
 #include "../logging.h"
 #include "catalog/table.h"
-#include "catalog/table_repository.h"
 #include "storage/heap/heapfile.h"
 #include "execution/join_pipeline_builder.h"
 #include "execution/operator.h"
@@ -39,6 +38,7 @@
 #include "storage/page/cell.h"
 #include "storage/record/record_cell.h"
 #include "storage/record/record_serializer.h"
+#include "storage/table_metadata_store.h"
 
 namespace {
 
@@ -445,8 +445,7 @@ std::unique_ptr<TypedRowOperator> buildReadSource(
                                              bound_predicates);
 }
 
-void createIndexForTable(TableRepository& catalog,
-                         const LocalStorageManager& storage, Table& table,
+void createIndexForTable(const LocalStorageManager& storage, Table& table,
                          const std::vector<std::string>& column_names) {
   if (table.hasIndex()) {
     if (table.indexedColumnNames() == column_names) {
@@ -466,7 +465,7 @@ void createIndexForTable(TableRepository& catalog,
 
   storage.createIndex(index_file_name);
   try {
-    catalog.update(updated);
+    TableMetadataStore::write(updated);
   } catch (...) {
     storage.remove(index_file_name);
     throw;
@@ -487,9 +486,8 @@ void createIndexForTable(TableRepository& catalog,
  */
 std::vector<TypedRow> executor::read(BufferPool& pool,
                                      const SelectParser& parser) {
-  const TableRepository catalog;
   const LocalStorageManager storage;
-  binder::BoundSelectQuery query = binder::bindSelectQuery(parser, catalog);
+  binder::BoundSelectQuery query = binder::bindSelectQuery(parser);
 
   std::vector<std::unique_ptr<TypedRowOperator>> sources;
   for (std::size_t table_index = 0; table_index < query.tables.size();
@@ -547,7 +545,6 @@ std::vector<TypedRow> executor::read(BufferPool& pool,
 }
 
 void executor::create_table(const CreateTableParser& parser) {
-  TableRepository catalog;
   const LocalStorageManager storage;
   const std::string table_name = parser.extractTableName();
   const std::string heap_file_name = storage.heapFileNameFor(table_name);
@@ -555,7 +552,7 @@ void executor::create_table(const CreateTableParser& parser) {
   Table table(table_name, parser.extractSchema(), heap_file_name);
   storage.createHeap(heap_file_name);
   try {
-    catalog.insert(table);
+    TableMetadataStore::write(table);
   } catch (...) {
     storage.remove(heap_file_name);
     throw;
@@ -564,23 +561,21 @@ void executor::create_table(const CreateTableParser& parser) {
   const std::vector<std::string> primary_key_columns =
       parser.extractPrimaryKeyColumnNames();
   if (!primary_key_columns.empty()) {
-    createIndexForTable(catalog, storage, table, primary_key_columns);
+    createIndexForTable(storage, table, primary_key_columns);
   }
 }
 
 void executor::create_index(const CreateIndexParser& parser) {
   const std::vector<std::string> column_names = parser.extractColumnNames();
-  TableRepository catalog;
   const LocalStorageManager storage;
-  Table table = catalog.get(parser.extractTableName());
-  createIndexForTable(catalog, storage, table, column_names);
+  Table table = TableMetadataStore::read(parser.extractTableName()).value();
+  createIndexForTable(storage, table, column_names);
 }
 
 void executor::drop_table(const DropTableParser& parser) {
-  TableRepository catalog;
   const LocalStorageManager storage;
   const std::string table_name = parser.extractTableName();
-  std::optional<Table> table = catalog.find(table_name);
+  std::optional<Table> table = TableMetadataStore::read(table_name);
   if (!table.has_value()) {
     if (parser.hasIfExists()) {
       return;
@@ -591,7 +586,7 @@ void executor::drop_table(const DropTableParser& parser) {
     storage.remove(index.file_name);
   }
   storage.remove(table->heapFileName());
-  catalog.erase(table_name);
+  TableMetadataStore::remove(table_name);
 }
 
 void executor::insert(BufferPool& pool, Table& table,
