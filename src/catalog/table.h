@@ -9,6 +9,7 @@
 struct IndexMetadata {
   std::string file_name;
   std::vector<std::string> column_names;
+  bool is_unique;
 };
 
 class Table {
@@ -26,6 +27,8 @@ class Table {
   const IndexMetadata& requireIndex() const;
   const std::vector<std::string>& indexedColumnNames() const;
   std::vector<std::size_t> indexedColumnIndexes() const;
+  std::vector<std::size_t> indexedColumnIndexes(
+      const IndexMetadata& index) const;
 
   void addIndex(IndexMetadata index);
 

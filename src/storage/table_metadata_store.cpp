@@ -69,7 +69,8 @@ void TableMetadataStore::write(const Table& table) {
   for (const IndexMetadata& index : table.indexes()) {
     metadata["indexes"].push_back(
         {{"fileName", index.file_name},
-         {"indexedColumns", index.column_names}});
+         {"indexedColumns", index.column_names},
+         {"isUnique", index.is_unique}});
   }
   metadata["columns"] = nlohmann::json::array();
   for (const Column& column : table.schema().columns()) {
@@ -173,8 +174,10 @@ Table TableMetadataStore::readFromPath(const std::string& meta_path) {
                           index_json["indexFile"].get<std::string>())
                           .filename()
                           .string();
-      indexes.push_back(
-          IndexMetadata{file_name, std::move(indexed_column_names)});
+      const bool is_unique = index_json.at("isUnique").get<bool>();
+      indexes.push_back(IndexMetadata{file_name,
+                                      std::move(indexed_column_names),
+                                      is_unique});
     }
   }
 

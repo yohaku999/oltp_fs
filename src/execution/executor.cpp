@@ -446,7 +446,8 @@ std::unique_ptr<TypedRowOperator> buildReadSource(
 }
 
 void createIndexForTable(const LocalStorageManager& storage, Table& table,
-                         const std::vector<std::string>& column_names) {
+                         const std::vector<std::string>& column_names,
+                         bool is_unique) {
   if (table.hasIndex()) {
     if (table.indexedColumnNames() == column_names) {
       return;
@@ -461,7 +462,7 @@ void createIndexForTable(const LocalStorageManager& storage, Table& table,
   const std::string index_file_name =
       storage.indexFileNameFor(table.name(), column_names);
   Table updated = table;
-  updated.addIndex(IndexMetadata{index_file_name, column_names});
+  updated.addIndex(IndexMetadata{index_file_name, column_names, is_unique});
 
   storage.createIndex(index_file_name);
   try {
@@ -561,7 +562,7 @@ void executor::create_table(const CreateTableParser& parser) {
   const std::vector<std::string> primary_key_columns =
       parser.extractPrimaryKeyColumnNames();
   if (!primary_key_columns.empty()) {
-    createIndexForTable(storage, table, primary_key_columns);
+    createIndexForTable(storage, table, primary_key_columns, true);
   }
 }
 
@@ -569,7 +570,7 @@ void executor::create_index(const CreateIndexParser& parser) {
   const std::vector<std::string> column_names = parser.extractColumnNames();
   const LocalStorageManager storage;
   Table table = TableMetadataStore::read(parser.extractTableName()).value();
-  createIndexForTable(storage, table, column_names);
+  createIndexForTable(storage, table, column_names, false);
 }
 
 void executor::drop_table(const DropTableParser& parser) {

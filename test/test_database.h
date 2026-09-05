@@ -78,12 +78,13 @@ inline Table createTable(const std::string& table_name, const Schema& schema) {
 }
 
 inline void createIndex(Table& table,
-                        const std::vector<std::string>& column_names) {
+                        const std::vector<std::string>& column_names,
+                        bool is_unique) {
   const LocalStorageManager storage;
   const std::string index_file_name =
       storage.indexFileNameFor(table.name(), column_names);
   Table updated = table;
-  updated.addIndex(IndexMetadata{index_file_name, column_names});
+  updated.addIndex(IndexMetadata{index_file_name, column_names, is_unique});
   storage.createIndex(index_file_name);
   try {
     TableMetadataStore::write(updated);

@@ -17,6 +17,7 @@
 #include "storage/buffer/bufferpool.h"
 #include "storage/disk/pagedfile.h"
 #include "storage/page/page.h"
+#include "storage/table_metadata_store.h"
 #include "storage/wal/wal.h"
 #include "storage/wal/wal_record.h"
 #include "../test_database.h"
@@ -48,7 +49,7 @@ class TableTest : public ::testing::Test {
         kTableName,
         Schema(std::vector<Column>{Column("id", Column::Type::Integer),
                                    Column("value", Column::Type::Varchar)}));
-    test_db::createIndex(table, {"id"});
+    test_db::createIndex(table, {"id"}, true);
     return table;
   }
 
@@ -145,7 +146,7 @@ TEST_F(TableTest, CatalogAndStorageCreateReadableTableBootstrap) {
   EXPECT_EQ(reopened.schema().columns()[1].getType(), Column::Type::Varchar);
   EXPECT_TRUE(reopened.indexedColumnNames().empty());
 
-  test_db::createIndex(table, {"id"});
+  test_db::createIndex(table, {"id"}, true);
   EXPECT_TRUE(table.hasIndexForColumn("id"));
   ASSERT_TRUE(table.hasIndex());
   PagedFile index_file =
@@ -218,11 +219,52 @@ TEST_F(TableTest, HasIndexForColumnChecksCompositeIndexMembership) {
                                  Column("district_id", Column::Type::Integer),
                                  Column("value", Column::Type::Varchar)}));
 
-  test_db::createIndex(table, {"warehouse_id", "district_id"});
+  test_db::createIndex(table, {"warehouse_id", "district_id"}, true);
 
   EXPECT_TRUE(table.hasIndexForColumn("warehouse_id"));
   EXPECT_TRUE(table.hasIndexForColumn("district_id"));
   EXPECT_FALSE(table.hasIndexForColumn("value"));
+}
+
+TEST_F(TableTest, PersistsMultipleIndexesAndUniqueness) {
+  Table table = test_db::createTable(
+      kTableName,
+      Schema(std::vector<Column>{Column("id", Column::Type::Integer),
+                                 Column("last_name", Column::Type::Varchar),
+                                 Column("first_name", Column::Type::Varchar)}));
+  table.addIndex(IndexMetadata{"table_test_table.id.index", {"id"}, true});
+  table.addIndex(IndexMetadata{"table_test_table.name.index",
+                               {"last_name", "first_name"}, false});
+  TableMetadataStore::write(table);
+
+  ASSERT_EQ(table.indexes().size(), 2u);
+  EXPECT_EQ(table.indexedColumnIndexes(table.indexes()[0]),
+            (std::vector<std::size_t>{0}));
+  EXPECT_EQ(table.indexedColumnIndexes(table.indexes()[1]),
+            (std::vector<std::size_t>{1, 2}));
+  EXPECT_TRUE(table.hasIndexForColumn("id"));
+  EXPECT_TRUE(table.hasIndexForColumn("last_name"));
+  EXPECT_TRUE(table.hasIndexForColumn("first_name"));
+
+  std::ifstream meta_file("data/table_test_table.meta.json");
+  ASSERT_TRUE(meta_file.is_open());
+  nlohmann::json metadata;
+  meta_file >> metadata;
+  ASSERT_EQ(metadata["indexes"].size(), 2u);
+  EXPECT_TRUE(metadata["indexes"][0]["isUnique"].get<bool>());
+  EXPECT_FALSE(metadata["indexes"][1]["isUnique"].get<bool>());
+
+  TableMetadataStore::remove(kTableName);
+  std::ofstream restored_meta_file("data/table_test_table.meta.json");
+  restored_meta_file << metadata;
+  restored_meta_file.close();
+
+  Table reopened = TableMetadataStore::read(kTableName).value();
+  ASSERT_EQ(reopened.indexes().size(), 2u);
+  EXPECT_TRUE(reopened.indexes()[0].is_unique);
+  EXPECT_FALSE(reopened.indexes()[1].is_unique);
+  EXPECT_EQ(reopened.indexes()[1].column_names,
+            (std::vector<std::string>{"last_name", "first_name"}));
 }
 
 TEST_F(TableTest, InsertHeapRecordWithWalWritesInsertRecord) {

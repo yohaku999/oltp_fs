@@ -44,7 +44,7 @@ class ExecutorTest : public ::testing::Test {
         kTableName,
         Schema(std::vector<Column>{Column("id", Column::Type::Integer),
                                    Column("value", Column::Type::Varchar)})));
-    test_db::createIndex(*table_, {"id"});
+    test_db::createIndex(*table_, {"id"}, true);
 
     for (const auto& [key, value] :
          std::vector<std::pair<int, std::string>>{{101, "row_101"},
@@ -80,7 +80,7 @@ class ExecutorTest : public ::testing::Test {
         kJoinTableName,
         Schema(std::vector<Column>{Column("code", Column::Type::Integer),
                                    Column("label", Column::Type::Varchar)}));
-    test_db::createIndex(join_table, {"code"});
+    test_db::createIndex(join_table, {"code"}, true);
     return join_table;
   }
 

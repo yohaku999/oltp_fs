@@ -16,21 +16,17 @@ Table::Table(std::string name, Schema schema, std::string heap_file_name,
   if (heap_file_name_.empty()) {
     throw std::invalid_argument("Heap file name must not be empty.");
   }
-  if (indexes_.size() > 1) {
-    throw std::invalid_argument("Only one index per table is supported.");
-  }
   for (const IndexMetadata& index : indexes_) {
     validateIndex(index);
   }
 }
 
 bool Table::hasIndexForColumn(const std::string& column_name) const {
-  if (!hasIndex()) {
-    return false;
-  }
-  const auto& column_names = requireIndex().column_names;
-  return std::find(column_names.begin(), column_names.end(), column_name) !=
-         column_names.end();
+  return std::any_of(
+      indexes_.begin(), indexes_.end(), [&](const IndexMetadata& index) {
+        return std::find(index.column_names.begin(), index.column_names.end(),
+                         column_name) != index.column_names.end();
+      });
 }
 
 const IndexMetadata& Table::requireIndex() const {
@@ -45,10 +41,22 @@ const std::vector<std::string>& Table::indexedColumnNames() const {
   return hasIndex() ? requireIndex().column_names : no_columns;
 }
 
+
+/**
+ * returns the indexes of the columns that are indexed in the table's schema.
+ */
 std::vector<std::size_t> Table::indexedColumnIndexes() const {
+  if (!hasIndex()) {
+    return {};
+  }
+  return indexedColumnIndexes(requireIndex());
+}
+
+std::vector<std::size_t> Table::indexedColumnIndexes(
+    const IndexMetadata& index) const {
   std::vector<std::size_t> column_indexes;
-  column_indexes.reserve(indexedColumnNames().size());
-  for (const std::string& column_name : indexedColumnNames()) {
+  column_indexes.reserve(index.column_names.size());
+  for (const std::string& column_name : index.column_names) {
     const int column_index = schema_.getColumnIndex(column_name);
     if (column_index < 0) {
       throw std::logic_error("Index references unknown column: " +
@@ -61,14 +69,6 @@ std::vector<std::size_t> Table::indexedColumnIndexes() const {
 
 void Table::addIndex(IndexMetadata index) {
   validateIndex(index);
-  if (hasIndex()) {
-    if (requireIndex().file_name == index.file_name &&
-        requireIndex().column_names == index.column_names) {
-      return;
-    }
-    throw std::runtime_error("Only one index per table is supported: " +
-                             name_);
-  }
   indexes_.push_back(std::move(index));
 }
 
