@@ -1,10 +1,12 @@
 #include "executor.h"
 
 #include <algorithm>
+#include <array>
 #include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -57,12 +59,23 @@ PredicateValueAndType extractValueAndType(
   return {std::get<FieldValue>(predicate.left), right_column.type};
 }
 
-std::vector<BoundComparisonPredicate>::const_iterator findPredicateByOp(
+const BoundComparisonPredicate* findPredicateByOp(
     const std::vector<BoundComparisonPredicate>& predicates, Op op) {
-  return std::find_if(predicates.begin(), predicates.end(),
-                      [op](const BoundComparisonPredicate& predicate) {
-                        return predicate.op == op;
-                      });
+  const auto it = std::find_if(
+      predicates.begin(), predicates.end(),
+      [op](const BoundComparisonPredicate& predicate) {
+        return predicate.op == op;
+      });
+  return it == predicates.end() ? nullptr : &*it;
+}
+
+void appendBoundaryValue(BTreeCursor::Boundary& boundary,
+                         const BoundComparisonPredicate& predicate,
+                         bool is_inclusive) {
+  const auto [value, column_type] = extractValueAndType(predicate);
+  boundary.composite_key +=
+      index_key::encodeFieldValue(value, column_type);
+  boundary.is_inclusive = is_inclusive;
 }
 
 std::pair<BTreeCursor::Boundary, BTreeCursor::Boundary>
@@ -80,48 +93,24 @@ buildTraversalBoundaries(
       break;
     }
 
-    const auto eq_pred_it = findPredicateByOp(predicates_for_key, Op::Eq);
-    if (eq_pred_it != predicates_for_key.end()) {
-      const auto [value, column_type] = extractValueAndType(*eq_pred_it);
-      left_boundary.composite_key +=
-          index_key::encodeFieldValue(value, column_type);
-      right_boundary.composite_key +=
-          index_key::encodeFieldValue(value, column_type);
+    const auto* eq_predicate = findPredicateByOp(predicates_for_key, Op::Eq);
+    if (eq_predicate != nullptr) {
+      appendBoundaryValue(left_boundary, *eq_predicate, true);
+      appendBoundaryValue(right_boundary, *eq_predicate, true);
       continue;
     }
 
-    const auto gt_pred_it = findPredicateByOp(predicates_for_key, Op::Gt);
-    if (gt_pred_it != predicates_for_key.end()) {
-      const auto [value, column_type] = extractValueAndType(*gt_pred_it);
-      left_boundary.composite_key +=
-          index_key::encodeFieldValue(value, column_type);
-      left_boundary.is_inclusive = false;
-      continue;
-    }
-
-    const auto ge_pred_it = findPredicateByOp(predicates_for_key, Op::Ge);
-    if (ge_pred_it != predicates_for_key.end()) {
-      const auto [value, column_type] = extractValueAndType(*ge_pred_it);
-      left_boundary.composite_key +=
-          index_key::encodeFieldValue(value, column_type);
-      continue;
-    }
-
-    const auto lt_pred_it = findPredicateByOp(predicates_for_key, Op::Lt);
-    if (lt_pred_it != predicates_for_key.end()) {
-      const auto [value, column_type] = extractValueAndType(*lt_pred_it);
-      right_boundary.composite_key +=
-          index_key::encodeFieldValue(value, column_type);
-      right_boundary.is_inclusive = false;
-      continue;
-    }
-
-    const auto le_pred_it = findPredicateByOp(predicates_for_key, Op::Le);
-    if (le_pred_it != predicates_for_key.end()) {
-      const auto [value, column_type] = extractValueAndType(*le_pred_it);
-      right_boundary.composite_key +=
-          index_key::encodeFieldValue(value, column_type);
-      continue;
+    for (const auto& [op, boundary, is_inclusive] :
+         std::array<std::tuple<Op, BTreeCursor::Boundary*, bool>, 4>{
+             {{Op::Gt, &left_boundary, false},
+              {Op::Ge, &left_boundary, true},
+              {Op::Lt, &right_boundary, false},
+              {Op::Le, &right_boundary, true}}}) {
+      const auto* predicate = findPredicateByOp(predicates_for_key, op);
+      if (predicate != nullptr) {
+        appendBoundaryValue(*boundary, *predicate, is_inclusive);
+        break;
+      }
     }
   }
 
