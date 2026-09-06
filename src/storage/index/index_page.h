@@ -31,12 +31,11 @@ class LeafIndexPage {
   bool hasKey(const std::string& key) const;
   std::pair<uint16_t, std::vector<IndexEntry>> findEntries(
       BTreeCursor::Boundary left_boundary, BTreeCursor::Boundary right_boundary,
-      bool do_invalidate);
+      bool do_invalidate, std::optional<RID> target_rid = std::nullopt);
   void compact();
   void getRightSidePageID();
 
-  void transferAndCompactTo(LeafIndexPage& dst,
-                            const std::string& separate_key);
+  void transferAndCompactTo(LeafIndexPage& dst, uint16_t split_slot_index);
 
   uint16_t getRightSiblingPageId() {
     return this->page_.rightMostChildPageId();

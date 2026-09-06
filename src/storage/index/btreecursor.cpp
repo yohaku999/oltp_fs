@@ -161,7 +161,7 @@ bool BTreeCursor::containsKey(BufferPool& pool, PagedFile& indexFile,
 std::vector<IndexEntry> BTreeCursor::findEntries(
     BufferPool& pool, PagedFile& indexFile,
     std::pair<BTreeCursor::Boundary, BTreeCursor::Boundary> boundaries,
-    bool do_invalidate) {
+  bool do_invalidate, std::optional<RID> target_rid) {
   const auto& [left_boundary, right_boundary] = boundaries;
 
   // NOTE: we decided not to invalidate intermediate nodes during traversal for
@@ -181,7 +181,8 @@ std::vector<IndexEntry> BTreeCursor::findEntries(
     Page* leaf_page = pool.pinPage(page_id, indexFile);
     LeafIndexPage leaf(*leaf_page);
     auto [next_page, entries] =
-        leaf.findEntries(left_boundary, right_boundary, do_invalidate);
+        leaf.findEntries(left_boundary, right_boundary, do_invalidate,
+                         target_rid);
     pool.unpinPage(leaf_page, indexFile);
     matching_entries.insert(matching_entries.end(), entries.begin(),
                             entries.end());
@@ -255,17 +256,53 @@ void BTreeCursor::insertIntoIndex(BufferPool& pool, PagedFile& indexFile,
 }
 
 void BTreeCursor::replaceRID(BufferPool& pool, PagedFile& indexFile,
-                             const std::string& key, const RID& new_rid) {
+                             const std::string& key, const RID& old_rid,
+                             const RID& new_rid) {
   const int leaf_page_id = findLeafPageID(pool, indexFile, key);
-  Page* leaf_page = pool.pinPage(leaf_page_id, indexFile);
-  try {
-    leaf_page->updateIndexCell(
-        LeafCell(key, new_rid.heap_page_id, new_rid.slot_id));
-  } catch (...) {
+  int page_id = leaf_page_id;
+  while (page_id != LeafIndexPage::NO_RIGHT_SIBLING) {
+    Page* leaf_page = pool.pinPage(page_id, indexFile);
+    LeafIndexPage leaf(*leaf_page);
+    bool scan_next_page = true;
+    for (uint16_t slot_id = 0; slot_id < leaf_page->slotCount(); ++slot_id) {
+      char* cell_data = leaf_page->slotCellStartUnchecked(slot_id);
+      if (!Cell::isValid(cell_data)) {
+        continue;
+      }
+      const LeafCell cell = leaf.cellAt(slot_id);
+      const int key_comparison = index_key::compare(cell.key(), key);
+      if (key_comparison > 0) {
+        scan_next_page = false;
+        break;
+      }
+      if (cell.key() == key && cell.heap_page_id() == old_rid.heap_page_id &&
+          cell.slot_id() == old_rid.slot_id) {
+        leaf_page->updateIndexCell(
+          slot_id, LeafCell(key, new_rid.heap_page_id, new_rid.slot_id));
+        pool.unpinPage(leaf_page, indexFile);
+        return;
+      }
+    }
+    const uint16_t next_page_id = leaf.getRightSiblingPageId();
     pool.unpinPage(leaf_page, indexFile);
-    throw;
+    if (!scan_next_page) {
+      break;
+    }
+    page_id = next_page_id;
   }
-  pool.unpinPage(leaf_page, indexFile);
+  throw std::logic_error(
+      "Failed to update the leaf cell for relocated record");
+}
+
+void BTreeCursor::removeRID(BufferPool& pool, PagedFile& indexFile,
+                             const std::string& key, const RID& rid) {
+  const auto boundaries = std::make_pair(
+      Boundary{key, true}, Boundary{key, true});
+  const std::vector<IndexEntry> removed =
+      findEntries(pool, indexFile, boundaries, true, rid);
+  if (removed.empty()) {
+    throw std::logic_error("Failed to remove the index entry for record");
+  }
 }
 
 /**
@@ -314,7 +351,8 @@ BTreeCursor::SplitResult BTreeCursor::splitLeafPage(
   LeafIndexPage new_leaf(*new_page);
   new_leaf.setRightSiblingPageId(old_leaf.getRightSiblingPageId());
   old_leaf.setRightSiblingPageId(new_page_id);
-  old_leaf.transferAndCompactTo(new_leaf, separate_key);
+  old_leaf.transferAndCompactTo(
+      new_leaf, static_cast<uint16_t>(old_page.slotCount() / 2));
 
   pool.unpinPage(new_page, index_file);
   return SplitResult{

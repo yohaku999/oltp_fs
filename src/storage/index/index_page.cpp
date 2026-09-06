@@ -37,7 +37,7 @@ bool LeafIndexPage::hasKey(const std::string& key) const {
  */
 std::pair<uint16_t, std::vector<IndexEntry>> LeafIndexPage::findEntries(
     BTreeCursor::Boundary left_boundary, BTreeCursor::Boundary right_boundary,
-    bool do_invalidate) {
+  bool do_invalidate, std::optional<RID> target_rid) {
   std::vector<IndexEntry> matching_entries;
   bool need_to_scan_next_page = true;
   for (int idx = 0; idx < page_.getSlotCount(); ++idx) {
@@ -48,13 +48,16 @@ std::pair<uint16_t, std::vector<IndexEntry>> LeafIndexPage::findEntries(
       continue;
     }
     LeafCell cell = cellAt(idx);
+    const RID rid{cell.heap_page_id(), cell.slot_id()};
     if (BTreeCursor::isInsideBoundary(cell.key(), left_boundary, true) &&
-        BTreeCursor::isInsideBoundary(cell.key(), right_boundary, false)) {
+        BTreeCursor::isInsideBoundary(cell.key(), right_boundary, false) &&
+        (!target_rid.has_value() ||
+         (rid.heap_page_id == target_rid->heap_page_id &&
+          rid.slot_id == target_rid->slot_id))) {
       if (do_invalidate) {
         page_.invalidateSlot(idx);
       }
-      matching_entries.push_back(
-          IndexEntry{cell.key(), RID{cell.heap_page_id(), cell.slot_id()}});
+      matching_entries.push_back(IndexEntry{cell.key(), rid});
     } else if (!BTreeCursor::isInsideBoundary(cell.key(), right_boundary,
                                               false)) {
       need_to_scan_next_page = false;
@@ -99,19 +102,17 @@ void LeafIndexPage::compact() {
 }
 
 void LeafIndexPage::transferAndCompactTo(LeafIndexPage& dst,
-                                         const std::string& separate_key) {
-  const int slot_count = page_.getSlotCount();
-  for (int idx = 0; idx < slot_count; ++idx) {
-    char* cell_data = page_.data() + page_.getCellOffsetOnXthPointer(idx);
+                                         uint16_t split_slot_index) {
+  for (uint16_t slot_index = split_slot_index;
+       slot_index < page_.slotCount(); ++slot_index) {
+    char* cell_data =
+        page_.data() + page_.getCellOffsetOnXthPointer(slot_index);
     if (!Cell::isValid(cell_data)) {
       continue;
     }
 
-    const std::string cell_key = LeafCell::getKey(cell_data);
-    if (index_key::compare(cell_key, separate_key) > 0) {
-      dst.page_.insertCell(LeafCell::decodeCell(cell_data));
-      page_.invalidateSlot(idx);
-    }
+    dst.page_.insertCell(LeafCell::decodeCell(cell_data));
+    page_.invalidateSlot(slot_index);
   }
 
   uint16_t old_slot_count = page_.getSlotCount();
@@ -189,10 +190,21 @@ uint16_t InternalIndexPage::findChildPage(const std::string& key) {
               return index_key::compare(a.key(), b.key()) < 0;
             });
 
+  std::optional<uint16_t> equal_key_child;
   for (const IntermediateCell& cell : cells) {
-    if (index_key::compare(cell.key(), key) >= 0) {
-      return cell.page_id();
+    const int compare = index_key::compare(cell.key(), key);
+    // break the loop since the cell with a key greater than the given key is found.
+    if (compare > 0) {
+      return equal_key_child.value_or(cell.page_id());
     }
+    // Continue searching since there can be separator cells with the same key in non-unique indexes.
+    if (compare == 0) {
+      equal_key_child = cell.page_id();
+    }
+  }
+  // If multiple separator cells with the same key exists, return the child page ID of the last one.
+  if (equal_key_child.has_value()) {
+    return equal_key_child.value();
   }
   dbfs_log::index().debug(
       "InternalIndexPage::findChildPage: Going to right most child {}.",

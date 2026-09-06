@@ -42,44 +42,26 @@ Page::Page(char* page_buffer, uint16_t page_id)
       parent_page_id_(-1),
       page_buffer_(page_buffer) {}
 
-/**
- * Updates the leaf cell with the same key.
- *
- * The key does not change, so the serialized cell has the same size and can
- * safely replace the existing cell in place. Only the RID stored in the leaf
- * cell is expected to change.
- */
-int Page::updateIndexCell(const LeafCell& cell) {
-
-  dbfs_log::storage().debug(
-      "Attempting to update leaf cell with key {} in page ID {}", cell.key(),
-      getPageID());
-  const std::vector<std::byte> cell_bytes = cell.serialize();
-
-  for (int slot_id = 0; slot_id < getSlotCount(); ++slot_id) {
-    char* existing_cell_data_start =
-        page_buffer_ + getCellOffsetOnXthPointer(slot_id);
-    if (!Cell::isValid(existing_cell_data_start)) {
-      continue;
-    }
-
-    LeafCell existing_cell = LeafCell::decodeCell(existing_cell_data_start);
-    if (existing_cell.key() != cell.key()) {
-      continue;
-    }
-
-    if (existing_cell.payloadSize() != cell_bytes.size()) {
-      throw std::logic_error(
-          "Page::updateIndexCell cannot change the leaf-cell size");
-    }
-
-    std::memcpy(existing_cell_data_start, cell_bytes.data(), cell_bytes.size());
-    markDirty();
-    return slot_id;
+void Page::updateIndexCell(uint16_t slot_id, const LeafCell& cell) {
+  if (slot_id >= getSlotCount()) {
+    throw std::out_of_range("Page::updateIndexCell: invalid slot ID");
   }
 
-  throw std::logic_error(
-            "Failed to update the leaf cell for relocated record");
+  char* cell_data = page_buffer_ + getCellOffsetOnXthPointer(slot_id);
+  if (!Cell::isValid(cell_data)) {
+    throw std::logic_error(
+        "Page::updateIndexCell: slot points to an invalidated cell");
+  }
+
+  const std::vector<std::byte> cell_bytes = cell.serialize();
+  LeafCell existing_cell = LeafCell::decodeCell(cell_data);
+  if (existing_cell.payloadSize() != cell_bytes.size()) {
+    throw std::logic_error(
+        "Page::updateIndexCell cannot change the leaf-cell size");
+  }
+
+  std::memcpy(cell_data, cell_bytes.data(), cell_bytes.size());
+  markDirty();
 }
 
 bool Page::updateRecordCell(int slot_id, const RecordCell& cell) {

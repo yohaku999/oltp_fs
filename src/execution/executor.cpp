@@ -301,22 +301,6 @@ std::optional<IndexLookupPlan> planIndexLookup(
   return best_plan;
 }
 
-std::vector<BoundComparisonPredicate> buildIndexKeyEqualityPredicates(
-    const Table& table, const TypedRow& row,
-    const std::vector<std::size_t>& indexed_column_indexes) {
-  std::vector<BoundComparisonPredicate> predicates;
-  predicates.reserve(indexed_column_indexes.size());
-
-  for (const std::size_t indexed_column_index : indexed_column_indexes) {
-    const auto& column = table.schema().columns().at(indexed_column_index);
-    predicates.push_back(BoundComparisonPredicate{
-        Op::Eq, BoundColumnRef{0, indexed_column_index, column.getType()},
-        row.values.at(indexed_column_index)});
-  }
-
-  return predicates;
-}
-
 void appendInsertLog(BufferPool& pool, const RID& rid,
                      const RecordCell& cell) {
   pool.wal().write(
@@ -423,7 +407,7 @@ void updateMatchingRows(
     }
     // when page overflowed
     const RID new_rid = heap.insertRecord(pool, updated_cell);
-    on_record_relocated(*original_row, new_rid);
+    on_record_relocated(*original_row, rid, new_rid);
     heap.invalidateRecord(pool, rid);
     appendDeleteLog(pool, rid, original_cell);
   }
@@ -449,7 +433,7 @@ int removeMatchingRows(
       continue;
     }
 
-    before_record_removal(*row);
+    before_record_removal(*row, rid);
     const RecordCell before =
         RecordSerializer::serialize(table.schema(), *row);
     heap.invalidateRecord(pool, rid);
@@ -630,6 +614,9 @@ void executor::insert(BufferPool& pool, Table& table,
   std::vector<PagedFile> index_files = openIndexFiles(storage, table);
   const std::vector<std::string> index_keys = encodeIndexKeys(table, row);
   for (std::size_t index = 0; index < index_files.size(); ++index) {
+    if (!table.indexes()[index].is_unique) {
+      continue;
+    }
     if (BTreeCursor::containsKey(pool, index_files[index],
                                  index_keys[index])) {
       throw std::runtime_error(
@@ -656,19 +643,14 @@ int executor::remove(BufferPool& pool, Table& table,
       pool, storage, table, heap, predicates);
   std::vector<PagedFile> index_files = openIndexFiles(storage, table);
   return removeMatchingRows(
-      pool, table, heap, rids, predicates, [&](const TypedRow& row) {
+      pool, table, heap, rids, predicates,
+      [&](const TypedRow& row, const RID& rid) {
         for (std::size_t index = 0; index < index_files.size(); ++index) {
           const std::vector<std::size_t> indexed_column_indexes =
               table.indexedColumnIndexes(table.indexes()[index]);
-          const std::vector<BoundComparisonPredicate> index_key_predicates =
-              buildIndexKeyEqualityPredicates(table, row,
-                                              indexed_column_indexes);
-          const std::vector<std::vector<BoundComparisonPredicate>>
-              ordered_predicates = prepareIndexKeyPredicates(
-                  index_key_predicates, indexed_column_indexes);
-          const auto boundaries =
-              buildTraversalBoundaries(ordered_predicates);
-          BTreeCursor::findEntries(pool, index_files[index], boundaries, true);
+          const std::string key = index_key::encodeRow(
+              table.schema(), row, indexed_column_indexes);
+          BTreeCursor::removeRID(pool, index_files[index], key, rid);
         }
       });
 }
@@ -692,12 +674,13 @@ void executor::update(BufferPool& pool, Table& table,
   std::vector<PagedFile> index_files = openIndexFiles(storage, table);
   updateMatchingRows(
       pool, table, heap, rids, predicates, parser,
-      [&](const TypedRow& original_row, const RID& new_rid) {
+      [&](const TypedRow& original_row, const RID& old_rid,
+        const RID& new_rid) {
         const std::vector<std::string> index_keys =
             encodeIndexKeys(table, original_row);
         for (std::size_t index = 0; index < index_files.size(); ++index) {
           BTreeCursor::replaceRID(pool, index_files[index], index_keys[index],
-                                  new_rid);
+                                  old_rid, new_rid);
         }
       });
 }

@@ -956,6 +956,55 @@ TEST_F(ExecutorTest, MaintainsMultipleUniqueIndexes) {
   EXPECT_FALSE(test_db::isPersisted(table_name));
 }
 
+TEST_F(ExecutorTest, MaintainsDuplicateEntriesInNonUniqueIndex) {
+  const std::string table_name = uniqueTableName("non_unique_index_test");
+  executor::create_table(CreateTableParser(
+      "CREATE TABLE " + table_name +
+      " (id int PRIMARY KEY, value varchar, payload varchar)"));
+  executor::create_index(CreateIndexParser(
+      "CREATE INDEX idx_non_unique_value ON " + table_name + " (value)"));
+
+  Table table = test_db::getTable(table_name);
+  ASSERT_EQ(table.indexes().size(), 2u);
+  EXPECT_TRUE(table.indexes()[0].is_unique);
+  EXPECT_FALSE(table.indexes()[1].is_unique);
+
+  executor::insert(*pool_, table,
+                   InsertParser("INSERT INTO " + table_name +
+                                " VALUES (1, 'same', 'one')"));
+  executor::insert(*pool_, table,
+                   InsertParser("INSERT INTO " + table_name +
+                                " VALUES (2, 'same', 'two')"));
+
+  std::vector<TypedRow> duplicate_rows = executor::read(
+      *pool_, SelectParser("SELECT id, value FROM " + table_name +
+                           " WHERE value = 'same'"));
+  ASSERT_EQ(duplicate_rows.size(), 2u);
+
+    EXPECT_EQ(executor::remove(
+          *pool_, table,
+          DeleteParser("DELETE FROM " + table_name + " WHERE id = 1")),
+        1);
+    duplicate_rows = executor::read(
+      *pool_, SelectParser("SELECT id, value FROM " + table_name +
+                 " WHERE value = 'same'"));
+    ASSERT_EQ(duplicate_rows.size(), 1u);
+    EXPECT_EQ(std::get<Column::IntegerType>(duplicate_rows.front().values[0]), 2);
+
+  executor::update(
+      *pool_, table,
+      UpdateParser("UPDATE " + table_name +
+                   " SET payload = 'a much longer value that relocates'"
+                   " WHERE id = 2"));
+  duplicate_rows = executor::read(
+      *pool_, SelectParser("SELECT id, value FROM " + table_name +
+                           " WHERE value = 'same'"));
+  ASSERT_EQ(duplicate_rows.size(), 1u);
+  EXPECT_EQ(std::get<Column::IntegerType>(duplicate_rows.front().values[0]), 2);
+
+  executor::drop_table(DropTableParser("DROP TABLE " + table_name));
+}
+
 TEST_F(ExecutorTest, CreateTableBuildsIndexFromSingleColumnPrimaryKey) {
   const std::string new_table_name = uniqueTableName("primary_key_index_test");
 

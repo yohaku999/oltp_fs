@@ -31,7 +31,8 @@ class BTreeCursor {
   };
   static std::vector<IndexEntry> findEntries(
       BufferPool& pool, PagedFile& indexFile,
-      std::pair<Boundary, Boundary> boundaries, bool do_invalidate);
+      std::pair<Boundary, Boundary> boundaries, bool do_invalidate,
+      std::optional<RID> target_rid = std::nullopt);
   static int findLeafPageID(BufferPool& pool, PagedFile& indexFile,
                             const std::string& key);
   static bool containsKey(BufferPool& pool, PagedFile& indexFile,
@@ -42,7 +43,10 @@ class BTreeCursor {
                               const std::string& key, uint16_t heap_page_id,
                               uint16_t slot_id);
   static void replaceRID(BufferPool& pool, PagedFile& indexFile,
-                         const std::string& key, const RID& new_rid);
+                         const std::string& key, const RID& old_rid,
+                         const RID& new_rid);
+  static void removeRID(BufferPool& pool, PagedFile& indexFile,
+                        const std::string& key, const RID& rid);
   static SplitResult splitLeafPage(BufferPool& pool, PagedFile& index_file,
                                    Page& old_page,
                                    const std::string& separate_key);

@@ -2,9 +2,11 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <array>
 #include <cstdio>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -186,9 +188,13 @@ TEST_F(BTreeCursorTest, ReplaceRIDUpdatesRecordLocationForKey) {
   const std::string key = encodeIntKey(42);
   BTreeCursor::insertIntoIndex(*pool_, *index_file_, key, 5, 3);
 
-  BTreeCursor::replaceRID(*pool_, *index_file_, key, RID{9, 7});
+  BTreeCursor::replaceRID(*pool_, *index_file_, key, RID{5, 3}, RID{9, 7});
 
-  const std::vector<RID> rids = findIntRIDs(*pool_, *index_file_, 42);
+  std::vector<RID> rids = findIntRIDs(*pool_, *index_file_, 42);
+  std::sort(rids.begin(), rids.end(),
+            [](const RID& left, const RID& right) {
+              return left.slot_id < right.slot_id;
+            });
   ASSERT_EQ(rids.size(), 1u);
   EXPECT_EQ(rids.front().heap_page_id, 9);
   EXPECT_EQ(rids.front().slot_id, 7);
@@ -196,8 +202,44 @@ TEST_F(BTreeCursorTest, ReplaceRIDUpdatesRecordLocationForKey) {
 
 TEST_F(BTreeCursorTest, ReplaceRIDThrowsWhenKeyDoesNotExist) {
   EXPECT_THROW(BTreeCursor::replaceRID(*pool_, *index_file_, encodeIntKey(42),
-                                       RID{9, 7}),
+                                       RID{5, 3}, RID{9, 7}),
                std::logic_error);
+}
+
+TEST_F(BTreeCursorTest, DuplicateKeysSurviveLeafSplits) {
+  constexpr int kNumEntries = 500;
+  const std::string key = encodeIntKey(42);
+
+  for (int slot_id = 0; slot_id < kNumEntries; ++slot_id) {
+    BTreeCursor::insertIntoIndex(*pool_, *index_file_, key, 7,
+                                 static_cast<uint16_t>(slot_id));
+  }
+
+  const std::vector<RID> rids = findIntRIDs(*pool_, *index_file_, 42);
+  ASSERT_EQ(rids.size(), static_cast<std::size_t>(kNumEntries));
+  std::set<uint16_t> slots;
+  for (const RID& rid : rids) {
+    EXPECT_EQ(rid.heap_page_id, 7);
+    slots.insert(rid.slot_id);
+  }
+  EXPECT_EQ(slots.size(), static_cast<std::size_t>(kNumEntries));
+  for (int slot_id = 0; slot_id < kNumEntries; ++slot_id) {
+    EXPECT_NE(slots.find(static_cast<uint16_t>(slot_id)), slots.end());
+  }
+}
+
+TEST_F(BTreeCursorTest, DuplicateKeyOperationsIdentifyRID) {
+  const std::string key = encodeIntKey(42);
+  BTreeCursor::insertIntoIndex(*pool_, *index_file_, key, 5, 3);
+  BTreeCursor::insertIntoIndex(*pool_, *index_file_, key, 5, 4);
+
+  BTreeCursor::replaceRID(*pool_, *index_file_, key, RID{5, 3}, RID{9, 7});
+  BTreeCursor::removeRID(*pool_, *index_file_, key, RID{5, 4});
+
+  const std::vector<RID> rids = findIntRIDs(*pool_, *index_file_, 42);
+  ASSERT_EQ(rids.size(), 1u);
+  EXPECT_EQ(rids.front().heap_page_id, 9);
+  EXPECT_EQ(rids.front().slot_id, 7);
 }
 
 TEST_F(BTreeCursorTest, InsertManyKeysTriggersSplitAndIsSearchable) {
