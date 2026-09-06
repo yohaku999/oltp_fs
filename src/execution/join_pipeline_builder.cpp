@@ -37,11 +37,13 @@ std::unique_ptr<TypedRowOperator> buildJoinPipeline(
           [&](physical::IndexLookupJoinPlan& index_plan)
               -> std::unique_ptr<TypedRowOperator> {
             const Table& inner_table = query.tables[1];
+            const IndexMetadata& inner_index =
+                inner_table.indexes().at(index_plan.inner_index_position);
             return std::make_unique<IndexLookupJoinOperator>(
                 std::move(sources[0]), pool,
                 storage.openHeap(inner_table.heapFileName()),
-                storage.openIndex(inner_table.requireIndex().file_name),
-                inner_table.schema(), inner_table.indexedColumnIndexes(),
+                storage.openIndex(inner_index.file_name), inner_table.schema(),
+                inner_table.indexedColumnIndexes(inner_index),
                 std::move(index_plan.join_keys),
                 std::move(index_plan.constants), query.table_predicates[1]);
           },

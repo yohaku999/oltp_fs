@@ -24,9 +24,6 @@ class Table {
 
   bool hasIndex() const { return !indexes_.empty(); }
   bool hasIndexForColumn(const std::string& column_name) const;
-  const IndexMetadata& requireIndex() const;
-  const std::vector<std::string>& indexedColumnNames() const;
-  std::vector<std::size_t> indexedColumnIndexes() const;
   std::vector<std::size_t> indexedColumnIndexes(
       const IndexMetadata& index) const;
 

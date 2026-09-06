@@ -144,13 +144,13 @@ TEST_F(TableTest, CatalogAndStorageCreateReadableTableBootstrap) {
   EXPECT_EQ(reopened.schema().columns()[0].getType(), Column::Type::Integer);
   EXPECT_EQ(reopened.schema().columns()[1].getName(), "value");
   EXPECT_EQ(reopened.schema().columns()[1].getType(), Column::Type::Varchar);
-  EXPECT_TRUE(reopened.indexedColumnNames().empty());
+  EXPECT_TRUE(reopened.indexes().empty());
 
   test_db::createIndex(table, {"id"}, true);
   EXPECT_TRUE(table.hasIndexForColumn("id"));
   ASSERT_TRUE(table.hasIndex());
   PagedFile index_file =
-      LocalStorageManager().openIndex(table.requireIndex().file_name);
+      LocalStorageManager().openIndex(table.indexes().front().file_name);
   EXPECT_EQ(index_file.getRootPageID(), 0u);
   EXPECT_TRUE(index_file.isPageIDUsed(0));
 
@@ -169,11 +169,11 @@ TEST_F(TableTest, CatalogAndStorageCreateReadableTableBootstrap) {
             "id");
 
   Table indexed_reopened = test_db::getTable(kTableName);
-  EXPECT_EQ(indexed_reopened.indexedColumnNames(),
+  EXPECT_EQ(indexed_reopened.indexes().front().column_names,
             (std::vector<std::string>{"id"}));
   ASSERT_TRUE(indexed_reopened.hasIndex());
-  EXPECT_EQ(indexed_reopened.requireIndex().file_name,
-            table.requireIndex().file_name);
+  EXPECT_EQ(indexed_reopened.indexes().front().file_name,
+            table.indexes().front().file_name);
 
   std::array<char, Page::PAGE_SIZE_BYTE> index_page_buffer{};
   EXPECT_NO_THROW(index_file.readPageIntoBuffer(0, index_page_buffer.data()));

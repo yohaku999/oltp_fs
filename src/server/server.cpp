@@ -457,7 +457,9 @@ std::string Server::handleRequest(const std::string& request) {
       res["rows"].push_back(std::move(json_row));
     }
   } else if (leadingKeyword(sql) == "CREATE") {
-    if (sql.find("CREATE INDEX") == 0 || sql.find("create index") == 0) {
+    if (sql.find("CREATE INDEX") == 0 || sql.find("create index") == 0 ||
+        sql.find("CREATE UNIQUE INDEX") == 0 ||
+        sql.find("create unique index") == 0) {
       executor::create_index(CreateIndexParser(sql));
     } else {
       executor::create_table(CreateTableParser(sql));

@@ -29,29 +29,6 @@ bool Table::hasIndexForColumn(const std::string& column_name) const {
       });
 }
 
-const IndexMetadata& Table::requireIndex() const {
-  if (!hasIndex()) {
-    throw std::runtime_error("Table has no index: " + name_);
-  }
-  return indexes_.front();
-}
-
-const std::vector<std::string>& Table::indexedColumnNames() const {
-  static const std::vector<std::string> no_columns;
-  return hasIndex() ? requireIndex().column_names : no_columns;
-}
-
-
-/**
- * returns the indexes of the columns that are indexed in the table's schema.
- */
-std::vector<std::size_t> Table::indexedColumnIndexes() const {
-  if (!hasIndex()) {
-    return {};
-  }
-  return indexedColumnIndexes(requireIndex());
-}
-
 std::vector<std::size_t> Table::indexedColumnIndexes(
     const IndexMetadata& index) const {
   std::vector<std::size_t> column_indexes;

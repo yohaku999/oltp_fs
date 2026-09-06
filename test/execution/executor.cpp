@@ -842,7 +842,7 @@ TEST_F(ExecutorTest, InsertPageOverflow) {
         std::cout << "Mismatch detected for key=" << key
                   << ". Dumping B+tree index state..." << std::endl;
         PagedFile index_file =
-            LocalStorageManager().openIndex(table.requireIndex().file_name);
+            LocalStorageManager().openIndex(table.indexes().front().file_name);
         BTreeCursor::dumpTree(*pool_, index_file, std::cout);
       }
       EXPECT_EQ(value, restored) << "mismatch for key=" << key;
@@ -854,7 +854,7 @@ TEST_F(ExecutorTest, InsertPageOverflow) {
               << std::endl;
     Table table = test_db::getTable(kTableName);
     PagedFile index_file =
-        LocalStorageManager().openIndex(table.requireIndex().file_name);
+        LocalStorageManager().openIndex(table.indexes().front().file_name);
     BTreeCursor::dumpTree(*pool_, index_file, std::cout);
     throw;
   }
@@ -881,11 +881,79 @@ TEST_F(ExecutorTest, CreateAndDropTable) {
     EXPECT_EQ(new_table.schema().columns()[1].getType(), Column::Type::Varchar);
     EXPECT_EQ(new_table.schema().columns()[2].getName(), "notes");
     EXPECT_EQ(new_table.schema().columns()[2].getType(), Column::Type::Varchar);
-    EXPECT_EQ(new_table.indexedColumnNames(), (std::vector<std::string>{"id"}));
+    EXPECT_EQ(new_table.indexes().front().column_names,
+              (std::vector<std::string>{"id"}));
   }
 
   executor::drop_table(DropTableParser("DROP TABLE new_table"));
   EXPECT_FALSE(test_db::isPersisted(new_table_name));
+}
+
+TEST_F(ExecutorTest, MaintainsMultipleUniqueIndexes) {
+  const std::string table_name =
+      uniqueTableName("multiple_unique_indexes_test");
+  executor::create_table(CreateTableParser(
+      "CREATE TABLE " + table_name +
+      " (id int PRIMARY KEY, email varchar, payload varchar)"));
+  executor::create_index(CreateIndexParser(
+      "CREATE UNIQUE INDEX idx_email ON " + table_name + " (email)"));
+
+  {
+    Table table = test_db::getTable(table_name);
+    ASSERT_EQ(table.indexes().size(), 2u);
+    EXPECT_TRUE(table.indexes()[0].is_unique);
+    EXPECT_TRUE(table.indexes()[1].is_unique);
+
+    executor::insert(
+        *pool_, table,
+        InsertParser("INSERT INTO " + table_name +
+                     " VALUES (1, 'one@example.com', 'x')"));
+    executor::insert(
+        *pool_, table,
+        InsertParser("INSERT INTO " + table_name +
+                     " VALUES (2, 'two@example.com', 'y')"));
+
+    EXPECT_THROW(
+        executor::insert(
+            *pool_, table,
+            InsertParser("INSERT INTO " + table_name +
+                         " VALUES (3, 'one@example.com', 'duplicate')")),
+        std::runtime_error);
+
+    executor::update(
+        *pool_, table,
+        UpdateParser("UPDATE " + table_name +
+                     " SET payload = 'a much longer relocated payload'"
+                     " WHERE id = 1"));
+
+    std::vector<TypedRow> rows = executor::read(
+        *pool_, SelectParser("SELECT id, email, payload FROM " + table_name +
+                             " WHERE email = 'one@example.com'"));
+    ASSERT_EQ(rows.size(), 1u);
+    EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[0]), 1);
+    EXPECT_EQ(std::get<Column::VarcharType>(rows[0].values[2]),
+              "a much longer relocated payload");
+
+    EXPECT_THROW(executor::update(
+                     *pool_, table,
+                     UpdateParser("UPDATE " + table_name +
+                                  " SET email = 'changed@example.com'"
+                                  " WHERE id = 1")),
+                 std::runtime_error);
+
+    EXPECT_EQ(executor::remove(
+                  *pool_, table,
+                  DeleteParser("DELETE FROM " + table_name +
+                               " WHERE email = 'one@example.com'")),
+              1);
+    executor::insert(
+        *pool_, table,
+        InsertParser("INSERT INTO " + table_name +
+                     " VALUES (3, 'one@example.com', 'reused')"));
+  }
+
+  executor::drop_table(DropTableParser("DROP TABLE " + table_name));
+  EXPECT_FALSE(test_db::isPersisted(table_name));
 }
 
 TEST_F(ExecutorTest, CreateTableBuildsIndexFromSingleColumnPrimaryKey) {
@@ -899,7 +967,8 @@ TEST_F(ExecutorTest, CreateTableBuildsIndexFromSingleColumnPrimaryKey) {
 
   {
     Table new_table = test_db::getTable(new_table_name);
-    EXPECT_EQ(new_table.indexedColumnNames(), (std::vector<std::string>{"id"}));
+    EXPECT_EQ(new_table.indexes().front().column_names,
+              (std::vector<std::string>{"id"}));
     ASSERT_TRUE(new_table.hasIndex());
   }
 
@@ -917,7 +986,7 @@ TEST_F(ExecutorTest, CreateTableBuildsIndexFromInlinePrimaryKey) {
 
   {
     Table new_table = test_db::getTable(new_table_name);
-    EXPECT_EQ(new_table.indexedColumnNames(),
+    EXPECT_EQ(new_table.indexes().front().column_names,
               (std::vector<std::string>{"id"}));
     EXPECT_TRUE(new_table.hasIndex());
   }
@@ -942,7 +1011,7 @@ TEST_F(ExecutorTest, CreateTableRejectsDuplicateCompositePrimaryKeyRows) {
   {
     Table table = test_db::getTable(new_table_name);
     ASSERT_TRUE(table.hasIndex());
-    EXPECT_EQ(table.indexedColumnNames(),
+    EXPECT_EQ(table.indexes().front().column_names,
               (std::vector<std::string>{"warehouse_id", "district_id",
                                         "customer_id"}));
     executor::insert(*pool_, table,

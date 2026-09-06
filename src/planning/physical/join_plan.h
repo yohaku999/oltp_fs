@@ -21,6 +21,7 @@ struct ColumnValuePair {
 struct NoJoinPlan {};
 
 struct IndexLookupJoinPlan {
+  std::size_t inner_index_position;
   std::vector<JoinColumnPair> join_keys;
   std::vector<ColumnValuePair> constants;
 };

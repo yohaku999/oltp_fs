@@ -374,6 +374,33 @@ TEST_F(ServerTest, BatchUpdateInsertsPreparedStatementRows) {
   EXPECT_EQ("b", query_response.at("rows").at(0).at(0).get<std::string>());
 }
 
+TEST_F(ServerTest, CreatesUniqueSecondaryIndex) {
+  nlohmann::json create_response = sendRequest(
+      port_, "update",
+      "CREATE TABLE unique_index_probe (id int PRIMARY KEY, email varchar)",
+      nlohmann::json::array(), kConcurrentStockLevelTimeoutMs);
+  ASSERT_TRUE(create_response.value("ok", false));
+
+  nlohmann::json index_response = sendRequest(
+      port_, "update",
+      "CREATE UNIQUE INDEX idx_unique_index_probe_email ON "
+      "unique_index_probe (email)",
+      nlohmann::json::array(), kConcurrentStockLevelTimeoutMs);
+  ASSERT_TRUE(index_response.value("ok", false));
+
+  nlohmann::json first_insert = sendRequest(
+      port_, "update",
+      "INSERT INTO unique_index_probe VALUES (1, 'one@example.com')",
+      nlohmann::json::array(), kConcurrentStockLevelTimeoutMs);
+  ASSERT_TRUE(first_insert.value("ok", false));
+
+  nlohmann::json duplicate_insert = sendRequest(
+      port_, "update",
+      "INSERT INTO unique_index_probe VALUES (2, 'one@example.com')",
+      nlohmann::json::array(), kConcurrentStockLevelTimeoutMs);
+  EXPECT_FALSE(duplicate_insert.value("ok", false));
+}
+
 TEST_F(ServerTest, ResetBufferPoolFlushesDataWithoutSqlPayload) {
   nlohmann::json create_response =
       sendRequest(port_, "update",
