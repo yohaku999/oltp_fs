@@ -20,6 +20,7 @@ class PagedFile {
     uint16_t max_page_id = 0;
     uint16_t root_page_id = 0;
     bool header_dirty = false;
+    bool stream_dirty = false;
   };
 
   static std::unordered_map<std::string, std::weak_ptr<SharedState>>
@@ -38,6 +39,7 @@ class PagedFile {
   PagedFile(const std::string& file_path);
   ~PagedFile();
   void initializeStreamIfClosed();
+  void flush();
   void close();
   void readPageIntoBuffer(uint16_t const page_id, char* buffer);
   void writePageFromBuffer(uint16_t const page_id, char* buffer);

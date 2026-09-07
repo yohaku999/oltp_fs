@@ -8,6 +8,7 @@
 #include "execution/operators/loop_join_operator.h"
 #include "planning/binder.h"
 #include "storage/buffer/bufferpool.h"
+#include "storage/index/index_accessor.h"
 #include "storage/local_storage_manager.h"
 
 namespace execution {
@@ -27,7 +28,7 @@ Overloaded(Visitors...) -> Overloaded<Visitors...>;
 std::unique_ptr<TypedRowOperator> buildJoinPipeline(
     physical::JoinPlan plan,
     std::vector<std::unique_ptr<TypedRowOperator>> sources, BufferPool& pool,
-    const LocalStorageManager& storage,
+    LocalStorageManager& storage, IndexAccessor& index_accessor,
     binder::BoundSelectQuery& query) {
   return std::visit(
       Overloaded{
@@ -41,17 +42,17 @@ std::unique_ptr<TypedRowOperator> buildJoinPipeline(
                 inner_table.indexes().at(index_plan.inner_index_position);
             return std::make_unique<IndexLookupJoinOperator>(
                 std::move(sources[0]), pool,
-                storage.openHeap(inner_table.heapFileName()),
-                storage.openIndex(inner_index.file_name), inner_table.schema(),
+                storage.openHeap(inner_table.heapFileName()), index_accessor,
+                inner_index, inner_table.schema(),
                 inner_table.indexedColumnIndexes(inner_index),
                 std::move(index_plan.join_keys),
                 std::move(index_plan.constants), query.table_predicates[1]);
           },
           [&](physical::HashJoinPlan& hash_plan)
               -> std::unique_ptr<TypedRowOperator> {
-            return std::make_unique<HashJoinOperator>(
-                std::move(sources[0]), std::move(sources[1]),
-                hash_plan.join_key);
+            return std::make_unique<HashJoinOperator>(std::move(sources[0]),
+                                                      std::move(sources[1]),
+                                                      hash_plan.join_key);
           },
           [&](physical::LoopJoinPlan&) -> std::unique_ptr<TypedRowOperator> {
             return std::make_unique<LoopJoinOperator>(std::move(sources));

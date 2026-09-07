@@ -5,6 +5,8 @@
 #include <string>
 
 class BufferPool;
+class IndexAccessor;
+class LocalStorageManager;
 class WAL;
 
 class Server {
@@ -17,6 +19,8 @@ class Server {
   int port_;
   std::unique_ptr<WAL> wal_;
   std::unique_ptr<BufferPool> pool_;
+  std::unique_ptr<LocalStorageManager> storage_;
+  std::unique_ptr<IndexAccessor> index_accessor_;
   std::mutex request_mutex_;
 
   std::string readFrame(int client_fd);

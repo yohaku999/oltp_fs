@@ -6,22 +6,23 @@
 #include "execution/comparison_predicate.h"
 #include "storage/buffer/bufferpool.h"
 #include "storage/heap/heapfile.h"
-#include "storage/index/btreecursor.h"
 #include "storage/index/index_key.h"
 #include "storage/index/rid.h"
 #include "storage/record/record_cell.h"
 
 IndexLookupJoinOperator::IndexLookupJoinOperator(
     std::unique_ptr<TypedRowOperator> outer_child, BufferPool& pool,
-    HeapFile inner_heap_file, PagedFile inner_index_file,
-    Schema inner_schema, std::vector<std::size_t> indexed_column_indexes,
+    HeapFile inner_heap_file, IndexAccessor& index_accessor,
+    IndexMetadata inner_index, Schema inner_schema,
+    std::vector<std::size_t> indexed_column_indexes,
     std::vector<physical::JoinColumnPair> join_keys,
     std::vector<physical::ColumnValuePair> constant_keys,
     std::vector<BoundComparisonPredicate> inner_predicates)
     : outer_child_(std::move(outer_child)),
       pool_(pool),
       inner_heap_file_(std::move(inner_heap_file)),
-      inner_index_file_(std::move(inner_index_file)),
+      index_accessor_(index_accessor),
+      inner_index_(std::move(inner_index)),
       inner_schema_(std::move(inner_schema)),
       indexed_column_indexes_(std::move(indexed_column_indexes)),
       join_keys_(std::move(join_keys)),
@@ -93,9 +94,9 @@ std::vector<TypedRow> IndexLookupJoinOperator::lookupInnerRows(
   ++index_lookups_;
   logger_.setMetric("index_lookups", index_lookups_);
 
-  const BTreeCursor::Boundary boundary{lookup_key.value(), true};
-  const std::vector<IndexEntry> entries = BTreeCursor::findEntries(
-      pool_, inner_index_file_, {boundary, boundary}, false);
+  const IndexAccessor::Boundary boundary{lookup_key.value(), true};
+  const std::vector<IndexEntry> entries =
+      index_accessor_.find(inner_index_, {boundary, boundary});
 
   std::vector<TypedRow> rows;
   rows.reserve(entries.size());

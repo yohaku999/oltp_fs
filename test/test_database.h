@@ -25,7 +25,7 @@ inline Table getTable(const std::string& table_name) {
 }
 
 inline bool isPersisted(const std::string& table_name) {
-  const LocalStorageManager storage;
+  LocalStorageManager storage;
   const std::optional<Table> table = findTable(table_name);
   if (!table.has_value()) {
     return false;
@@ -42,7 +42,7 @@ inline bool isPersisted(const std::string& table_name) {
 }
 
 inline void removeTable(const std::string& table_name) {
-  const LocalStorageManager storage;
+  LocalStorageManager storage;
   const std::optional<Table> table = findTable(table_name);
   if (table.has_value()) {
     for (const IndexMetadata& index : table->indexes()) {
@@ -64,7 +64,7 @@ inline void removeTable(const std::string& table_name) {
 }
 
 inline Table createTable(const std::string& table_name, const Schema& schema) {
-  const LocalStorageManager storage;
+  LocalStorageManager storage;
   const std::string heap_file_name = storage.heapFileNameFor(table_name);
   Table table(table_name, schema, heap_file_name);
   storage.createHeap(heap_file_name);
@@ -80,7 +80,7 @@ inline Table createTable(const std::string& table_name, const Schema& schema) {
 inline void createIndex(Table& table,
                         const std::vector<std::string>& column_names,
                         bool is_unique) {
-  const LocalStorageManager storage;
+  LocalStorageManager storage;
   const std::string index_file_name =
       storage.indexFileNameFor(table.name(), column_names);
   Table updated = table;

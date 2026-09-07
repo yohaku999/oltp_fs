@@ -52,6 +52,7 @@ add_library(dbfs_src
     src/storage/index/leaf_cell.cpp
     src/storage/record/record_serializer.cpp
     src/storage/index/btreecursor.cpp
+    src/storage/index/index_accessor.cpp
     src/storage/buffer/frame_directory.cpp
     src/storage/wal/lsn_allocator.cpp
     src/storage/wal/wal_record.cpp

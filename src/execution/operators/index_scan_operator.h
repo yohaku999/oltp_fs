@@ -5,29 +5,26 @@
 #include <string>
 #include <vector>
 
-class BufferPool;
-
+#include "catalog/table.h"
 #include "execution/comparison_predicate.h"
 #include "execution/operator.h"
-#include "storage/disk/pagedfile.h"
-#include "storage/index/btreecursor.h"
+#include "storage/index/index_accessor.h"
 
 class IndexScanOperator : public RidOperator {
  public:
-  IndexScanOperator(
-      BufferPool& pool, PagedFile index_file,
-      std::pair<BTreeCursor::Boundary, BTreeCursor::Boundary> boundaries,
-      std::vector<std::vector<BoundComparisonPredicate>>
-          index_ordered_predicates);
+  IndexScanOperator(IndexAccessor& index_accessor, IndexMetadata index,
+                    IndexAccessor::Boundaries boundaries,
+                    std::vector<std::vector<BoundComparisonPredicate>>
+                        index_ordered_predicates);
 
   void open() override;
   std::optional<RID> next() override;
   void close() override;
 
  private:
-  BufferPool& pool_;
-  PagedFile index_file_;
-  std::pair<BTreeCursor::Boundary, BTreeCursor::Boundary> boundaries_;
+  IndexAccessor& index_accessor_;
+  IndexMetadata index_;
+  IndexAccessor::Boundaries boundaries_;
   std::vector<std::vector<BoundComparisonPredicate>> index_ordered_predicates_;
   OperatorExecutionLogger logger_{"IndexScanOperator"};
   bool lookup_done_ = false;

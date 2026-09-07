@@ -32,6 +32,8 @@
 #include "parser/select_parser.h"
 #include "parser/update_parser.h"
 #include "storage/buffer/bufferpool.h"
+#include "storage/index/index_accessor.h"
+#include "storage/local_storage_manager.h"
 #include "storage/table_metadata_store.h"
 #include "storage/wal/wal.h"
 
@@ -234,6 +236,8 @@ Server::Server(int port) : port_(port) {
   wal_ = std::filesystem::exists(wal_path) ? WAL::openExisting(wal_path)
                                            : WAL::initializeNew(wal_path);
   pool_ = std::make_unique<BufferPool>(*wal_);
+  storage_ = std::make_unique<LocalStorageManager>();
+  index_accessor_ = std::make_unique<IndexAccessor>(*pool_, *storage_);
 }
 
 Server::~Server() = default;
@@ -385,6 +389,7 @@ std::string Server::handleRequest(const std::string& request) {
 
   if (operation == "resetBufferPool") {
     const BufferPoolResetResult result = pool_->resetForBenchmark();
+    storage_->flush();
     res["residentFramesCleared"] = result.resident_frames_cleared;
     res["dirtyFramesFlushed"] = result.dirty_frames_flushed;
     res["generation"] = result.generation;
@@ -436,7 +441,7 @@ std::string Server::handleRequest(const std::string& request) {
           const std::string rendered_sql =
               renderSqlWithParameters(sql_template, parameter_set);
           InsertParser parser(rendered_sql);
-          executor::insert(*pool_, table, parser);
+          executor::insert(*pool_, *storage_, *index_accessor_, table, parser);
           update_counts.push_back(1);
         }
 
@@ -446,7 +451,8 @@ std::string Server::handleRequest(const std::string& request) {
     }
   } else if (operation == "query" || leadingKeyword(sql) == "SELECT") {
     SelectParser parser(sql);
-    const std::vector<TypedRow> rows = executor::read(*pool_, parser);
+    const std::vector<TypedRow> rows =
+        executor::read(*pool_, *storage_, *index_accessor_, parser);
     res["columns"] = selectColumnNames(parser);
     res["rows"] = nlohmann::json::array();
     for (const TypedRow& row : rows) {
@@ -460,28 +466,28 @@ std::string Server::handleRequest(const std::string& request) {
     if (sql.find("CREATE INDEX") == 0 || sql.find("create index") == 0 ||
         sql.find("CREATE UNIQUE INDEX") == 0 ||
         sql.find("create unique index") == 0) {
-      executor::create_index(CreateIndexParser(sql));
+      executor::create_index(*storage_, CreateIndexParser(sql));
     } else {
-      executor::create_table(CreateTableParser(sql));
+      executor::create_table(*storage_, CreateTableParser(sql));
     }
     res["updateCount"] = 0;
   } else if (leadingKeyword(sql) == "DROP") {
-    executor::drop_table(DropTableParser(sql));
+    executor::drop_table(*storage_, DropTableParser(sql));
     res["updateCount"] = 0;
   } else if (leadingKeyword(sql) == "INSERT") {
     InsertParser parser(sql);
     Table table = TableMetadataStore::read(parser.extractTableName()).value();
-    executor::insert(*pool_, table, parser);
+    executor::insert(*pool_, *storage_, *index_accessor_, table, parser);
     res["updateCount"] = 1;
   } else if (leadingKeyword(sql) == "UPDATE") {
     UpdateParser parser(sql);
     Table table = TableMetadataStore::read(parser.extractTableName()).value();
-    executor::update(*pool_, table, parser);
+    executor::update(*pool_, *storage_, *index_accessor_, table, parser);
     res["updateCount"] = 1;
   } else if (leadingKeyword(sql) == "DELETE") {
     DeleteParser parser(sql);
     Table table = TableMetadataStore::read(parser.extractTableName()).value();
-    executor::remove(*pool_, table, parser);
+    executor::remove(*pool_, *storage_, *index_accessor_, table, parser);
     res["updateCount"] = 1;
   } else {
     res["ok"] = false;

@@ -8,16 +8,17 @@
 #include <string>
 #include <vector>
 
+#include "../test_database.h"
 #include "catalog/table.h"
-#include "planning/binder.h"
 #include "execution/comparison_predicate.h"
 #include "execution/executor.h"
 #include "parser/insert_parser.h"
+#include "planning/binder.h"
 #include "storage/buffer/bufferpool.h"
 #include "storage/disk/pagedfile.h"
+#include "storage/index/index_accessor.h"
 #include "storage/wal/wal.h"
 #include "stub_rid_operator.h"
-#include "../test_database.h"
 
 class HeapFetchOperatorTest : public ::testing::Test {
  protected:
@@ -25,6 +26,8 @@ class HeapFetchOperatorTest : public ::testing::Test {
   static constexpr const char* kWalPath = "heap_fetch_test_table.wal";
 
   std::unique_ptr<BufferPool> pool_;
+  std::unique_ptr<LocalStorageManager> storage_;
+  std::unique_ptr<IndexAccessor> index_accessor_;
   std::unique_ptr<WAL> wal_;
   std::unique_ptr<Table> table_;
   std::vector<RID> inserted_rids_;
@@ -34,6 +37,8 @@ class HeapFetchOperatorTest : public ::testing::Test {
     std::remove(kWalPath);
     wal_ = WAL::initializeNew(kWalPath);
     pool_ = std::make_unique<BufferPool>(*wal_);
+    storage_ = std::make_unique<LocalStorageManager>();
+    index_accessor_ = std::make_unique<IndexAccessor>(*pool_, *storage_);
     table_ = std::make_unique<Table>(test_db::createTable(
         kTableName, Schema(std::vector<Column>{
                         Column("id", Column::Type::Integer),
@@ -50,15 +55,16 @@ class HeapFetchOperatorTest : public ::testing::Test {
                           " VALUES (" + std::to_string(i) + ", '" +
                           char('a' + i - 1) + "', " + std::to_string(i * 5) +
                           ")");
-      executor::insert(*pool_, *table_, parser);
+      executor::insert(*pool_, *storage_, *index_accessor_, *table_, parser);
     }
     inserted_rids_ =
-        LocalStorageManager().openHeap(table_->heapFileName()).collectRids(
-            *pool_);
+        storage_->openHeap(table_->heapFileName()).collectRids(*pool_);
   }
 
   void TearDown() override {
     table_.reset();
+    index_accessor_.reset();
+    storage_.reset();
     pool_.reset();
     wal_.reset();
     test_db::removeTable(kTableName);
@@ -69,10 +75,9 @@ class HeapFetchOperatorTest : public ::testing::Test {
 TEST_F(HeapFetchOperatorTest, NoPredicates) {
   // Without predicates, should return all rows
   auto stub = std::make_unique<StubRidOperator>(inserted_rids_);
-  HeapFetchOperator op(std::move(stub), *pool_,
-                       LocalStorageManager().openHeap(table_->heapFileName()),
-                       table_->schema(),
-                       std::vector<BoundComparisonPredicate>());
+  HeapFetchOperator op(
+      std::move(stub), *pool_, storage_->openHeap(table_->heapFileName()),
+      table_->schema(), std::vector<BoundComparisonPredicate>());
 
   op.open();
   std::vector<int> values;
@@ -93,10 +98,9 @@ TEST_F(HeapFetchOperatorTest, SinglePredicate_EqualityMatch) {
   BoundComparisonPredicate pred{Op::Eq, BoundColumnRef{0, 0},
                                 FieldValue{Column::IntegerType(2)}};
   auto stub = std::make_unique<StubRidOperator>(inserted_rids_);
-  HeapFetchOperator op(std::move(stub), *pool_,
-                       LocalStorageManager().openHeap(table_->heapFileName()),
-                       table_->schema(),
-                       std::vector<BoundComparisonPredicate>{pred});
+  HeapFetchOperator op(
+      std::move(stub), *pool_, storage_->openHeap(table_->heapFileName()),
+      table_->schema(), std::vector<BoundComparisonPredicate>{pred});
 
   op.open();
   std::vector<int> values;
@@ -115,10 +119,9 @@ TEST_F(HeapFetchOperatorTest, SinglePredicate_RangeFilter) {
   BoundComparisonPredicate pred{Op::Ge, BoundColumnRef{0, 2},
                                 FieldValue{Column::IntegerType(12)}};
   auto stub = std::make_unique<StubRidOperator>(inserted_rids_);
-  HeapFetchOperator op(std::move(stub), *pool_,
-                       LocalStorageManager().openHeap(table_->heapFileName()),
-                       table_->schema(),
-                       std::vector<BoundComparisonPredicate>{pred});
+  HeapFetchOperator op(
+      std::move(stub), *pool_, storage_->openHeap(table_->heapFileName()),
+      table_->schema(), std::vector<BoundComparisonPredicate>{pred});
 
   op.open();
   std::vector<int> values;
@@ -140,10 +143,9 @@ TEST_F(HeapFetchOperatorTest, MultiplePredicate) {
   BoundComparisonPredicate pred2{Op::Lt, BoundColumnRef{0, 2},
                                  FieldValue{Column::IntegerType(18)}};
   auto stub = std::make_unique<StubRidOperator>(inserted_rids_);
-  HeapFetchOperator op(std::move(stub), *pool_,
-                       LocalStorageManager().openHeap(table_->heapFileName()),
-                       table_->schema(),
-                       std::vector<BoundComparisonPredicate>{pred1, pred2});
+  HeapFetchOperator op(
+      std::move(stub), *pool_, storage_->openHeap(table_->heapFileName()),
+      table_->schema(), std::vector<BoundComparisonPredicate>{pred1, pred2});
 
   op.open();
   std::vector<int> values;
@@ -162,10 +164,9 @@ TEST_F(HeapFetchOperatorTest, PredicateMatchesNone) {
   BoundComparisonPredicate pred{Op::Gt, BoundColumnRef{0, 0},
                                 FieldValue{Column::IntegerType(100)}};
   auto stub = std::make_unique<StubRidOperator>(inserted_rids_);
-  HeapFetchOperator op(std::move(stub), *pool_,
-                       LocalStorageManager().openHeap(table_->heapFileName()),
-                       table_->schema(),
-                       std::vector<BoundComparisonPredicate>{pred});
+  HeapFetchOperator op(
+      std::move(stub), *pool_, storage_->openHeap(table_->heapFileName()),
+      table_->schema(), std::vector<BoundComparisonPredicate>{pred});
 
   op.open();
   std::vector<int> values;

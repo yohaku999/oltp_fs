@@ -25,34 +25,46 @@ std::string LocalStorageManager::indexFileNameFor(
   return table_name + (suffix.empty() ? "" : "." + suffix) + ".index";
 }
 
-void LocalStorageManager::createHeap(const std::string& file_name) const {
+void LocalStorageManager::createHeap(const std::string& file_name) {
   if (exists(file_name)) {
     throw std::runtime_error("Heap file already exists: " + file_name);
   }
   std::filesystem::create_directories(root_);
-  HeapFile(pathFor(file_name)).initialize();
+  PagedFile& file =
+      files_.try_emplace(file_name, pathFor(file_name)).first->second;
+  HeapFile(file).initialize();
+  file.flush();
 }
 
-void LocalStorageManager::createIndex(const std::string& file_name) const {
+void LocalStorageManager::createIndex(const std::string& file_name) {
   if (exists(file_name)) {
     throw std::runtime_error("Index file already exists: " + file_name);
   }
   std::filesystem::create_directories(root_);
-  PagedFile index_file(pathFor(file_name));
+  PagedFile& index_file =
+      files_.try_emplace(file_name, pathFor(file_name)).first->second;
   std::array<char, Page::PAGE_SIZE_BYTE> index_root_buffer{};
   Page(index_root_buffer.data(), PageKind::LeafIndex,
        LeafIndexPage::NO_RIGHT_SIBLING, 0);
   index_file.writePageFromBuffer(0, index_root_buffer.data());
+  index_file.flush();
 }
 
-void LocalStorageManager::remove(const std::string& file_name) const {
+void LocalStorageManager::remove(const std::string& file_name) {
   const std::string path = pathFor(file_name);
+  files_.erase(file_name);
   PagedFile::invalidateCache(path);
   std::error_code error;
   std::filesystem::remove(path, error);
   if (error) {
-    throw std::runtime_error("failed to remove storage file: " + path +
-                             ": " + error.message());
+    throw std::runtime_error("failed to remove storage file: " + path + ": " +
+                             error.message());
+  }
+}
+
+void LocalStorageManager::flush() {
+  for (auto& entry : files_) {
+    entry.second.flush();
   }
 }
 
@@ -60,18 +72,19 @@ bool LocalStorageManager::exists(const std::string& file_name) const {
   return std::filesystem::exists(pathFor(file_name));
 }
 
-HeapFile LocalStorageManager::openHeap(const std::string& file_name) const {
-  if (!exists(file_name)) {
-    throw std::runtime_error("Heap file does not exist: " + file_name);
-  }
-  return HeapFile(pathFor(file_name));
+HeapFile LocalStorageManager::openHeap(const std::string& file_name) {
+  return HeapFile(open(file_name));
 }
 
-PagedFile LocalStorageManager::openIndex(const std::string& file_name) const {
-  if (!exists(file_name)) {
-    throw std::runtime_error("Index file does not exist: " + file_name);
+PagedFile& LocalStorageManager::open(const std::string& file_name) {
+  const auto opened = files_.find(file_name);
+  if (opened != files_.end()) {
+    return opened->second;
   }
-  return PagedFile(pathFor(file_name));
+  if (!exists(file_name)) {
+    throw std::runtime_error("Storage file does not exist: " + file_name);
+  }
+  return files_.try_emplace(file_name, pathFor(file_name)).first->second;
 }
 
 std::string LocalStorageManager::pathFor(const std::string& file_name) const {

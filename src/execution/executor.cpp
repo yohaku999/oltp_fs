@@ -12,7 +12,6 @@
 
 #include "../logging.h"
 #include "catalog/table.h"
-#include "storage/heap/heapfile.h"
 #include "execution/join_pipeline_builder.h"
 #include "execution/operator.h"
 #include "execution/operators/aggregate_operator.h"
@@ -33,8 +32,8 @@
 #include "planning/binder.h"
 #include "planning/physical/join_planner.h"
 #include "storage/buffer/bufferpool.h"
-#include "storage/disk/pagedfile.h"
-#include "storage/index/btreecursor.h"
+#include "storage/heap/heapfile.h"
+#include "storage/index/index_accessor.h"
 #include "storage/index/index_key.h"
 #include "storage/local_storage_manager.h"
 #include "storage/page/cell.h"
@@ -51,8 +50,7 @@ struct PredicateValueAndType {
 
 PredicateValueAndType extractValueAndType(
     const BoundComparisonPredicate& predicate) {
-  if (const auto* left_column =
-          std::get_if<BoundColumnRef>(&predicate.left)) {
+  if (const auto* left_column = std::get_if<BoundColumnRef>(&predicate.left)) {
     return {std::get<FieldValue>(predicate.right), left_column->type};
   }
   const auto& right_column = std::get<BoundColumnRef>(predicate.right);
@@ -61,29 +59,26 @@ PredicateValueAndType extractValueAndType(
 
 const BoundComparisonPredicate* findPredicateByOp(
     const std::vector<BoundComparisonPredicate>& predicates, Op op) {
-  const auto it = std::find_if(
-      predicates.begin(), predicates.end(),
-      [op](const BoundComparisonPredicate& predicate) {
-        return predicate.op == op;
-      });
+  const auto it = std::find_if(predicates.begin(), predicates.end(),
+                               [op](const BoundComparisonPredicate& predicate) {
+                                 return predicate.op == op;
+                               });
   return it == predicates.end() ? nullptr : &*it;
 }
 
-void appendBoundaryValue(BTreeCursor::Boundary& boundary,
+void appendBoundaryValue(IndexAccessor::Boundary& boundary,
                          const BoundComparisonPredicate& predicate,
                          bool is_inclusive) {
   const auto [value, column_type] = extractValueAndType(predicate);
-  boundary.composite_key +=
-      index_key::encodeFieldValue(value, column_type);
+  boundary.composite_key += index_key::encodeFieldValue(value, column_type);
   boundary.is_inclusive = is_inclusive;
 }
 
-std::pair<BTreeCursor::Boundary, BTreeCursor::Boundary>
-buildTraversalBoundaries(
+IndexAccessor::Boundaries buildTraversalBoundaries(
     const std::vector<std::vector<BoundComparisonPredicate>>&
         ordered_predicates) {
-  BTreeCursor::Boundary left_boundary{"", true};
-  BTreeCursor::Boundary right_boundary{"", true};
+  IndexAccessor::Boundary left_boundary{"", true};
+  IndexAccessor::Boundary right_boundary{"", true};
 
   for (size_t i = 0; i < ordered_predicates.size(); ++i) {
     const auto& predicates_for_key = ordered_predicates[i];
@@ -101,7 +96,7 @@ buildTraversalBoundaries(
     }
 
     for (const auto& [op, boundary, is_inclusive] :
-         std::array<std::tuple<Op, BTreeCursor::Boundary*, bool>, 4>{
+         std::array<std::tuple<Op, IndexAccessor::Boundary*, bool>, 4>{
              {{Op::Gt, &left_boundary, false},
               {Op::Ge, &left_boundary, true},
               {Op::Lt, &right_boundary, false},
@@ -175,20 +170,9 @@ TypedRow applyUpdateAssignments(
 
 std::optional<TypedRow> readTypedRow(BufferPool& pool, const Table& table,
                                      HeapFile& heap, const RID& rid) {
-  return heap.withRecord(
-      pool, rid, [&](RecordCellView record) {
-        return record.getTypedRow(table.schema());
-      });
-}
-
-std::vector<PagedFile> openIndexFiles(const LocalStorageManager& storage,
-                                      const Table& table) {
-  std::vector<PagedFile> files;
-  files.reserve(table.indexes().size());
-  for (const IndexMetadata& index : table.indexes()) {
-    files.push_back(storage.openIndex(index.file_name));
-  }
-  return files;
+  return heap.withRecord(pool, rid, [&](RecordCellView record) {
+    return record.getTypedRow(table.schema());
+  });
 }
 
 std::vector<std::string> encodeIndexKeys(const Table& table,
@@ -196,8 +180,8 @@ std::vector<std::string> encodeIndexKeys(const Table& table,
   std::vector<std::string> keys;
   keys.reserve(table.indexes().size());
   for (const IndexMetadata& index : table.indexes()) {
-    keys.push_back(index_key::encodeRow(
-        table.schema(), row, table.indexedColumnIndexes(index)));
+    keys.push_back(index_key::encodeRow(table.schema(), row,
+                                        table.indexedColumnIndexes(index)));
   }
   return keys;
 }
@@ -270,8 +254,8 @@ std::optional<IndexLookupPlan> planIndexLookup(
     const std::vector<BoundComparisonPredicate>& predicates) {
   std::optional<IndexLookupPlan> best_plan;
   std::size_t best_prefix_length = 0;
-  for (std::size_t index_position = 0;
-       index_position < table.indexes().size(); ++index_position) {
+  for (std::size_t index_position = 0; index_position < table.indexes().size();
+       ++index_position) {
     const IndexMetadata& index = table.indexes()[index_position];
     std::vector<std::vector<BoundComparisonPredicate>> ordered_predicates =
         prepareIndexKeyPredicates(predicates,
@@ -290,8 +274,7 @@ std::optional<IndexLookupPlan> planIndexLookup(
   return best_plan;
 }
 
-void appendInsertLog(BufferPool& pool, const RID& rid,
-                     const RecordCell& cell) {
+void appendInsertLog(BufferPool& pool, const RID& rid, const RecordCell& cell) {
   pool.wal().write(
       WALRecord::RecordType::INSERT, rid.heap_page_id,
       InsertRedoBody(rid.slot_id, cell.serializedBytes()).encode());
@@ -304,8 +287,7 @@ void appendDeleteLog(BufferPool& pool, const RID& rid,
       DeleteRedoBody(rid.slot_id, before.serializedBytes()).encode());
 }
 
-void appendUpdateLog(BufferPool& pool, const RID& rid,
-                     const RecordCell& before,
+void appendUpdateLog(BufferPool& pool, const RID& rid, const RecordCell& before,
                      const RecordCell& after) {
   UpdateRedoBody update_body{};
   update_body.offset = rid.slot_id;
@@ -319,9 +301,8 @@ void appendUpdateLog(BufferPool& pool, const RID& rid,
  * Collect RIDs of records narrowed by the given predicates.
  */
 std::vector<RID> collectRidsNarrowedByPredicates(
-    BufferPool& pool, const LocalStorageManager& storage, const Table& table,
-    HeapFile& heap,
-    const std::vector<UnboundComparisonPredicate>& predicates) {
+    BufferPool& pool, IndexAccessor& index_accessor, const Table& table,
+    HeapFile& heap, const std::vector<UnboundComparisonPredicate>& predicates) {
   const std::vector<BoundComparisonPredicate> bound_predicates =
       binder::bindPredicatesResolvableByTable(predicates, table);
   std::optional<IndexLookupPlan> index_plan =
@@ -334,12 +315,11 @@ std::vector<RID> collectRidsNarrowedByPredicates(
     return heap.collectRids(pool);
   }
 
-  const IndexMetadata& index =
-      table.indexes().at(index_plan->index_position);
-  IndexScanOperator scan(pool, storage.openIndex(index.file_name),
-                         buildTraversalBoundaries(
-                             index_plan->ordered_predicates),
-                         std::move(index_plan->ordered_predicates));
+  const IndexMetadata& index = table.indexes().at(index_plan->index_position);
+  IndexScanOperator scan(
+      index_accessor, index,
+      buildTraversalBoundaries(index_plan->ordered_predicates),
+      std::move(index_plan->ordered_predicates));
   return collectItems<RID>(scan);
 }
 
@@ -357,8 +337,7 @@ void updateMatchingRows(
     const std::vector<std::size_t> column_indexes =
         table.indexedColumnIndexes(index);
     indexed_column_indexes.insert(indexed_column_indexes.end(),
-                                  column_indexes.begin(),
-                                  column_indexes.end());
+                                  column_indexes.begin(), column_indexes.end());
   }
   for (const BoundUpdateAssignment& assignment : bound_assignments) {
     if (std::find(indexed_column_indexes.begin(), indexed_column_indexes.end(),
@@ -372,8 +351,7 @@ void updateMatchingRows(
   const std::vector<BoundComparisonPredicate> bound_predicates =
       binder::bindPredicates(predicates, {table});
   for (const RID& rid : rids) {
-    std::optional<TypedRow> original_row =
-        readTypedRow(pool, table, heap, rid);
+    std::optional<TypedRow> original_row = readTypedRow(pool, table, heap, rid);
     if (!original_row.has_value()) {
       continue;
     }
@@ -423,8 +401,7 @@ int removeMatchingRows(
     }
 
     before_record_removal(*row, rid);
-    const RecordCell before =
-        RecordSerializer::serialize(table.schema(), *row);
+    const RecordCell before = RecordSerializer::serialize(table.schema(), *row);
     heap.invalidateRecord(pool, rid);
     appendDeleteLog(pool, rid, before);
     ++removed_count;
@@ -433,7 +410,8 @@ int removeMatchingRows(
 }
 
 std::unique_ptr<TypedRowOperator> buildReadSource(
-    BufferPool& pool, const LocalStorageManager& storage, const Table& table,
+    BufferPool& pool, LocalStorageManager& storage,
+    IndexAccessor& index_accessor, const Table& table,
     std::vector<BoundComparisonPredicate> bound_predicates) {
   std::optional<IndexLookupPlan> index_plan =
       planIndexLookup(table, bound_predicates);
@@ -448,19 +426,15 @@ std::unique_ptr<TypedRowOperator> buildReadSource(
   }
 
   auto scan = std::make_unique<IndexScanOperator>(
-      pool,
-      storage.openIndex(
-          table.indexes().at(index_plan->index_position).file_name),
+      index_accessor, table.indexes().at(index_plan->index_position),
       buildTraversalBoundaries(index_plan->ordered_predicates),
       std::move(index_plan->ordered_predicates));
-  return std::make_unique<HeapFetchOperator>(std::move(scan), pool,
-                                             storage.openHeap(
-                                                 table.heapFileName()),
-                                             table.schema(),
-                                             bound_predicates);
+  return std::make_unique<HeapFetchOperator>(
+      std::move(scan), pool, storage.openHeap(table.heapFileName()),
+      table.schema(), bound_predicates);
 }
 
-void createIndexForTable(const LocalStorageManager& storage, Table& table,
+void createIndexForTable(LocalStorageManager& storage, Table& table,
                          const std::vector<std::string>& column_names,
                          bool is_unique) {
   const std::string index_file_name =
@@ -490,22 +464,24 @@ void createIndexForTable(const LocalStorageManager& storage, Table& table,
  *
  */
 std::vector<TypedRow> executor::read(BufferPool& pool,
+                                     LocalStorageManager& storage,
+                                     IndexAccessor& index_accessor,
                                      const SelectParser& parser) {
-  const LocalStorageManager storage;
   binder::BoundSelectQuery query = binder::bindSelectQuery(parser);
 
   std::vector<std::unique_ptr<TypedRowOperator>> sources;
   for (std::size_t table_index = 0; table_index < query.tables.size();
        ++table_index) {
-    std::unique_ptr<TypedRowOperator> source =
-        buildReadSource(pool, storage, query.tables[table_index],
-                        query.table_predicates[table_index]);
+    std::unique_ptr<TypedRowOperator> source = buildReadSource(
+        pool, storage, index_accessor, query.tables[table_index],
+        query.table_predicates[table_index]);
     sources.push_back(std::move(source));
   }
 
   physical::JoinPlan join_plan = physical::planJoin(query);
-  std::unique_ptr<TypedRowOperator> pipeline = execution::buildJoinPipeline(
-      std::move(join_plan), std::move(sources), pool, storage, query);
+  std::unique_ptr<TypedRowOperator> pipeline =
+      execution::buildJoinPipeline(std::move(join_plan), std::move(sources),
+                                   pool, storage, index_accessor, query);
 
   // filter
   pipeline =
@@ -549,8 +525,8 @@ std::vector<TypedRow> executor::read(BufferPool& pool,
   return items;
 }
 
-void executor::create_table(const CreateTableParser& parser) {
-  const LocalStorageManager storage;
+void executor::create_table(LocalStorageManager& storage,
+                            const CreateTableParser& parser) {
   const std::string table_name = parser.extractTableName();
   const std::string heap_file_name = storage.heapFileNameFor(table_name);
 
@@ -570,15 +546,15 @@ void executor::create_table(const CreateTableParser& parser) {
   }
 }
 
-void executor::create_index(const CreateIndexParser& parser) {
+void executor::create_index(LocalStorageManager& storage,
+                            const CreateIndexParser& parser) {
   const std::vector<std::string> column_names = parser.extractColumnNames();
-  const LocalStorageManager storage;
   Table table = TableMetadataStore::read(parser.extractTableName()).value();
   createIndexForTable(storage, table, column_names, parser.isUnique());
 }
 
-void executor::drop_table(const DropTableParser& parser) {
-  const LocalStorageManager storage;
+void executor::drop_table(LocalStorageManager& storage,
+                          const DropTableParser& parser) {
   const std::string table_name = parser.extractTableName();
   std::optional<Table> table = TableMetadataStore::read(table_name);
   if (!table.has_value()) {
@@ -594,20 +570,18 @@ void executor::drop_table(const DropTableParser& parser) {
   TableMetadataStore::remove(table_name);
 }
 
-void executor::insert(BufferPool& pool, Table& table,
+void executor::insert(BufferPool& pool, LocalStorageManager& storage,
+                      IndexAccessor& index_accessor, Table& table,
                       const InsertParser& parser) {
   const TypedRow row = parser.extractRow(table.schema());
-  const LocalStorageManager storage;
   HeapFile heap = storage.openHeap(table.heapFileName());
   const RecordCell cell = RecordSerializer::serialize(table.schema(), row);
-  std::vector<PagedFile> index_files = openIndexFiles(storage, table);
   const std::vector<std::string> index_keys = encodeIndexKeys(table, row);
-  for (std::size_t index = 0; index < index_files.size(); ++index) {
+  for (std::size_t index = 0; index < table.indexes().size(); ++index) {
     if (!table.indexes()[index].is_unique) {
       continue;
     }
-    if (BTreeCursor::containsKey(pool, index_files[index],
-                                 index_keys[index])) {
+    if (index_accessor.contains(table.indexes()[index], index_keys[index])) {
       throw std::runtime_error(
           "Duplicate key is not allowed for indexed table: " + table.name());
     }
@@ -615,33 +589,34 @@ void executor::insert(BufferPool& pool, Table& table,
 
   const RID inserted_rid = heap.insertRecord(pool, cell);
   appendInsertLog(pool, inserted_rid, cell);
-  for (std::size_t index = 0; index < index_files.size(); ++index) {
-    BTreeCursor::insertIntoIndex(pool, index_files[index], index_keys[index],
-                                 inserted_rid.heap_page_id,
-                                 inserted_rid.slot_id);
+  for (std::size_t index = 0; index < table.indexes().size(); ++index) {
+    index_accessor.insert(table.indexes()[index], index_keys[index],
+                          inserted_rid);
   }
+  storage.flush();
 }
 
-int executor::remove(BufferPool& pool, Table& table,
-                      const DeleteParser& parser) {
-  const LocalStorageManager storage;
+int executor::remove(BufferPool& pool, LocalStorageManager& storage,
+                     IndexAccessor& index_accessor, Table& table,
+                     const DeleteParser& parser) {
   HeapFile heap = storage.openHeap(table.heapFileName());
   const std::vector<UnboundComparisonPredicate> predicates =
       parser.extractComparisonPredicates(table.schema());
   const std::vector<RID> rids = collectRidsNarrowedByPredicates(
-      pool, storage, table, heap, predicates);
-  std::vector<PagedFile> index_files = openIndexFiles(storage, table);
-  return removeMatchingRows(
+      pool, index_accessor, table, heap, predicates);
+  const int removed_count = removeMatchingRows(
       pool, table, heap, rids, predicates,
       [&](const TypedRow& row, const RID& rid) {
-        for (std::size_t index = 0; index < index_files.size(); ++index) {
+        for (std::size_t index = 0; index < table.indexes().size(); ++index) {
           const std::vector<std::size_t> indexed_column_indexes =
               table.indexedColumnIndexes(table.indexes()[index]);
-          const std::string key = index_key::encodeRow(
-              table.schema(), row, indexed_column_indexes);
-          BTreeCursor::removeRID(pool, index_files[index], key, rid);
+          const std::string key =
+              index_key::encodeRow(table.schema(), row, indexed_column_indexes);
+          index_accessor.remove(table.indexes()[index], key, rid);
         }
       });
+  storage.flush();
+  return removed_count;
 }
 
 /**
@@ -652,24 +627,24 @@ int executor::remove(BufferPool& pool, Table& table,
  * fewer page-structure assumptions) without requiring in-place updates or
  * special-case split handling.
  */
-void executor::update(BufferPool& pool, Table& table,
+void executor::update(BufferPool& pool, LocalStorageManager& storage,
+                      IndexAccessor& index_accessor, Table& table,
                       const UpdateParser& parser) {
-  const LocalStorageManager storage;
   HeapFile heap = storage.openHeap(table.heapFileName());
   const std::vector<UnboundComparisonPredicate> predicates =
       parser.extractComparisonPredicates(table.schema());
   const std::vector<RID> rids = collectRidsNarrowedByPredicates(
-      pool, storage, table, heap, predicates);
-  std::vector<PagedFile> index_files = openIndexFiles(storage, table);
+      pool, index_accessor, table, heap, predicates);
   updateMatchingRows(
       pool, table, heap, rids, predicates, parser,
       [&](const TypedRow& original_row, const RID& old_rid,
-        const RID& new_rid) {
+          const RID& new_rid) {
         const std::vector<std::string> index_keys =
             encodeIndexKeys(table, original_row);
-        for (std::size_t index = 0; index < index_files.size(); ++index) {
-          BTreeCursor::replaceRID(pool, index_files[index], index_keys[index],
-                                  old_rid, new_rid);
+        for (std::size_t index = 0; index < table.indexes().size(); ++index) {
+          index_accessor.replaceRID(table.indexes()[index], index_keys[index],
+                                    old_rid, new_rid);
         }
       });
+  storage.flush();
 }

@@ -9,8 +9,8 @@
 #include "execution/operator.h"
 #include "planning/physical/join_plan.h"
 #include "schema/schema.h"
-#include "storage/disk/pagedfile.h"
 #include "storage/heap/heapfile.h"
+#include "storage/index/index_accessor.h"
 #include "tuple/field_value.h"
 
 class BufferPool;
@@ -19,8 +19,8 @@ class IndexLookupJoinOperator : public TypedRowOperator {
  public:
   IndexLookupJoinOperator(
       std::unique_ptr<TypedRowOperator> outer_child, BufferPool& pool,
-      HeapFile inner_heap_file, PagedFile inner_index_file,
-      Schema inner_schema,
+      HeapFile inner_heap_file, IndexAccessor& index_accessor,
+      IndexMetadata inner_index, Schema inner_schema,
       std::vector<std::size_t> indexed_column_indexes,
       std::vector<physical::JoinColumnPair> join_keys,
       std::vector<physical::ColumnValuePair> constant_keys,
@@ -37,7 +37,8 @@ class IndexLookupJoinOperator : public TypedRowOperator {
   std::unique_ptr<TypedRowOperator> outer_child_;
   BufferPool& pool_;
   HeapFile inner_heap_file_;
-  PagedFile inner_index_file_;
+  IndexAccessor& index_accessor_;
+  IndexMetadata inner_index_;
   Schema inner_schema_;
   std::vector<std::size_t> indexed_column_indexes_;
   std::vector<physical::JoinColumnPair> join_keys_;

@@ -11,6 +11,7 @@
 
 #include "storage/buffer/bufferpool.h"
 #include "storage/disk/pagedfile.h"
+#include "storage/heap/heapscan.h"
 #include "storage/index/rid.h"
 #include "storage/page/cell.h"
 #include "storage/page/page.h"
@@ -18,11 +19,10 @@
 #include "storage/wal/wal.h"
 #include "storage/wal/wal_body.h"
 #include "storage/wal/wal_record.h"
-#include "storage/heap/heapscan.h"
 
 class HeapFile {
  public:
-  explicit HeapFile(std::string path) : file_(std::move(path)) {}
+  explicit HeapFile(PagedFile file) : file_(std::move(file)) {}
 
   void initialize() {
     std::array<char, Page::PAGE_SIZE_BYTE> buffer{};
@@ -55,7 +55,8 @@ class HeapFile {
   }
 
   /**
-   * Inserts a record cell into the heap file and returns the RID of the inserted record.
+   * Inserts a record cell into the heap file and returns the RID of the
+   * inserted record.
    */
   RID insertRecord(BufferPool& pool, const RecordCell& cell) {
     const uint16_t insert_page_id = file_.getMaxPageID();
@@ -66,8 +67,7 @@ class HeapFile {
     if (auto rid = tryInsertIntoPage(pool, new_page_id, cell)) {
       return *rid;
     }
-    throw std::runtime_error(
-        "Record cell does not fit in an empty heap page.");
+    throw std::runtime_error("Record cell does not fit in an empty heap page.");
   }
 
   void invalidateRecord(BufferPool& pool, const RID& rid) {
@@ -88,8 +88,7 @@ class HeapFile {
       return std::nullopt;
     }
 
-    auto result =
-        std::forward<Reader>(reader)(RecordCellView(cell_start));
+    auto result = std::forward<Reader>(reader)(RecordCellView(cell_start));
     pool.unpinPage(page, file_);
     return result;
   }
@@ -119,5 +118,4 @@ class HeapFile {
     pool.unpinPage(page, file_);
     return rid;
   }
-
 };

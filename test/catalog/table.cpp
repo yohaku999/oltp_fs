@@ -9,24 +9,27 @@
 #include <memory>
 #include <nlohmann/json.hpp>
 
+#include "../test_database.h"
 #include "execution/executor.h"
-#include "storage/heap/heapfile.h"
 #include "parser/delete_parser.h"
 #include "parser/insert_parser.h"
 #include "parser/select_parser.h"
 #include "storage/buffer/bufferpool.h"
 #include "storage/disk/pagedfile.h"
+#include "storage/heap/heapfile.h"
+#include "storage/index/index_accessor.h"
 #include "storage/page/page.h"
 #include "storage/table_metadata_store.h"
 #include "storage/wal/wal.h"
 #include "storage/wal/wal_record.h"
-#include "../test_database.h"
 
 class TableTest : public ::testing::Test {
  protected:
   static constexpr const char* kTableName = "table_test_table";
   static constexpr const char* kWalPath = "table_test_table.wal";
   std::unique_ptr<BufferPool> pool_;
+  std::unique_ptr<LocalStorageManager> storage_;
+  std::unique_ptr<IndexAccessor> index_accessor_;
   std::unique_ptr<WAL> wal_;
 
   void SetUp() override {
@@ -35,9 +38,13 @@ class TableTest : public ::testing::Test {
     std::remove(kWalPath);
     wal_ = WAL::initializeNew(kWalPath);
     pool_ = std::make_unique<BufferPool>(*wal_);
+    storage_ = std::make_unique<LocalStorageManager>();
+    index_accessor_ = std::make_unique<IndexAccessor>(*pool_, *storage_);
   }
 
   void TearDown() override {
+    index_accessor_.reset();
+    storage_.reset();
     pool_.reset();
     wal_.reset();
     test_db::removeTable(kTableName);
@@ -104,15 +111,14 @@ class TableTest : public ::testing::Test {
 
 TEST_F(TableTest, ConstructionOnlyDefinesCatalogMetadata) {
   const std::string heap_file_name = "catalog_only_table.db";
-  const LocalStorageManager storage;
+  LocalStorageManager storage;
   if (storage.exists(heap_file_name)) {
     storage.remove(heap_file_name);
   }
 
-  Table table(
-      "catalog_only_table",
-      Schema(std::vector<Column>{Column("id", Column::Type::Integer)}),
-      heap_file_name);
+  Table table("catalog_only_table",
+              Schema(std::vector<Column>{Column("id", Column::Type::Integer)}),
+              heap_file_name);
 
   EXPECT_EQ(table.heapFileName(), heap_file_name);
   EXPECT_FALSE(storage.exists(heap_file_name));
@@ -126,8 +132,7 @@ TEST_F(TableTest, CatalogAndStorageCreateReadableTableBootstrap) {
   Table table = test_db::createTable(kTableName, schema);
 
   EXPECT_TRUE(test_db::isPersisted(kTableName));
-  EXPECT_TRUE(
-      LocalStorageManager().openHeap(table.heapFileName()).isPageIDUsed(0));
+  EXPECT_TRUE(storage_->openHeap(table.heapFileName()).isPageIDUsed(0));
 
   std::ifstream meta_file("data/table_test_table.meta.json");
   ASSERT_TRUE(meta_file.is_open());
@@ -149,8 +154,7 @@ TEST_F(TableTest, CatalogAndStorageCreateReadableTableBootstrap) {
   test_db::createIndex(table, {"id"}, true);
   EXPECT_TRUE(table.hasIndexForColumn("id"));
   ASSERT_TRUE(table.hasIndex());
-  PagedFile index_file =
-      LocalStorageManager().openIndex(table.indexes().front().file_name);
+  PagedFile index_file = storage_->open(table.indexes().front().file_name);
   EXPECT_EQ(index_file.getRootPageID(), 0u);
   EXPECT_TRUE(index_file.isPageIDUsed(0));
 
@@ -158,8 +162,7 @@ TEST_F(TableTest, CatalogAndStorageCreateReadableTableBootstrap) {
   ASSERT_TRUE(indexed_meta_file.is_open());
   indexed_meta_file >> metadata;
   ASSERT_EQ(metadata["indexes"].size(), 1u);
-  EXPECT_EQ(metadata["heapFileName"].get<std::string>(),
-            "table_test_table.db");
+  EXPECT_EQ(metadata["heapFileName"].get<std::string>(), "table_test_table.db");
   EXPECT_EQ(metadata["indexes"][0]["fileName"].get<std::string>(),
             "table_test_table.id.index");
   ASSERT_TRUE(metadata["indexes"][0].contains("indexedColumns"));
@@ -202,10 +205,10 @@ TEST_F(TableTest, InsertIndexFindRIDAndReadRowRoundTrip) {
   Table table = createSingleColumnTable();
 
   executor::insert(
-      *pool_, table,
+      *pool_, *storage_, *index_accessor_, table,
       InsertParser("INSERT INTO table_test_table VALUES (11, 'table-value')"));
   std::vector<TypedRow> rows = executor::read(
-      *pool_,
+      *pool_, *storage_, *index_accessor_,
       SelectParser("SELECT id, value FROM table_test_table WHERE id = 11"));
   ASSERT_EQ(rows.size(), 1u);
   TypedRow restored = rows.front();
@@ -233,8 +236,8 @@ TEST_F(TableTest, PersistsMultipleIndexesAndUniqueness) {
                                  Column("last_name", Column::Type::Varchar),
                                  Column("first_name", Column::Type::Varchar)}));
   table.addIndex(IndexMetadata{"table_test_table.id.index", {"id"}, true});
-  table.addIndex(IndexMetadata{"table_test_table.name.index",
-                               {"last_name", "first_name"}, false});
+  table.addIndex(IndexMetadata{
+      "table_test_table.name.index", {"last_name", "first_name"}, false});
   TableMetadataStore::write(table);
 
   ASSERT_EQ(table.indexes().size(), 2u);
@@ -271,7 +274,7 @@ TEST_F(TableTest, InsertHeapRecordWithWalWritesInsertRecord) {
   Table table = createSingleColumnTable();
 
   executor::insert(
-      *pool_, table,
+      *pool_, *storage_, *index_accessor_, table,
       InsertParser("INSERT INTO table_test_table VALUES (11, 'wal')"));
   wal_->flush();
 
@@ -289,9 +292,9 @@ TEST_F(TableTest, InvalidateHeapRecordWithWalWritesDeleteRecord) {
   Table table = createSingleColumnTable();
 
   executor::insert(
-      *pool_, table,
+      *pool_, *storage_, *index_accessor_, table,
       InsertParser("INSERT INTO table_test_table VALUES (22, 'gone')"));
-  executor::remove(*pool_, table,
+  executor::remove(*pool_, *storage_, *index_accessor_, table,
                    DeleteParser("DELETE FROM table_test_table WHERE id = 22"));
   wal_->flush();
 
@@ -307,7 +310,7 @@ TEST_F(TableTest, InvalidateHeapRecordWithWalWritesDeleteRecord) {
 
   EXPECT_TRUE(
       executor::read(
-          *pool_,
+          *pool_, *storage_, *index_accessor_,
           SelectParser("SELECT id, value FROM table_test_table WHERE id = 22"))
           .empty());
 }

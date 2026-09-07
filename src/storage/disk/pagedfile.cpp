@@ -72,6 +72,7 @@ void PagedFile::writeHeader() {
 
   state_->stream->clear();
   state_->header_dirty = false;
+  state_->stream_dirty = true;
 }
 
 /**
@@ -97,30 +98,34 @@ void PagedFile::initializeStreamIfClosed() {
   state_->stream = new_stream;
 }
 
+void PagedFile::flush() {
+  if (!state_) {
+    return;
+  }
+
+  if (!state_->header_dirty && !state_->stream_dirty) {
+    return;
+  }
+
+  if (state_->header_dirty) {
+    writeHeader();
+  }
+  if (state_->stream) {
+    state_->stream->flush();
+  }
+  state_->stream_dirty = false;
+}
+
 void PagedFile::close() {
   if (!state_) {
     return;
   }
 
-  if (state_->header_dirty) {
-    try {
-      writeHeader();
-    } catch (const std::exception& ex) {
-      dbfs_log::storage().error(
-          "failed to write header for file {} during close: {}", file_path_,
-          ex.what());
-      // fall through and still attempt to close the stream
-    } catch (...) {
-      dbfs_log::storage().error(
-          "failed to write header for file {} during close: unknown error",
-          file_path_);
-      // fall through and still attempt to close the stream
-    }
-  }
-
   if (state_.use_count() > 1) {
     return;
   }
+
+  flush();
 
   if (!state_->stream) {
     state_cache_.erase(file_path_);
@@ -128,7 +133,6 @@ void PagedFile::close() {
   }
 
   state_->stream->clear();
-  state_->stream->flush();
   state_->stream->close();
 
   if (state_->stream->fail()) {
@@ -187,9 +191,8 @@ PagedFile::PagedFile(const std::string& file_path) : file_path_(file_path) {
         std::make_unique<char[]>(PagedFile::HEADDER_SIZE_BYTE);
     state_->stream->read(header_buffer.get(), PagedFile::HEADDER_SIZE_BYTE);
     state_->max_page_id = readValue<uint16_t>(header_buffer.get());
-    state_->root_page_id =
-        readValue<uint16_t>(header_buffer.get() +
-                            PagedFile::MAX_PAGE_ID_SIZE_BYTE);
+    state_->root_page_id = readValue<uint16_t>(
+        header_buffer.get() + PagedFile::MAX_PAGE_ID_SIZE_BYTE);
     dbfs_log::storage().debug(
         "opened existing file: {}, max_page_id loaded from header: {}, "
         "root_page_id loaded from header: {}",
@@ -232,6 +235,7 @@ void PagedFile::writePageFromBuffer(uint16_t const page_id, char* buffer) {
   }
 
   state_->stream->clear();
+  state_->stream_dirty = true;
 }
 
 void PagedFile::readPageIntoBuffer(uint16_t const page_id, char* buffer) {

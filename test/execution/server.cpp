@@ -19,13 +19,15 @@
 #include <system_error>
 #include <thread>
 
+#include "../test_database.h"
 #include "catalog/table.h"
 #include "execution/executor.h"
 #include "parser/create_table_parser.h"
 #include "parser/insert_parser.h"
 #include "storage/buffer/bufferpool.h"
+#include "storage/index/index_accessor.h"
+#include "storage/local_storage_manager.h"
 #include "storage/wal/wal.h"
-#include "../test_database.h"
 
 namespace {
 
@@ -203,15 +205,17 @@ void waitForServerReady(int port) {
   throw std::runtime_error("server did not become ready");
 }
 
-void forceDataPagesToDisk(BufferPool& pool, WAL& wal) {
-  executor::create_table(CreateTableParser(
-      "CREATE TABLE evictor (id int NOT NULL, note varchar)"));
+void forceDataPagesToDisk(BufferPool& pool, LocalStorageManager& storage,
+                          IndexAccessor& index_accessor, WAL& wal) {
+  executor::create_table(
+      storage, CreateTableParser(
+                   "CREATE TABLE evictor (id int NOT NULL, note varchar)"));
   Table evictor = test_db::getTable("evictor");
   const std::string payload(256, 'x');
   wal.flush();
   for (int row_id = 0; row_id < 400; ++row_id) {
     executor::insert(
-        pool, evictor,
+        pool, storage, index_accessor, evictor,
         InsertParser("INSERT INTO evictor VALUES (" + std::to_string(row_id) +
                      ", '" + payload + "')"));
   }
@@ -225,19 +229,22 @@ void prepareTpccLikeDataset(const std::filesystem::path& temp_dir) {
 
   auto wal = WAL::initializeNew("server_setup.wal");
   auto pool = std::make_unique<BufferPool>(*wal);
+  auto storage = std::make_unique<LocalStorageManager>();
+  auto index_accessor = std::make_unique<IndexAccessor>(*pool, *storage);
 
+  executor::create_table(*storage,
+                         CreateTableParser("CREATE TABLE warehouse ("
+                                           "w_id int NOT NULL, "
+                                           "w_ytd decimal(12, 2) NOT NULL, "
+                                           "PRIMARY KEY (w_id))"));
+  executor::create_table(*storage,
+                         CreateTableParser("CREATE TABLE stock ("
+                                           "s_i_id int NOT NULL, "
+                                           "s_w_id int NOT NULL, "
+                                           "s_quantity int NOT NULL, "
+                                           "PRIMARY KEY (s_i_id, s_w_id))"));
   executor::create_table(
-      CreateTableParser("CREATE TABLE warehouse ("
-                        "w_id int NOT NULL, "
-                        "w_ytd decimal(12, 2) NOT NULL, "
-                        "PRIMARY KEY (w_id))"));
-  executor::create_table(
-      CreateTableParser("CREATE TABLE stock ("
-                        "s_i_id int NOT NULL, "
-                        "s_w_id int NOT NULL, "
-                        "s_quantity int NOT NULL, "
-                        "PRIMARY KEY (s_i_id, s_w_id))"));
-  executor::create_table(
+      *storage,
       CreateTableParser("CREATE TABLE order_line ("
                         "ol_o_id int NOT NULL, "
                         "ol_d_id int NOT NULL, "
@@ -250,13 +257,13 @@ void prepareTpccLikeDataset(const std::filesystem::path& temp_dir) {
   Table stock = test_db::getTable("stock");
   Table order_line = test_db::getTable("order_line");
 
-  executor::insert(*pool, warehouse,
+  executor::insert(*pool, *storage, *index_accessor, warehouse,
                    InsertParser("INSERT INTO warehouse VALUES (1, 300000.0)"));
 
   for (int item_id = 1; item_id <= kStockItems; ++item_id) {
     const int quantity = (item_id % 20) + 1;
     executor::insert(
-        *pool, stock,
+        *pool, *storage, *index_accessor, stock,
         InsertParser("INSERT INTO stock VALUES (" + std::to_string(item_id) +
                      ", 1, " + std::to_string(quantity) + ")"));
   }
@@ -268,7 +275,7 @@ void prepareTpccLikeDataset(const std::filesystem::path& temp_dir) {
           ((order_id - first_order_id) * kLinesPerOrder + line_number) %
               kStockItems +
           1;
-      executor::insert(*pool, order_line,
+      executor::insert(*pool, *storage, *index_accessor, order_line,
                        InsertParser("INSERT INTO order_line VALUES (" +
                                     std::to_string(order_id) + ", " +
                                     std::to_string(kDistrictId) + ", 1, " +
@@ -277,7 +284,9 @@ void prepareTpccLikeDataset(const std::filesystem::path& temp_dir) {
     }
   }
 
-  forceDataPagesToDisk(*pool, *wal);
+  forceDataPagesToDisk(*pool, *storage, *index_accessor, *wal);
+  index_accessor.reset();
+  storage.reset();
   pool.reset();
   wal.reset();
 }
@@ -381,11 +390,11 @@ TEST_F(ServerTest, CreatesUniqueSecondaryIndex) {
       nlohmann::json::array(), kConcurrentStockLevelTimeoutMs);
   ASSERT_TRUE(create_response.value("ok", false));
 
-  nlohmann::json index_response = sendRequest(
-      port_, "update",
-      "CREATE UNIQUE INDEX idx_unique_index_probe_email ON "
-      "unique_index_probe (email)",
-      nlohmann::json::array(), kConcurrentStockLevelTimeoutMs);
+  nlohmann::json index_response =
+      sendRequest(port_, "update",
+                  "CREATE UNIQUE INDEX idx_unique_index_probe_email ON "
+                  "unique_index_probe (email)",
+                  nlohmann::json::array(), kConcurrentStockLevelTimeoutMs);
   ASSERT_TRUE(index_response.value("ok", false));
 
   nlohmann::json first_insert = sendRequest(

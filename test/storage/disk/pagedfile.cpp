@@ -86,6 +86,27 @@ TEST_F(PagedFileTest, ReopenSharesUpdatedMetadataBeforeClose) {
   EXPECT_FALSE(reopened.isPageIDUsed(static_cast<uint16_t>(next + 1)));
 }
 
+TEST_F(PagedFileTest, FlushPersistsHeaderWhileFileRemainsOpen) {
+  constexpr uint16_t updated_root = 1;
+
+  const uint16_t next = file_p->allocateNextPageId();
+  file_p->setRootPageID(updated_root);
+  file_p->flush();
+
+  std::vector<char> header(PagedFile::HEADDER_SIZE_BYTE, 0);
+  std::ifstream input(test_file_path_, std::ios::binary);
+  input.read(header.data(), header.size());
+
+  uint16_t persisted_max = 0;
+  uint16_t persisted_root = 0;
+  std::memcpy(&persisted_max, header.data(), sizeof(persisted_max));
+  std::memcpy(&persisted_root, header.data() + PagedFile::MAX_PAGE_ID_SIZE_BYTE,
+              sizeof(persisted_root));
+
+  EXPECT_EQ(next, persisted_max);
+  EXPECT_EQ(updated_root, persisted_root);
+}
+
 TEST_F(PagedFileTest, TestPersistanceLoadFromHeader) {
   constexpr uint16_t persisted_max = 100;
   constexpr uint16_t persisted_root = 5;

@@ -7,6 +7,7 @@
 #include "planning/physical/join_plan.h"
 
 class BufferPool;
+class IndexAccessor;
 class LocalStorageManager;
 
 namespace binder {
@@ -18,7 +19,7 @@ namespace execution {
 std::unique_ptr<TypedRowOperator> buildJoinPipeline(
     physical::JoinPlan plan,
     std::vector<std::unique_ptr<TypedRowOperator>> sources, BufferPool& pool,
-    const LocalStorageManager& storage,
+    LocalStorageManager& storage, IndexAccessor& index_accessor,
     binder::BoundSelectQuery& query);
 
 }  // namespace execution

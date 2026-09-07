@@ -4,7 +4,6 @@
 #include <utility>
 #include <vector>
 
-#include "storage/index/btreecursor.h"
 #include "storage/index/index_key.h"
 
 namespace {
@@ -21,11 +20,11 @@ std::vector<BoundComparisonPredicate> flattenPredicates(
 }  // namespace
 
 IndexScanOperator::IndexScanOperator(
-    BufferPool& pool, PagedFile index_file,
-    std::pair<BTreeCursor::Boundary, BTreeCursor::Boundary> boundaries,
+    IndexAccessor& index_accessor, IndexMetadata index,
+    IndexAccessor::Boundaries boundaries,
     std::vector<std::vector<BoundComparisonPredicate>> index_ordered_predicates)
-    : pool_(pool),
-      index_file_(std::move(index_file)),
+    : index_accessor_(index_accessor),
+      index_(std::move(index)),
       boundaries_(boundaries),
       index_ordered_predicates_(std::move(index_ordered_predicates)),
       lookup_done_(false) {}
@@ -45,7 +44,7 @@ std::optional<RID> IndexScanOperator::next() {
     const std::vector<BoundComparisonPredicate> index_predicates =
         flattenPredicates(index_ordered_predicates_);
     const std::vector<IndexEntry> entries =
-        BTreeCursor::findEntries(pool_, index_file_, boundaries_, false);
+        index_accessor_.find(index_, boundaries_);
     current_rids_.clear();
     current_rids_.reserve(entries.size());
     for (const IndexEntry& entry : entries) {

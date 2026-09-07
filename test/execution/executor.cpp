@@ -11,6 +11,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "../test_database.h"
 #include "catalog/table.h"
 #include "parser/create_index_parser.h"
 #include "parser/create_table_parser.h"
@@ -22,8 +23,8 @@
 #include "storage/buffer/bufferpool.h"
 #include "storage/disk/pagedfile.h"
 #include "storage/index/btreecursor.h"
+#include "storage/index/index_accessor.h"
 #include "storage/wal/wal.h"
-#include "../test_database.h"
 
 class ExecutorTest : public ::testing::Test {
  protected:
@@ -31,6 +32,8 @@ class ExecutorTest : public ::testing::Test {
   static constexpr const char* kJoinTableName = "executor_join_table";
   static constexpr const char* kWalPath = "executor_test_table.wal";
   std::unique_ptr<BufferPool> pool_;
+  std::unique_ptr<LocalStorageManager> storage_;
+  std::unique_ptr<IndexAccessor> index_accessor_;
   std::unique_ptr<WAL> wal_;
   std::unique_ptr<Table> table_;
 
@@ -40,6 +43,8 @@ class ExecutorTest : public ::testing::Test {
     std::remove(kWalPath);
     wal_ = WAL::initializeNew(kWalPath);
     pool_ = std::make_unique<BufferPool>(*wal_);
+    storage_ = std::make_unique<LocalStorageManager>();
+    index_accessor_ = std::make_unique<IndexAccessor>(*pool_, *storage_);
     table_ = std::make_unique<Table>(test_db::createTable(
         kTableName,
         Schema(std::vector<Column>{Column("id", Column::Type::Integer),
@@ -51,14 +56,17 @@ class ExecutorTest : public ::testing::Test {
                                                   {103, "row_103"},
                                                   {104, "row_104"},
                                                   {107, "row_107"}}) {
-      executor::insert(*pool_, *table_,
-                       InsertParser("INSERT INTO executor_test_table VALUES (" +
-                                    std::to_string(key) + ", '" + value + "')"));
+      executor::insert(
+          *pool_, *storage_, *index_accessor_, *table_,
+          InsertParser("INSERT INTO executor_test_table VALUES (" +
+                       std::to_string(key) + ", '" + value + "')"));
     }
   }
 
   void TearDown() override {
     table_.reset();
+    index_accessor_.reset();
+    storage_.reset();
     pool_.reset();
     wal_.reset();
     test_db::removeTable(kTableName);
@@ -85,13 +93,13 @@ class ExecutorTest : public ::testing::Test {
   }
 
   void insertPrimaryRow(int key, const std::string& value) {
-    executor::insert(*pool_, *table_,
+    executor::insert(*pool_, *storage_, *index_accessor_, *table_,
                      InsertParser("INSERT INTO executor_test_table VALUES (" +
                                   std::to_string(key) + ", '" + value + "')"));
   }
 
   void insertJoinRow(Table& join_table, int key, const std::string& label) {
-    executor::insert(*pool_, join_table,
+    executor::insert(*pool_, *storage_, *index_accessor_, join_table,
                      InsertParser("INSERT INTO executor_join_table VALUES (" +
                                   std::to_string(key) + ", '" + label + "')"));
   }
@@ -107,13 +115,14 @@ TEST_F(ExecutorTest, DropTableIfExistsIgnoresMissingTable) {
   const std::string table_name = uniqueTableName("missing_table");
 
   EXPECT_NO_THROW(executor::drop_table(
-      DropTableParser("DROP TABLE IF EXISTS " + table_name)));
+      *storage_, DropTableParser("DROP TABLE IF EXISTS " + table_name)));
 }
 
 TEST_F(ExecutorTest, DropTableRejectsMissingTableWithoutIfExists) {
   const std::string table_name = uniqueTableName("missing_table");
 
-  EXPECT_THROW(executor::drop_table(DropTableParser("DROP TABLE " + table_name)),
+  EXPECT_THROW(executor::drop_table(
+                   *storage_, DropTableParser("DROP TABLE " + table_name)),
                std::runtime_error);
 }
 
@@ -124,7 +133,7 @@ TEST_F(ExecutorTest, ReadSelectReturnsCartesianProductForMultipleTables) {
   insertJoinRow(join_table, 2, "beta");
 
   std::vector<TypedRow> rows = executor::read(
-      *pool_,
+      *pool_, *storage_, *index_accessor_,
       SelectParser("SELECT * FROM executor_test_table, executor_join_table"));
 
   ASSERT_EQ(rows.size(), 8u);
@@ -155,7 +164,7 @@ TEST_F(ExecutorTest, ReadSelectAppliesWhereFiltersAcrossJoinedRows) {
   insertJoinRow(join_table, 2, "beta");
 
   std::vector<TypedRow> rows = executor::read(
-      *pool_,
+      *pool_, *storage_, *index_accessor_,
       SelectParser("SELECT * FROM executor_test_table, executor_join_table "
                    "WHERE executor_test_table.id = 101 "
                    "AND executor_join_table.code = 2"));
@@ -175,7 +184,7 @@ TEST_F(ExecutorTest, ReadSelectAppliesColumnComparisonWhereOnJoinedRows) {
   insertJoinRow(join_table, 999, "beta");
 
   std::vector<TypedRow> rows = executor::read(
-      *pool_,
+      *pool_, *storage_, *index_accessor_,
       SelectParser("SELECT * FROM executor_test_table, executor_join_table "
                    "WHERE executor_test_table.id = executor_join_table.code"));
 
@@ -194,7 +203,7 @@ TEST_F(ExecutorTest, ReadSelectAppliesOrderByBeforeProjectionOnJoinedRows) {
   insertJoinRow(join_table, 2, "beta");
 
   std::vector<TypedRow> rows = executor::read(
-      *pool_,
+      *pool_, *storage_, *index_accessor_,
       SelectParser(
           "SELECT value, code FROM executor_test_table, executor_join_table "
           "WHERE id = 101 ORDER BY code DESC"));
@@ -219,12 +228,13 @@ TEST_F(ExecutorTest, InsertParsesZeroIntegerLiteralValues) {
                                    Column("note", Column::Type::Varchar)}));
 
     executor::insert(
-        *pool_, zero_table,
+        *pool_, *storage_, *index_accessor_, zero_table,
         InsertParser("INSERT INTO " + table_name + " VALUES (7, 0, 'ok')"));
 
     std::vector<TypedRow> rows =
-        executor::read(*pool_, SelectParser("SELECT id, count, note FROM " +
-                                            table_name + " WHERE id = 7"));
+        executor::read(*pool_, *storage_, *index_accessor_,
+                       SelectParser("SELECT id, count, note FROM " +
+                                    table_name + " WHERE id = 7"));
 
     ASSERT_EQ(rows.size(), 1u);
     ASSERT_EQ(rows[0].values.size(), 3u);
@@ -233,7 +243,7 @@ TEST_F(ExecutorTest, InsertParsesZeroIntegerLiteralValues) {
     EXPECT_EQ(std::get<Column::VarcharType>(rows[0].values[2]), "ok");
   }
 
-  test_db::removeTable(table_name);
+  executor::drop_table(*storage_, DropTableParser("DROP TABLE " + table_name));
 }
 
 TEST_F(ExecutorTest, ReadSelectHandlesThousandByThousandJoinInput) {
@@ -254,7 +264,7 @@ TEST_F(ExecutorTest, ReadSelectHandlesThousandByThousandJoinInput) {
   }
 
   std::vector<TypedRow> rows = executor::read(
-      *pool_,
+      *pool_, *storage_, *index_accessor_,
       SelectParser("SELECT id FROM executor_test_table, executor_join_table "
                    "WHERE executor_test_table.id = executor_join_table.code "
                    "ORDER BY id DESC LIMIT 5"));
@@ -268,8 +278,9 @@ TEST_F(ExecutorTest, ReadSelectHandlesThousandByThousandJoinInput) {
 }
 
 TEST_F(ExecutorTest, ReadSelectReturnsSumForIntegerColumn) {
-  std::vector<TypedRow> rows = executor::read(
-      *pool_, SelectParser("SELECT SUM(id) FROM executor_test_table"));
+  std::vector<TypedRow> rows =
+      executor::read(*pool_, *storage_, *index_accessor_,
+                     SelectParser("SELECT SUM(id) FROM executor_test_table"));
 
   ASSERT_EQ(rows.size(), 1u);
   ASSERT_EQ(rows[0].values.size(), 1u);
@@ -278,7 +289,7 @@ TEST_F(ExecutorTest, ReadSelectReturnsSumForIntegerColumn) {
 
 TEST_F(ExecutorTest, ReadSelectReturnsFilteredSumForIntegerColumn) {
   std::vector<TypedRow> rows = executor::read(
-      *pool_,
+      *pool_, *storage_, *index_accessor_,
       SelectParser("SELECT SUM(id) FROM executor_test_table WHERE id >= 104"));
 
   ASSERT_EQ(rows.size(), 1u);
@@ -287,8 +298,9 @@ TEST_F(ExecutorTest, ReadSelectReturnsFilteredSumForIntegerColumn) {
 }
 
 TEST_F(ExecutorTest, ReadSelectReturnsMaxForIntegerColumn) {
-  std::vector<TypedRow> rows = executor::read(
-      *pool_, SelectParser("SELECT MAX(id) FROM executor_test_table"));
+  std::vector<TypedRow> rows =
+      executor::read(*pool_, *storage_, *index_accessor_,
+                     SelectParser("SELECT MAX(id) FROM executor_test_table"));
 
   ASSERT_EQ(rows.size(), 1u);
   ASSERT_EQ(rows[0].values.size(), 1u);
@@ -298,7 +310,8 @@ TEST_F(ExecutorTest, ReadSelectReturnsMaxForIntegerColumn) {
 TEST_F(ExecutorTest, ReadSelectReturnsSumForDoubleColumn) {
   const std::string table_name = uniqueTableName("sum_double_test");
 
-  executor::create_table(CreateTableParser("CREATE TABLE " + table_name +
+  executor::create_table(*storage_,
+                         CreateTableParser("CREATE TABLE " + table_name +
                                            " ("
                                            "id int NOT NULL, "
                                            "amount decimal(12, 2) NOT NULL, "
@@ -307,28 +320,30 @@ TEST_F(ExecutorTest, ReadSelectReturnsSumForDoubleColumn) {
   {
     Table table = test_db::getTable(table_name);
     executor::insert(
-        *pool_, table,
+        *pool_, *storage_, *index_accessor_, table,
         InsertParser("INSERT INTO " + table_name + " VALUES (1, 10.5)"));
     executor::insert(
-        *pool_, table,
+        *pool_, *storage_, *index_accessor_, table,
         InsertParser("INSERT INTO " + table_name + " VALUES (2, 2.25)"));
   }
 
-  std::vector<TypedRow> rows = executor::read(
-      *pool_, SelectParser("SELECT SUM(amount) FROM " + table_name));
+  std::vector<TypedRow> rows =
+      executor::read(*pool_, *storage_, *index_accessor_,
+                     SelectParser("SELECT SUM(amount) FROM " + table_name));
 
   ASSERT_EQ(rows.size(), 1u);
   ASSERT_EQ(rows[0].values.size(), 1u);
   ASSERT_TRUE(std::holds_alternative<Column::DoubleType>(rows[0].values[0]));
   EXPECT_DOUBLE_EQ(std::get<Column::DoubleType>(rows[0].values[0]), 12.75);
 
-  executor::drop_table(DropTableParser("DROP TABLE " + table_name));
+  executor::drop_table(*storage_, DropTableParser("DROP TABLE " + table_name));
   EXPECT_FALSE(test_db::isPersisted(table_name));
 }
 
 TEST_F(ExecutorTest, ReadSelectReturnsCountStar) {
-  std::vector<TypedRow> rows = executor::read(
-      *pool_, SelectParser("SELECT COUNT(*) FROM executor_test_table"));
+  std::vector<TypedRow> rows =
+      executor::read(*pool_, *storage_, *index_accessor_,
+                     SelectParser("SELECT COUNT(*) FROM executor_test_table"));
 
   ASSERT_EQ(rows.size(), 1u);
   ASSERT_EQ(rows[0].values.size(), 1u);
@@ -337,8 +352,9 @@ TEST_F(ExecutorTest, ReadSelectReturnsCountStar) {
 
 TEST_F(ExecutorTest, ReadSelectReturnsFilteredCountForColumn) {
   std::vector<TypedRow> rows = executor::read(
-      *pool_, SelectParser(
-                  "SELECT COUNT(id) FROM executor_test_table WHERE id >= 104"));
+      *pool_, *storage_, *index_accessor_,
+      SelectParser(
+          "SELECT COUNT(id) FROM executor_test_table WHERE id >= 104"));
 
   ASSERT_EQ(rows.size(), 1u);
   ASSERT_EQ(rows[0].values.size(), 1u);
@@ -348,7 +364,8 @@ TEST_F(ExecutorTest, ReadSelectReturnsFilteredCountForColumn) {
 TEST_F(ExecutorTest, ReadSelectCountIgnoresNullValues) {
   const std::string table_name = uniqueTableName("count_nullable_test");
 
-  executor::create_table(CreateTableParser("CREATE TABLE " + table_name +
+  executor::create_table(*storage_,
+                         CreateTableParser("CREATE TABLE " + table_name +
                                            " ("
                                            "id int, "
                                            "note varchar)"));
@@ -356,27 +373,29 @@ TEST_F(ExecutorTest, ReadSelectCountIgnoresNullValues) {
   {
     Table table = test_db::getTable(table_name);
     executor::insert(
-        *pool_, table,
+        *pool_, *storage_, *index_accessor_, table,
         InsertParser("INSERT INTO " + table_name + " VALUES (1, 'alpha')"));
     executor::insert(
-        *pool_, table,
+        *pool_, *storage_, *index_accessor_, table,
         InsertParser("INSERT INTO " + table_name + " (id) VALUES (2)"));
   }
 
-  std::vector<TypedRow> rows = executor::read(
-      *pool_, SelectParser("SELECT COUNT(note) FROM " + table_name));
+  std::vector<TypedRow> rows =
+      executor::read(*pool_, *storage_, *index_accessor_,
+                     SelectParser("SELECT COUNT(note) FROM " + table_name));
   ASSERT_EQ(rows.size(), 1u);
   ASSERT_EQ(rows[0].values.size(), 1u);
   EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[0]), 1);
 
-  executor::drop_table(DropTableParser("DROP TABLE " + table_name));
+  executor::drop_table(*storage_, DropTableParser("DROP TABLE " + table_name));
   EXPECT_FALSE(test_db::isPersisted(table_name));
 }
 
 TEST_F(ExecutorTest, ReadSelectReturnsCountDistinctForSingleColumn) {
   const std::string table_name = uniqueTableName("count_distinct_test");
 
-  executor::create_table(CreateTableParser("CREATE TABLE " + table_name +
+  executor::create_table(*storage_,
+                         CreateTableParser("CREATE TABLE " + table_name +
                                            " ("
                                            "id int, "
                                            "note varchar)"));
@@ -384,26 +403,27 @@ TEST_F(ExecutorTest, ReadSelectReturnsCountDistinctForSingleColumn) {
   {
     Table table = test_db::getTable(table_name);
     executor::insert(
-        *pool_, table,
+        *pool_, *storage_, *index_accessor_, table,
         InsertParser("INSERT INTO " + table_name + " VALUES (1, 'alpha')"));
     executor::insert(
-        *pool_, table,
+        *pool_, *storage_, *index_accessor_, table,
         InsertParser("INSERT INTO " + table_name + " VALUES (2, 'alpha')"));
     executor::insert(
-        *pool_, table,
+        *pool_, *storage_, *index_accessor_, table,
         InsertParser("INSERT INTO " + table_name + " VALUES (3, 'beta')"));
     executor::insert(
-        *pool_, table,
+        *pool_, *storage_, *index_accessor_, table,
         InsertParser("INSERT INTO " + table_name + " (id) VALUES (4)"));
   }
 
   std::vector<TypedRow> rows = executor::read(
-      *pool_, SelectParser("SELECT COUNT(DISTINCT note) FROM " + table_name));
+      *pool_, *storage_, *index_accessor_,
+      SelectParser("SELECT COUNT(DISTINCT note) FROM " + table_name));
   ASSERT_EQ(rows.size(), 1u);
   ASSERT_EQ(rows[0].values.size(), 1u);
   EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[0]), 2);
 
-  executor::drop_table(DropTableParser("DROP TABLE " + table_name));
+  executor::drop_table(*storage_, DropTableParser("DROP TABLE " + table_name));
   EXPECT_FALSE(test_db::isPersisted(table_name));
 }
 
@@ -413,7 +433,7 @@ TEST_F(ExecutorTest, InsertAndGetMultipleRecords) {
       {1, "value1"}, {2, "value-two"}, {10, "value-003"}};
 
   for (const auto& record : records) {
-    executor::insert(*pool_, table,
+    executor::insert(*pool_, *storage_, *index_accessor_, table,
                      InsertParser("INSERT INTO executor_test_table VALUES (" +
                                   std::to_string(record.first) + ", '" +
                                   record.second + "')"));
@@ -421,7 +441,7 @@ TEST_F(ExecutorTest, InsertAndGetMultipleRecords) {
 
   for (const auto& record : records) {
     std::vector<TypedRow> rows = executor::read(
-        *pool_,
+        *pool_, *storage_, *index_accessor_,
         SelectParser("SELECT id, value FROM executor_test_table WHERE id = " +
                      std::to_string(record.first)));
     ASSERT_EQ(rows.size(), 1u);
@@ -433,12 +453,12 @@ TEST_F(ExecutorTest, InsertAndGetMultipleRecords) {
 TEST_F(ExecutorTest, InsertAndReadTypedRow) {
   Table& table = *table_;
   executor::insert(
-      *pool_, table,
+      *pool_, *storage_, *index_accessor_, table,
       InsertParser(
           "INSERT INTO executor_test_table VALUES (11, 'typed-value')"));
 
   std::vector<TypedRow> rows = executor::read(
-      *pool_,
+      *pool_, *storage_, *index_accessor_,
       SelectParser("SELECT id, value FROM executor_test_table WHERE id = 11"));
   ASSERT_EQ(rows.size(), 1u);
   TypedRow restored = rows.front();
@@ -450,12 +470,12 @@ TEST_F(ExecutorTest, InsertAndReadTypedRow) {
 TEST_F(ExecutorTest, InsertMapsExplicitColumnListToSchemaOrder) {
   Table& table = *table_;
 
-  executor::insert(*pool_, table,
+  executor::insert(*pool_, *storage_, *index_accessor_, table,
                    InsertParser("INSERT INTO executor_test_table (value, id) "
                                 "VALUES ('reordered', 11)"));
 
   std::vector<TypedRow> rows = executor::read(
-      *pool_,
+      *pool_, *storage_, *index_accessor_,
       SelectParser("SELECT id, value FROM executor_test_table WHERE id = 11"));
   ASSERT_EQ(rows.size(), 1u);
   ASSERT_EQ(rows[0].values.size(), 2u);
@@ -466,7 +486,8 @@ TEST_F(ExecutorTest, InsertMapsExplicitColumnListToSchemaOrder) {
 TEST_F(ExecutorTest, InsertFillsOmittedColumnsWithNull) {
   const std::string table_name = uniqueTableName("partial_insert_test");
 
-  executor::create_table(CreateTableParser("CREATE TABLE " + table_name +
+  executor::create_table(*storage_,
+                         CreateTableParser("CREATE TABLE " + table_name +
                                            " ("
                                            "id int, "
                                            "note varchar)"));
@@ -474,25 +495,26 @@ TEST_F(ExecutorTest, InsertFillsOmittedColumnsWithNull) {
   {
     Table table = test_db::getTable(table_name);
     executor::insert(
-        *pool_, table,
+        *pool_, *storage_, *index_accessor_, table,
         InsertParser("INSERT INTO " + table_name + " (id) VALUES (7)"));
   }
 
   std::vector<TypedRow> rows = executor::read(
-      *pool_,
+      *pool_, *storage_, *index_accessor_,
       SelectParser("SELECT id, note FROM " + table_name + " WHERE id = 7"));
   ASSERT_EQ(rows.size(), 1u);
   ASSERT_EQ(rows[0].values.size(), 2u);
   EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[0]), 7);
   EXPECT_TRUE(std::holds_alternative<std::monostate>(rows[0].values[1]));
 
-  executor::drop_table(DropTableParser("DROP TABLE " + table_name));
+  executor::drop_table(*storage_, DropTableParser("DROP TABLE " + table_name));
   EXPECT_FALSE(test_db::isPersisted(table_name));
 }
 
 TEST_F(ExecutorTest, ReadSelectUsesIndexedPredicatePath) {
   SelectParser parser("SELECT value FROM executor_test_table WHERE id = 104");
-  std::vector<TypedRow> rows = executor::read(*pool_, parser);
+  std::vector<TypedRow> rows =
+      executor::read(*pool_, *storage_, *index_accessor_, parser);
 
   ASSERT_EQ(rows.size(), 1u);
   ASSERT_EQ(rows[0].values.size(), 1u);
@@ -503,7 +525,8 @@ TEST_F(ExecutorTest, ReadSelectUsesIndexedPredicatePath) {
 TEST_F(ExecutorTest, ReadSelectFallsBackToSeqScanForNonIndexedPredicate) {
   SelectParser parser(
       "SELECT value FROM executor_test_table WHERE value = 'row_104'");
-  std::vector<TypedRow> rows = executor::read(*pool_, parser);
+  std::vector<TypedRow> rows =
+      executor::read(*pool_, *storage_, *index_accessor_, parser);
 
   ASSERT_EQ(rows.size(), 1u);
   ASSERT_EQ(rows[0].values.size(), 1u);
@@ -513,7 +536,8 @@ TEST_F(ExecutorTest, ReadSelectFallsBackToSeqScanForNonIndexedPredicate) {
 
 TEST_F(ExecutorTest, ReadSelectProjectsIndexedRowForE2ECase) {
   SelectParser parser("SELECT value FROM executor_test_table WHERE id = 104");
-  std::vector<TypedRow> rows = executor::read(*pool_, parser);
+  std::vector<TypedRow> rows =
+      executor::read(*pool_, *storage_, *index_accessor_, parser);
 
   ASSERT_EQ(rows.size(), 1u);
   ASSERT_EQ(rows[0].values.size(), 1u);
@@ -524,7 +548,8 @@ TEST_F(ExecutorTest, ReadSelectProjectsIndexedRowForE2ECase) {
 TEST_F(ExecutorTest, ReadSelectUsesSeqScanForE2ECase) {
   SelectParser parser(
       "SELECT value FROM executor_test_table WHERE value = 'row_104'");
-  std::vector<TypedRow> rows = executor::read(*pool_, parser);
+  std::vector<TypedRow> rows =
+      executor::read(*pool_, *storage_, *index_accessor_, parser);
 
   ASSERT_EQ(rows.size(), 1u);
   ASSERT_EQ(rows[0].values.size(), 1u);
@@ -534,7 +559,8 @@ TEST_F(ExecutorTest, ReadSelectUsesSeqScanForE2ECase) {
 
 TEST_F(ExecutorTest, ReadSelectAppliesDefaultAscendingOrderBy) {
   SelectParser parser("SELECT id FROM executor_test_table ORDER BY id");
-  std::vector<TypedRow> rows = executor::read(*pool_, parser);
+  std::vector<TypedRow> rows =
+      executor::read(*pool_, *storage_, *index_accessor_, parser);
 
   ASSERT_EQ(rows.size(), 4u);
   EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[0]), 101);
@@ -545,7 +571,8 @@ TEST_F(ExecutorTest, ReadSelectAppliesDefaultAscendingOrderBy) {
 
 TEST_F(ExecutorTest, ReadSelectAppliesDescendingOrderByBeforeProjection) {
   SelectParser parser("SELECT id FROM executor_test_table ORDER BY value DESC");
-  std::vector<TypedRow> rows = executor::read(*pool_, parser);
+  std::vector<TypedRow> rows =
+      executor::read(*pool_, *storage_, *index_accessor_, parser);
 
   ASSERT_EQ(rows.size(), 4u);
   EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[0]), 107);
@@ -556,7 +583,8 @@ TEST_F(ExecutorTest, ReadSelectAppliesDescendingOrderByBeforeProjection) {
 
 TEST_F(ExecutorTest, ReadSelectAppliesExplicitAscendingOrderBy) {
   SelectParser parser("SELECT id FROM executor_test_table ORDER BY id ASC");
-  std::vector<TypedRow> rows = executor::read(*pool_, parser);
+  std::vector<TypedRow> rows =
+      executor::read(*pool_, *storage_, *index_accessor_, parser);
 
   ASSERT_EQ(rows.size(), 4u);
   EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[0]), 101);
@@ -568,7 +596,8 @@ TEST_F(ExecutorTest, ReadSelectAppliesExplicitAscendingOrderBy) {
 TEST_F(ExecutorTest, ReadSelectAppliesLimitWithoutOrderBy) {
   SelectParser parser(
       "SELECT id FROM executor_test_table WHERE id >= 103 LIMIT 2");
-  std::vector<TypedRow> rows = executor::read(*pool_, parser);
+  std::vector<TypedRow> rows =
+      executor::read(*pool_, *storage_, *index_accessor_, parser);
 
   ASSERT_EQ(rows.size(), 2u);
   EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[0]), 103);
@@ -578,7 +607,8 @@ TEST_F(ExecutorTest, ReadSelectAppliesLimitWithoutOrderBy) {
 TEST_F(ExecutorTest, ReadSelectAppliesLimitAfterOrderBy) {
   SelectParser parser(
       "SELECT id FROM executor_test_table ORDER BY id DESC LIMIT 2");
-  std::vector<TypedRow> rows = executor::read(*pool_, parser);
+  std::vector<TypedRow> rows =
+      executor::read(*pool_, *storage_, *index_accessor_, parser);
 
   ASSERT_EQ(rows.size(), 2u);
   EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[0]), 107);
@@ -589,15 +619,15 @@ TEST_F(ExecutorTest, InsertDeleteThenFailToRead) {
   Table& table = *table_;
   const int key = 99;
   executor::insert(
-      *pool_, table,
+      *pool_, *storage_, *index_accessor_, table,
       InsertParser("INSERT INTO executor_test_table VALUES (99, 'transient')"));
 
-  executor::remove(*pool_, table,
+  executor::remove(*pool_, *storage_, *index_accessor_, table,
                    DeleteParser("DELETE FROM executor_test_table WHERE id = " +
                                 std::to_string(key)));
 
   std::vector<TypedRow> rows = executor::read(
-      *pool_,
+      *pool_, *storage_, *index_accessor_,
       SelectParser("SELECT id, value FROM executor_test_table WHERE id = " +
                    std::to_string(key)));
   EXPECT_TRUE(rows.empty());
@@ -607,30 +637,30 @@ TEST_F(ExecutorTest, DeleteRemovesAllRowsMatchingIndexedPredicate) {
   Table& table = *table_;
 
   executor::remove(
-      *pool_, table,
+      *pool_, *storage_, *index_accessor_, table,
       DeleteParser("DELETE FROM executor_test_table WHERE id >= 103"));
 
   std::vector<TypedRow> rows101 = executor::read(
-      *pool_,
+      *pool_, *storage_, *index_accessor_,
       SelectParser("SELECT id, value FROM executor_test_table WHERE id = 101"));
   ASSERT_EQ(rows101.size(), 1u);
   EXPECT_EQ("row_101", singleVarcharValue(rows101.front()));
 
   EXPECT_TRUE(
       executor::read(
-          *pool_,
+          *pool_, *storage_, *index_accessor_,
           SelectParser(
               "SELECT id, value FROM executor_test_table WHERE id = 103"))
           .empty());
   EXPECT_TRUE(
       executor::read(
-          *pool_,
+          *pool_, *storage_, *index_accessor_,
           SelectParser(
               "SELECT id, value FROM executor_test_table WHERE id = 104"))
           .empty());
   EXPECT_TRUE(
       executor::read(
-          *pool_,
+          *pool_, *storage_, *index_accessor_,
           SelectParser(
               "SELECT id, value FROM executor_test_table WHERE id = 107"))
           .empty());
@@ -640,30 +670,30 @@ TEST_F(ExecutorTest, DeleteFallsBackToHeapScanForNonIndexedPredicate) {
   Table& table = *table_;
 
   executor::remove(
-      *pool_, table,
+      *pool_, *storage_, *index_accessor_, table,
       DeleteParser("DELETE FROM executor_test_table WHERE value = 'row_104'"));
 
   std::vector<TypedRow> rows101 = executor::read(
-      *pool_,
+      *pool_, *storage_, *index_accessor_,
       SelectParser("SELECT id, value FROM executor_test_table WHERE id = 101"));
   ASSERT_EQ(rows101.size(), 1u);
   EXPECT_EQ("row_101", singleVarcharValue(rows101.front()));
 
   std::vector<TypedRow> rows103 = executor::read(
-      *pool_,
+      *pool_, *storage_, *index_accessor_,
       SelectParser("SELECT id, value FROM executor_test_table WHERE id = 103"));
   ASSERT_EQ(rows103.size(), 1u);
   EXPECT_EQ("row_103", singleVarcharValue(rows103.front()));
 
   EXPECT_TRUE(
       executor::read(
-          *pool_,
+          *pool_, *storage_, *index_accessor_,
           SelectParser(
               "SELECT id, value FROM executor_test_table WHERE id = 104"))
           .empty());
 
   std::vector<TypedRow> rows107 = executor::read(
-      *pool_,
+      *pool_, *storage_, *index_accessor_,
       SelectParser("SELECT id, value FROM executor_test_table WHERE id = 107"));
   ASSERT_EQ(rows107.size(), 1u);
   EXPECT_EQ("row_107", singleVarcharValue(rows107.front()));
@@ -672,17 +702,17 @@ TEST_F(ExecutorTest, DeleteFallsBackToHeapScanForNonIndexedPredicate) {
 TEST_F(ExecutorTest, UpdateReplacesExistingValue) {
   Table& table = *table_;
   const int key = 123;
-  executor::insert(*pool_, table,
+  executor::insert(*pool_, *storage_, *index_accessor_, table,
                    InsertParser("INSERT INTO executor_test_table VALUES (123, "
                                 "'initial-value')"));
 
   executor::update(
-      *pool_, table,
+      *pool_, *storage_, *index_accessor_, table,
       UpdateParser("UPDATE executor_test_table SET value = 'updated-value' "
                    "WHERE id = 123"));
 
   std::vector<TypedRow> rows = executor::read(
-      *pool_,
+      *pool_, *storage_, *index_accessor_,
       SelectParser("SELECT id, value FROM executor_test_table WHERE id = " +
                    std::to_string(key)));
   ASSERT_EQ(rows.size(), 1u);
@@ -692,40 +722,40 @@ TEST_F(ExecutorTest, UpdateReplacesExistingValue) {
 TEST_F(ExecutorTest, UpdateNonExistingKeyDoesNothing) {
   Table& table = *table_;
   const int key = 777;
-  EXPECT_NO_THROW(executor::update(
-      *pool_, table,
-      UpdateParser("UPDATE executor_test_table SET value = "
-                   "'does-not-exist' WHERE id = " +
-                   std::to_string(key))));
+  EXPECT_NO_THROW(
+      executor::update(*pool_, *storage_, *index_accessor_, table,
+                       UpdateParser("UPDATE executor_test_table SET value = "
+                                    "'does-not-exist' WHERE id = " +
+                                    std::to_string(key))));
 }
 
 TEST_F(ExecutorTest, UpdateMatchesAllRowsFromIndexedPredicates) {
   Table& table = *table_;
 
-  executor::update(*pool_, table,
+  executor::update(*pool_, *storage_, *index_accessor_, table,
                    UpdateParser("UPDATE executor_test_table SET value = "
                                 "'updated-range' WHERE id >= 103"));
 
   std::vector<TypedRow> rows101 = executor::read(
-      *pool_,
+      *pool_, *storage_, *index_accessor_,
       SelectParser("SELECT id, value FROM executor_test_table WHERE id = 101"));
   ASSERT_EQ(rows101.size(), 1u);
   EXPECT_EQ("row_101", singleVarcharValue(rows101.front()));
 
   std::vector<TypedRow> rows103 = executor::read(
-      *pool_,
+      *pool_, *storage_, *index_accessor_,
       SelectParser("SELECT id, value FROM executor_test_table WHERE id = 103"));
   ASSERT_EQ(rows103.size(), 1u);
   EXPECT_EQ("updated-range", singleVarcharValue(rows103.front()));
 
   std::vector<TypedRow> rows104 = executor::read(
-      *pool_,
+      *pool_, *storage_, *index_accessor_,
       SelectParser("SELECT id, value FROM executor_test_table WHERE id = 104"));
   ASSERT_EQ(rows104.size(), 1u);
   EXPECT_EQ("updated-range", singleVarcharValue(rows104.front()));
 
   std::vector<TypedRow> rows107 = executor::read(
-      *pool_,
+      *pool_, *storage_, *index_accessor_,
       SelectParser("SELECT id, value FROM executor_test_table WHERE id = 107"));
   ASSERT_EQ(rows107.size(), 1u);
   EXPECT_EQ("updated-range", singleVarcharValue(rows107.front()));
@@ -734,30 +764,30 @@ TEST_F(ExecutorTest, UpdateMatchesAllRowsFromIndexedPredicates) {
 TEST_F(ExecutorTest, UpdateFallsBackToHeapScanForNonIndexedPredicate) {
   Table& table = *table_;
 
-  executor::update(*pool_, table,
+  executor::update(*pool_, *storage_, *index_accessor_, table,
                    UpdateParser("UPDATE executor_test_table SET value = "
                                 "'updated-non-index' WHERE value = 'row_104'"));
 
   std::vector<TypedRow> rows101 = executor::read(
-      *pool_,
+      *pool_, *storage_, *index_accessor_,
       SelectParser("SELECT id, value FROM executor_test_table WHERE id = 101"));
   ASSERT_EQ(rows101.size(), 1u);
   EXPECT_EQ("row_101", singleVarcharValue(rows101.front()));
 
   std::vector<TypedRow> rows103 = executor::read(
-      *pool_,
+      *pool_, *storage_, *index_accessor_,
       SelectParser("SELECT id, value FROM executor_test_table WHERE id = 103"));
   ASSERT_EQ(rows103.size(), 1u);
   EXPECT_EQ("row_103", singleVarcharValue(rows103.front()));
 
   std::vector<TypedRow> rows104 = executor::read(
-      *pool_,
+      *pool_, *storage_, *index_accessor_,
       SelectParser("SELECT id, value FROM executor_test_table WHERE id = 104"));
   ASSERT_EQ(rows104.size(), 1u);
   EXPECT_EQ("updated-non-index", singleVarcharValue(rows104.front()));
 
   std::vector<TypedRow> rows107 = executor::read(
-      *pool_,
+      *pool_, *storage_, *index_accessor_,
       SelectParser("SELECT id, value FROM executor_test_table WHERE id = 107"));
   ASSERT_EQ(rows107.size(), 1u);
   EXPECT_EQ("row_107", singleVarcharValue(rows107.front()));
@@ -766,7 +796,8 @@ TEST_F(ExecutorTest, UpdateFallsBackToHeapScanForNonIndexedPredicate) {
 TEST_F(ExecutorTest, UpdateAppliesSelfPlusLiteralExpression) {
   const std::string table_name = uniqueTableName("update_expression_test");
 
-  executor::create_table(CreateTableParser("CREATE TABLE " + table_name +
+  executor::create_table(*storage_,
+                         CreateTableParser("CREATE TABLE " + table_name +
                                            " ("
                                            "id int NOT NULL, "
                                            "amount decimal(12, 2) NOT NULL, "
@@ -775,23 +806,23 @@ TEST_F(ExecutorTest, UpdateAppliesSelfPlusLiteralExpression) {
   {
     Table table = test_db::getTable(table_name);
     executor::insert(
-        *pool_, table,
+        *pool_, *storage_, *index_accessor_, table,
         InsertParser("INSERT INTO " + table_name + " VALUES (1, 10.5)"));
 
-    executor::update(*pool_, table,
+    executor::update(*pool_, *storage_, *index_accessor_, table,
                      UpdateParser("UPDATE " + table_name +
                                   " SET amount = amount + 2.5 WHERE id = 1"));
   }
 
   std::vector<TypedRow> rows = executor::read(
-      *pool_,
+      *pool_, *storage_, *index_accessor_,
       SelectParser("SELECT amount FROM " + table_name + " WHERE id = 1"));
   ASSERT_EQ(rows.size(), 1u);
   ASSERT_EQ(rows[0].values.size(), 1u);
   ASSERT_TRUE(std::holds_alternative<Column::DoubleType>(rows[0].values[0]));
   EXPECT_DOUBLE_EQ(std::get<Column::DoubleType>(rows[0].values[0]), 13.0);
 
-  executor::drop_table(DropTableParser("DROP TABLE " + table_name));
+  executor::drop_table(*storage_, DropTableParser("DROP TABLE " + table_name));
   EXPECT_FALSE(test_db::isPersisted(table_name));
 }
 
@@ -824,7 +855,7 @@ TEST_F(ExecutorTest, InsertPageOverflow) {
         ch = static_cast<char>('a' + (rng() % 26));
       }
       executor::insert(
-          *pool_, table,
+          *pool_, *storage_, *index_accessor_, table,
           InsertParser("INSERT INTO executor_test_table VALUES (" +
                        std::to_string(key) + ", '" + payload + "')"));
       expected.emplace(key, payload);
@@ -833,7 +864,7 @@ TEST_F(ExecutorTest, InsertPageOverflow) {
     std::cout << "Start Verifying inserted records..." << std::endl;
     for (const auto& [key, value] : expected) {
       std::vector<TypedRow> rows = executor::read(
-          *pool_,
+          *pool_, *storage_, *index_accessor_,
           SelectParser("SELECT id, value FROM executor_test_table WHERE id = " +
                        std::to_string(key)));
       ASSERT_EQ(rows.size(), 1u) << "missing row for key=" << key;
@@ -842,7 +873,7 @@ TEST_F(ExecutorTest, InsertPageOverflow) {
         std::cout << "Mismatch detected for key=" << key
                   << ". Dumping B+tree index state..." << std::endl;
         PagedFile index_file =
-            LocalStorageManager().openIndex(table.indexes().front().file_name);
+            storage_->open(table.indexes().front().file_name);
         BTreeCursor::dumpTree(*pool_, index_file, std::cout);
       }
       EXPECT_EQ(value, restored) << "mismatch for key=" << key;
@@ -853,8 +884,7 @@ TEST_F(ExecutorTest, InsertPageOverflow) {
     std::cout << "Dumping B+tree index state after test failure..."
               << std::endl;
     Table table = test_db::getTable(kTableName);
-    PagedFile index_file =
-        LocalStorageManager().openIndex(table.indexes().front().file_name);
+    PagedFile index_file = storage_->open(table.indexes().front().file_name);
     BTreeCursor::dumpTree(*pool_, index_file, std::cout);
     throw;
   }
@@ -865,8 +895,9 @@ TEST_F(ExecutorTest, CreateAndDropTable) {
   test_db::removeTable(new_table_name);
   CreateTableParser parser(
       "CREATE TABLE new_table (id INTEGER, name VARCHAR, notes TEXT)");
-  executor::create_table(parser);
+  executor::create_table(*storage_, parser);
   executor::create_index(
+      *storage_,
       CreateIndexParser("CREATE INDEX idx_new_table_id ON new_table (id)"));
 
   // Brackets to limit the scope of reopened table and ensure file handles are
@@ -885,18 +916,20 @@ TEST_F(ExecutorTest, CreateAndDropTable) {
               (std::vector<std::string>{"id"}));
   }
 
-  executor::drop_table(DropTableParser("DROP TABLE new_table"));
+  executor::drop_table(*storage_, DropTableParser("DROP TABLE new_table"));
   EXPECT_FALSE(test_db::isPersisted(new_table_name));
 }
 
 TEST_F(ExecutorTest, MaintainsMultipleUniqueIndexes) {
   const std::string table_name =
       uniqueTableName("multiple_unique_indexes_test");
-  executor::create_table(CreateTableParser(
-      "CREATE TABLE " + table_name +
-      " (id int PRIMARY KEY, email varchar, payload varchar)"));
-  executor::create_index(CreateIndexParser(
-      "CREATE UNIQUE INDEX idx_email ON " + table_name + " (email)"));
+  executor::create_table(
+      *storage_, CreateTableParser(
+                     "CREATE TABLE " + table_name +
+                     " (id int PRIMARY KEY, email varchar, payload varchar)"));
+  executor::create_index(*storage_,
+                         CreateIndexParser("CREATE UNIQUE INDEX idx_email ON " +
+                                           table_name + " (email)"));
 
   {
     Table table = test_db::getTable(table_name);
@@ -904,111 +937,115 @@ TEST_F(ExecutorTest, MaintainsMultipleUniqueIndexes) {
     EXPECT_TRUE(table.indexes()[0].is_unique);
     EXPECT_TRUE(table.indexes()[1].is_unique);
 
-    executor::insert(
-        *pool_, table,
-        InsertParser("INSERT INTO " + table_name +
-                     " VALUES (1, 'one@example.com', 'x')"));
-    executor::insert(
-        *pool_, table,
-        InsertParser("INSERT INTO " + table_name +
-                     " VALUES (2, 'two@example.com', 'y')"));
+    executor::insert(*pool_, *storage_, *index_accessor_, table,
+                     InsertParser("INSERT INTO " + table_name +
+                                  " VALUES (1, 'one@example.com', 'x')"));
+    executor::insert(*pool_, *storage_, *index_accessor_, table,
+                     InsertParser("INSERT INTO " + table_name +
+                                  " VALUES (2, 'two@example.com', 'y')"));
 
     EXPECT_THROW(
         executor::insert(
-            *pool_, table,
+            *pool_, *storage_, *index_accessor_, table,
             InsertParser("INSERT INTO " + table_name +
                          " VALUES (3, 'one@example.com', 'duplicate')")),
         std::runtime_error);
 
     executor::update(
-        *pool_, table,
+        *pool_, *storage_, *index_accessor_, table,
         UpdateParser("UPDATE " + table_name +
                      " SET payload = 'a much longer relocated payload'"
                      " WHERE id = 1"));
 
     std::vector<TypedRow> rows = executor::read(
-        *pool_, SelectParser("SELECT id, email, payload FROM " + table_name +
-                             " WHERE email = 'one@example.com'"));
+        *pool_, *storage_, *index_accessor_,
+        SelectParser("SELECT id, email, payload FROM " + table_name +
+                     " WHERE email = 'one@example.com'"));
     ASSERT_EQ(rows.size(), 1u);
     EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[0]), 1);
     EXPECT_EQ(std::get<Column::VarcharType>(rows[0].values[2]),
               "a much longer relocated payload");
 
-    EXPECT_THROW(executor::update(
-                     *pool_, table,
-                     UpdateParser("UPDATE " + table_name +
-                                  " SET email = 'changed@example.com'"
-                                  " WHERE id = 1")),
-                 std::runtime_error);
+    EXPECT_THROW(
+        executor::update(*pool_, *storage_, *index_accessor_, table,
+                         UpdateParser("UPDATE " + table_name +
+                                      " SET email = 'changed@example.com'"
+                                      " WHERE id = 1")),
+        std::runtime_error);
 
-    EXPECT_EQ(executor::remove(
-                  *pool_, table,
-                  DeleteParser("DELETE FROM " + table_name +
-                               " WHERE email = 'one@example.com'")),
-              1);
-    executor::insert(
-        *pool_, table,
-        InsertParser("INSERT INTO " + table_name +
-                     " VALUES (3, 'one@example.com', 'reused')"));
+    EXPECT_EQ(
+        executor::remove(*pool_, *storage_, *index_accessor_, table,
+                         DeleteParser("DELETE FROM " + table_name +
+                                      " WHERE email = 'one@example.com'")),
+        1);
+    executor::insert(*pool_, *storage_, *index_accessor_, table,
+                     InsertParser("INSERT INTO " + table_name +
+                                  " VALUES (3, 'one@example.com', 'reused')"));
   }
 
-  executor::drop_table(DropTableParser("DROP TABLE " + table_name));
+  executor::drop_table(*storage_, DropTableParser("DROP TABLE " + table_name));
   EXPECT_FALSE(test_db::isPersisted(table_name));
 }
 
 TEST_F(ExecutorTest, MaintainsDuplicateEntriesInNonUniqueIndex) {
   const std::string table_name = uniqueTableName("non_unique_index_test");
-  executor::create_table(CreateTableParser(
-      "CREATE TABLE " + table_name +
-      " (id int PRIMARY KEY, value varchar, payload varchar)"));
-  executor::create_index(CreateIndexParser(
-      "CREATE INDEX idx_non_unique_value ON " + table_name + " (value)"));
+  executor::create_table(
+      *storage_, CreateTableParser(
+                     "CREATE TABLE " + table_name +
+                     " (id int PRIMARY KEY, value varchar, payload varchar)"));
+  executor::create_index(
+      *storage_, CreateIndexParser("CREATE INDEX idx_non_unique_value ON " +
+                                   table_name + " (value)"));
 
   Table table = test_db::getTable(table_name);
   ASSERT_EQ(table.indexes().size(), 2u);
   EXPECT_TRUE(table.indexes()[0].is_unique);
   EXPECT_FALSE(table.indexes()[1].is_unique);
 
-  executor::insert(*pool_, table,
-                   InsertParser("INSERT INTO " + table_name +
-                                " VALUES (1, 'same', 'one')"));
-  executor::insert(*pool_, table,
-                   InsertParser("INSERT INTO " + table_name +
-                                " VALUES (2, 'same', 'two')"));
+  executor::insert(
+      *pool_, *storage_, *index_accessor_, table,
+      InsertParser("INSERT INTO " + table_name + " VALUES (1, 'same', 'one')"));
+  executor::insert(
+      *pool_, *storage_, *index_accessor_, table,
+      InsertParser("INSERT INTO " + table_name + " VALUES (2, 'same', 'two')"));
 
-  std::vector<TypedRow> duplicate_rows = executor::read(
-      *pool_, SelectParser("SELECT id, value FROM " + table_name +
-                           " WHERE value = 'same'"));
+  std::vector<TypedRow> duplicate_rows =
+      executor::read(*pool_, *storage_, *index_accessor_,
+                     SelectParser("SELECT id, value FROM " + table_name +
+                                  " WHERE value = 'same'"));
   ASSERT_EQ(duplicate_rows.size(), 2u);
 
-    EXPECT_EQ(executor::remove(
-          *pool_, table,
-          DeleteParser("DELETE FROM " + table_name + " WHERE id = 1")),
-        1);
-    duplicate_rows = executor::read(
-      *pool_, SelectParser("SELECT id, value FROM " + table_name +
-                 " WHERE value = 'same'"));
-    ASSERT_EQ(duplicate_rows.size(), 1u);
-    EXPECT_EQ(std::get<Column::IntegerType>(duplicate_rows.front().values[0]), 2);
-
-  executor::update(
-      *pool_, table,
-      UpdateParser("UPDATE " + table_name +
-                   " SET payload = 'a much longer value that relocates'"
-                   " WHERE id = 2"));
-  duplicate_rows = executor::read(
-      *pool_, SelectParser("SELECT id, value FROM " + table_name +
-                           " WHERE value = 'same'"));
+  EXPECT_EQ(executor::remove(
+                *pool_, *storage_, *index_accessor_, table,
+                DeleteParser("DELETE FROM " + table_name + " WHERE id = 1")),
+            1);
+  duplicate_rows =
+      executor::read(*pool_, *storage_, *index_accessor_,
+                     SelectParser("SELECT id, value FROM " + table_name +
+                                  " WHERE value = 'same'"));
   ASSERT_EQ(duplicate_rows.size(), 1u);
   EXPECT_EQ(std::get<Column::IntegerType>(duplicate_rows.front().values[0]), 2);
 
-  executor::drop_table(DropTableParser("DROP TABLE " + table_name));
+  executor::update(
+      *pool_, *storage_, *index_accessor_, table,
+      UpdateParser("UPDATE " + table_name +
+                   " SET payload = 'a much longer value that relocates'"
+                   " WHERE id = 2"));
+  duplicate_rows =
+      executor::read(*pool_, *storage_, *index_accessor_,
+                     SelectParser("SELECT id, value FROM " + table_name +
+                                  " WHERE value = 'same'"));
+  ASSERT_EQ(duplicate_rows.size(), 1u);
+  EXPECT_EQ(std::get<Column::IntegerType>(duplicate_rows.front().values[0]), 2);
+
+  executor::drop_table(*storage_, DropTableParser("DROP TABLE " + table_name));
 }
 
 TEST_F(ExecutorTest, CreateTableBuildsIndexFromSingleColumnPrimaryKey) {
   const std::string new_table_name = uniqueTableName("primary_key_index_test");
 
-  executor::create_table(CreateTableParser("CREATE TABLE " + new_table_name +
+  executor::create_table(*storage_,
+                         CreateTableParser("CREATE TABLE " + new_table_name +
                                            " ("
                                            "id int NOT NULL, "
                                            "name varchar(10) NOT NULL, "
@@ -1021,7 +1058,8 @@ TEST_F(ExecutorTest, CreateTableBuildsIndexFromSingleColumnPrimaryKey) {
     ASSERT_TRUE(new_table.hasIndex());
   }
 
-  executor::drop_table(DropTableParser("DROP TABLE " + new_table_name));
+  executor::drop_table(*storage_,
+                       DropTableParser("DROP TABLE " + new_table_name));
   EXPECT_FALSE(test_db::isPersisted(new_table_name));
 }
 
@@ -1029,9 +1067,9 @@ TEST_F(ExecutorTest, CreateTableBuildsIndexFromInlinePrimaryKey) {
   const std::string new_table_name =
       uniqueTableName("inline_primary_key_index_test");
 
-  executor::create_table(CreateTableParser(
-      "CREATE TABLE " + new_table_name +
-      " (id int PRIMARY KEY, name text)"));
+  executor::create_table(*storage_,
+                         CreateTableParser("CREATE TABLE " + new_table_name +
+                                           " (id int PRIMARY KEY, name text)"));
 
   {
     Table new_table = test_db::getTable(new_table_name);
@@ -1040,7 +1078,8 @@ TEST_F(ExecutorTest, CreateTableBuildsIndexFromInlinePrimaryKey) {
     EXPECT_TRUE(new_table.hasIndex());
   }
 
-  executor::drop_table(DropTableParser("DROP TABLE " + new_table_name));
+  executor::drop_table(*storage_,
+                       DropTableParser("DROP TABLE " + new_table_name));
   EXPECT_FALSE(test_db::isPersisted(new_table_name));
 }
 
@@ -1048,14 +1087,15 @@ TEST_F(ExecutorTest, CreateTableRejectsDuplicateCompositePrimaryKeyRows) {
   const std::string new_table_name =
       uniqueTableName("composite_primary_key_test");
 
-  executor::create_table(CreateTableParser(
-      "CREATE TABLE " + new_table_name +
-      " ("
-      "warehouse_id int NOT NULL, "
-      "district_id int NOT NULL, "
-      "customer_id int NOT NULL, "
-      "balance decimal(12, 2) NOT NULL, "
-      "PRIMARY KEY (warehouse_id, district_id, customer_id))"));
+  executor::create_table(
+      *storage_, CreateTableParser(
+                     "CREATE TABLE " + new_table_name +
+                     " ("
+                     "warehouse_id int NOT NULL, "
+                     "district_id int NOT NULL, "
+                     "customer_id int NOT NULL, "
+                     "balance decimal(12, 2) NOT NULL, "
+                     "PRIMARY KEY (warehouse_id, district_id, customer_id))"));
 
   {
     Table table = test_db::getTable(new_table_name);
@@ -1063,17 +1103,18 @@ TEST_F(ExecutorTest, CreateTableRejectsDuplicateCompositePrimaryKeyRows) {
     EXPECT_EQ(table.indexes().front().column_names,
               (std::vector<std::string>{"warehouse_id", "district_id",
                                         "customer_id"}));
-    executor::insert(*pool_, table,
+    executor::insert(*pool_, *storage_, *index_accessor_, table,
                      InsertParser("INSERT INTO " + new_table_name +
                                   " VALUES (1, 2, 3, 10.0)"));
 
-    EXPECT_THROW(executor::insert(*pool_, table,
+    EXPECT_THROW(executor::insert(*pool_, *storage_, *index_accessor_, table,
                                   InsertParser("INSERT INTO " + new_table_name +
                                                " VALUES (1, 2, 3, 20.0)")),
                  std::runtime_error);
   }
 
-  executor::drop_table(DropTableParser("DROP TABLE " + new_table_name));
+  executor::drop_table(*storage_,
+                       DropTableParser("DROP TABLE " + new_table_name));
   EXPECT_FALSE(test_db::isPersisted(new_table_name));
 }
 
@@ -1081,37 +1122,40 @@ TEST_F(ExecutorTest, ReadSelectUsesCompositePrimaryKeyPath) {
   const std::string new_table_name =
       uniqueTableName("composite_primary_key_read_test");
 
-  executor::create_table(CreateTableParser(
-      "CREATE TABLE " + new_table_name +
-      " ("
-      "warehouse_id int NOT NULL, "
-      "district_id int NOT NULL, "
-      "customer_id int NOT NULL, "
-      "name varchar(16) NOT NULL, "
-      "PRIMARY KEY (warehouse_id, district_id, customer_id))"));
+  executor::create_table(
+      *storage_, CreateTableParser(
+                     "CREATE TABLE " + new_table_name +
+                     " ("
+                     "warehouse_id int NOT NULL, "
+                     "district_id int NOT NULL, "
+                     "customer_id int NOT NULL, "
+                     "name varchar(16) NOT NULL, "
+                     "PRIMARY KEY (warehouse_id, district_id, customer_id))"));
 
   {
     Table table = test_db::getTable(new_table_name);
-    executor::insert(*pool_, table,
+    executor::insert(*pool_, *storage_, *index_accessor_, table,
                      InsertParser("INSERT INTO " + new_table_name +
                                   " VALUES (1, 2, 3, 'target')"));
-    executor::insert(*pool_, table,
+    executor::insert(*pool_, *storage_, *index_accessor_, table,
                      InsertParser("INSERT INTO " + new_table_name +
                                   " VALUES (1, 2, 4, 'other')"));
   }
 
   std::vector<TypedRow> rows =
-      executor::read(*pool_, SelectParser("SELECT name FROM " + new_table_name +
-                                          " WHERE warehouse_id = 1"
-                                          " AND district_id = 2"
-                                          " AND customer_id = 3"));
+      executor::read(*pool_, *storage_, *index_accessor_,
+                     SelectParser("SELECT name FROM " + new_table_name +
+                                  " WHERE warehouse_id = 1"
+                                  " AND district_id = 2"
+                                  " AND customer_id = 3"));
 
   ASSERT_EQ(rows.size(), 1u);
   ASSERT_EQ(rows[0].values.size(), 1u);
   ASSERT_TRUE(std::holds_alternative<Column::VarcharType>(rows[0].values[0]));
   EXPECT_EQ(std::get<Column::VarcharType>(rows[0].values[0]), "target");
 
-  executor::drop_table(DropTableParser("DROP TABLE " + new_table_name));
+  executor::drop_table(*storage_,
+                       DropTableParser("DROP TABLE " + new_table_name));
   EXPECT_FALSE(test_db::isPersisted(new_table_name));
 }
 
@@ -1120,14 +1164,14 @@ TEST_F(ExecutorTest, ReadSelectFiltersNonKeyColumnAfterCompositeKeyPrefixScan) {
       uniqueTableName("composite_prefix_filter_read_test");
 
   executor::create_table(
-      CreateTableParser("CREATE TABLE " + new_table_name +
-                        " ("
-                        "c_w_id int NOT NULL, "
-                        "c_d_id int NOT NULL, "
-                        "c_id int NOT NULL, "
-                        "c_last varchar(16) NOT NULL, "
-                        "c_first varchar(16) NOT NULL, "
-                        "PRIMARY KEY (c_w_id, c_d_id, c_id))"));
+      *storage_, CreateTableParser("CREATE TABLE " + new_table_name +
+                                   " ("
+                                   "c_w_id int NOT NULL, "
+                                   "c_d_id int NOT NULL, "
+                                   "c_id int NOT NULL, "
+                                   "c_last varchar(16) NOT NULL, "
+                                   "c_first varchar(16) NOT NULL, "
+                                   "PRIMARY KEY (c_w_id, c_d_id, c_id))"));
 
   {
     Table table = test_db::getTable(new_table_name);
@@ -1139,7 +1183,7 @@ TEST_F(ExecutorTest, ReadSelectFiltersNonKeyColumnAfterCompositeKeyPrefixScan) {
         const std::string last_name = is_target ? "OUGHTANTIANTI" : "OTHER";
         const std::string first_name = "first" + std::to_string(customer_id);
         executor::insert(
-            *pool_, table,
+            *pool_, *storage_, *index_accessor_, table,
             InsertParser("INSERT INTO " + new_table_name + " VALUES (" + "1, " +
                          std::to_string(district_id) + ", " +
                          std::to_string(customer_id) + ", '" + last_name +
@@ -1149,29 +1193,33 @@ TEST_F(ExecutorTest, ReadSelectFiltersNonKeyColumnAfterCompositeKeyPrefixScan) {
   }
 
   std::vector<TypedRow> seq_rows =
-      executor::read(*pool_, SelectParser("SELECT c_id FROM " + new_table_name +
-                                          " WHERE c_last = 'OUGHTANTIANTI'"));
+      executor::read(*pool_, *storage_, *index_accessor_,
+                     SelectParser("SELECT c_id FROM " + new_table_name +
+                                  " WHERE c_last = 'OUGHTANTIANTI'"));
   ASSERT_EQ(seq_rows.size(), 3u);
 
   std::vector<TypedRow> prefix_rows =
-      executor::read(*pool_, SelectParser("SELECT c_id FROM " + new_table_name +
-                                          " WHERE c_w_id = 1"
-                                          " AND c_d_id = 8"));
+      executor::read(*pool_, *storage_, *index_accessor_,
+                     SelectParser("SELECT c_id FROM " + new_table_name +
+                                  " WHERE c_w_id = 1"
+                                  " AND c_d_id = 8"));
   ASSERT_EQ(prefix_rows.size(), 320u);
 
   std::vector<TypedRow> rows = executor::read(
-      *pool_, SelectParser("SELECT c_first, c_id FROM " + new_table_name +
-                           " WHERE c_w_id = 1"
-                           " AND c_d_id = 8"
-                           " AND c_last = 'OUGHTANTIANTI'"
-                           " ORDER BY c_first"));
+      *pool_, *storage_, *index_accessor_,
+      SelectParser("SELECT c_first, c_id FROM " + new_table_name +
+                   " WHERE c_w_id = 1"
+                   " AND c_d_id = 8"
+                   " AND c_last = 'OUGHTANTIANTI'"
+                   " ORDER BY c_first"));
 
   ASSERT_EQ(rows.size(), 3u);
   EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[1]), 167);
   EXPECT_EQ(std::get<Column::IntegerType>(rows[1].values[1]), 249);
   EXPECT_EQ(std::get<Column::IntegerType>(rows[2].values[1]), 319);
 
-  executor::drop_table(DropTableParser("DROP TABLE " + new_table_name));
+  executor::drop_table(*storage_,
+                       DropTableParser("DROP TABLE " + new_table_name));
   EXPECT_FALSE(test_db::isPersisted(new_table_name));
 }
 
@@ -1180,14 +1228,14 @@ TEST_F(ExecutorTest, ReadSelectFindsTpccCustomerByNameAfterLargePrefixScan) {
       uniqueTableName("tpcc_customer_name_read_test");
 
   executor::create_table(
-      CreateTableParser("CREATE TABLE " + new_table_name +
-                        " ("
-                        "c_w_id int NOT NULL, "
-                        "c_d_id int NOT NULL, "
-                        "c_id int NOT NULL, "
-                        "c_last varchar(16) NOT NULL, "
-                        "c_first varchar(16) NOT NULL, "
-                        "PRIMARY KEY (c_w_id, c_d_id, c_id))"));
+      *storage_, CreateTableParser("CREATE TABLE " + new_table_name +
+                                   " ("
+                                   "c_w_id int NOT NULL, "
+                                   "c_d_id int NOT NULL, "
+                                   "c_id int NOT NULL, "
+                                   "c_last varchar(16) NOT NULL, "
+                                   "c_first varchar(16) NOT NULL, "
+                                   "PRIMARY KEY (c_w_id, c_d_id, c_id))"));
 
   {
     Table table = test_db::getTable(new_table_name);
@@ -1197,7 +1245,7 @@ TEST_F(ExecutorTest, ReadSelectFindsTpccCustomerByNameAfterLargePrefixScan) {
         const std::string last_name = is_target ? "EINGATIONEING" : "OTHER";
         const std::string first_name = "first" + std::to_string(customer_id);
         executor::insert(
-            *pool_, table,
+            *pool_, *storage_, *index_accessor_, table,
             InsertParser("INSERT INTO " + new_table_name + " VALUES (" + "1, " +
                          std::to_string(district_id) + ", " +
                          std::to_string(customer_id) + ", '" + last_name +
@@ -1207,9 +1255,10 @@ TEST_F(ExecutorTest, ReadSelectFindsTpccCustomerByNameAfterLargePrefixScan) {
   }
 
   std::vector<TypedRow> prefix_rows =
-      executor::read(*pool_, SelectParser("SELECT c_id FROM " + new_table_name +
-                                          " WHERE c_w_id = 1"
-                                          " AND c_d_id = 10"));
+      executor::read(*pool_, *storage_, *index_accessor_,
+                     SelectParser("SELECT c_id FROM " + new_table_name +
+                                  " WHERE c_w_id = 1"
+                                  " AND c_d_id = 10"));
   ASSERT_EQ(prefix_rows.size(), 3000u);
 
   {
@@ -1218,7 +1267,7 @@ TEST_F(ExecutorTest, ReadSelectFindsTpccCustomerByNameAfterLargePrefixScan) {
         {2, 1116}, {7, 2811}, {9, 610}, {8, 863}, {7, 799}, {5, 1313}};
     for (const auto& [district_id, customer_id] : updated_customers) {
       executor::update(
-          *pool_, table,
+          *pool_, *storage_, *index_accessor_, table,
           UpdateParser("UPDATE " + new_table_name +
                        " SET c_first = 'updated'"
                        " WHERE c_w_id = 1"
@@ -1229,22 +1278,25 @@ TEST_F(ExecutorTest, ReadSelectFindsTpccCustomerByNameAfterLargePrefixScan) {
   }
 
   prefix_rows =
-      executor::read(*pool_, SelectParser("SELECT c_id FROM " + new_table_name +
-                                          " WHERE c_w_id = 1"
-                                          " AND c_d_id = 10"));
+      executor::read(*pool_, *storage_, *index_accessor_,
+                     SelectParser("SELECT c_id FROM " + new_table_name +
+                                  " WHERE c_w_id = 1"
+                                  " AND c_d_id = 10"));
   ASSERT_EQ(prefix_rows.size(), 3000u);
 
   std::vector<TypedRow> rows = executor::read(
-      *pool_, SelectParser("SELECT c_first, c_id FROM " + new_table_name +
-                           " WHERE c_w_id = 1"
-                           " AND c_d_id = 10"
-                           " AND c_last = 'EINGATIONEING'"
-                           " ORDER BY c_first"));
+      *pool_, *storage_, *index_accessor_,
+      SelectParser("SELECT c_first, c_id FROM " + new_table_name +
+                   " WHERE c_w_id = 1"
+                   " AND c_d_id = 10"
+                   " AND c_last = 'EINGATIONEING'"
+                   " ORDER BY c_first"));
 
   ASSERT_EQ(rows.size(), 1u);
   EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[1]), 990);
 
-  executor::drop_table(DropTableParser("DROP TABLE " + new_table_name));
+  executor::drop_table(*storage_,
+                       DropTableParser("DROP TABLE " + new_table_name));
   EXPECT_FALSE(test_db::isPersisted(new_table_name));
 }
 
@@ -1253,30 +1305,30 @@ TEST_F(ExecutorTest, ReadSelectFindsTpccCustomerByNameWithFullCustomerRows) {
       uniqueTableName("tpcc_full_customer_name_read_test");
 
   executor::create_table(
-      CreateTableParser("CREATE TABLE " + new_table_name +
-                        " ("
-                        "c_w_id int NOT NULL, "
-                        "c_d_id int NOT NULL, "
-                        "c_id int NOT NULL, "
-                        "c_discount decimal(4, 4) NOT NULL, "
-                        "c_credit char(2) NOT NULL, "
-                        "c_last varchar(16) NOT NULL, "
-                        "c_first varchar(16) NOT NULL, "
-                        "c_credit_lim decimal(12, 2) NOT NULL, "
-                        "c_balance decimal(12, 2) NOT NULL, "
-                        "c_ytd_payment float NOT NULL, "
-                        "c_payment_cnt int NOT NULL, "
-                        "c_delivery_cnt int NOT NULL, "
-                        "c_street_1 varchar(20) NOT NULL, "
-                        "c_street_2 varchar(20) NOT NULL, "
-                        "c_city varchar(20) NOT NULL, "
-                        "c_state char(2) NOT NULL, "
-                        "c_zip char(9) NOT NULL, "
-                        "c_phone char(16) NOT NULL, "
-                        "c_since timestamp NOT NULL, "
-                        "c_middle char(2) NOT NULL, "
-                        "c_data varchar(500) NOT NULL, "
-                        "PRIMARY KEY (c_w_id, c_d_id, c_id))"));
+      *storage_, CreateTableParser("CREATE TABLE " + new_table_name +
+                                   " ("
+                                   "c_w_id int NOT NULL, "
+                                   "c_d_id int NOT NULL, "
+                                   "c_id int NOT NULL, "
+                                   "c_discount decimal(4, 4) NOT NULL, "
+                                   "c_credit char(2) NOT NULL, "
+                                   "c_last varchar(16) NOT NULL, "
+                                   "c_first varchar(16) NOT NULL, "
+                                   "c_credit_lim decimal(12, 2) NOT NULL, "
+                                   "c_balance decimal(12, 2) NOT NULL, "
+                                   "c_ytd_payment float NOT NULL, "
+                                   "c_payment_cnt int NOT NULL, "
+                                   "c_delivery_cnt int NOT NULL, "
+                                   "c_street_1 varchar(20) NOT NULL, "
+                                   "c_street_2 varchar(20) NOT NULL, "
+                                   "c_city varchar(20) NOT NULL, "
+                                   "c_state char(2) NOT NULL, "
+                                   "c_zip char(9) NOT NULL, "
+                                   "c_phone char(16) NOT NULL, "
+                                   "c_since timestamp NOT NULL, "
+                                   "c_middle char(2) NOT NULL, "
+                                   "c_data varchar(500) NOT NULL, "
+                                   "PRIMARY KEY (c_w_id, c_d_id, c_id))"));
 
   const auto repeatedData = [](int customer_id) {
     std::string data = "customer-data-" + std::to_string(customer_id) + "-";
@@ -1294,7 +1346,7 @@ TEST_F(ExecutorTest, ReadSelectFindsTpccCustomerByNameWithFullCustomerRows) {
         const bool is_target = district_id == 10 && customer_id == 990;
         const std::string last_name = is_target ? "EINGATIONEING" : "OTHER";
         executor::insert(
-            *pool_, table,
+            *pool_, *storage_, *index_accessor_, table,
             InsertParser("INSERT INTO " + new_table_name + " VALUES (" + "1, " +
                          std::to_string(district_id) + ", " +
                          std::to_string(customer_id) +
@@ -1315,9 +1367,10 @@ TEST_F(ExecutorTest, ReadSelectFindsTpccCustomerByNameWithFullCustomerRows) {
   }
 
   std::vector<TypedRow> prefix_rows =
-      executor::read(*pool_, SelectParser("SELECT c_id FROM " + new_table_name +
-                                          " WHERE c_w_id = 1"
-                                          " AND c_d_id = 10"));
+      executor::read(*pool_, *storage_, *index_accessor_,
+                     SelectParser("SELECT c_id FROM " + new_table_name +
+                                  " WHERE c_w_id = 1"
+                                  " AND c_d_id = 10"));
   ASSERT_EQ(prefix_rows.size(), 3000u);
 
   {
@@ -1334,7 +1387,7 @@ TEST_F(ExecutorTest, ReadSelectFindsTpccCustomerByNameWithFullCustomerRows) {
         set_clause += ", c_data = '" + repeatedData(customer_id + 10000) + "'";
       }
       executor::update(
-          *pool_, table,
+          *pool_, *storage_, *index_accessor_, table,
           UpdateParser("UPDATE " + new_table_name + set_clause +
                        " WHERE c_w_id = 1"
                        " AND c_d_id = " +
@@ -1344,13 +1397,14 @@ TEST_F(ExecutorTest, ReadSelectFindsTpccCustomerByNameWithFullCustomerRows) {
   }
 
   prefix_rows =
-      executor::read(*pool_, SelectParser("SELECT c_id FROM " + new_table_name +
-                                          " WHERE c_w_id = 1"
-                                          " AND c_d_id = 10"));
+      executor::read(*pool_, *storage_, *index_accessor_,
+                     SelectParser("SELECT c_id FROM " + new_table_name +
+                                  " WHERE c_w_id = 1"
+                                  " AND c_d_id = 10"));
   ASSERT_EQ(prefix_rows.size(), 3000u);
 
   std::vector<TypedRow> rows = executor::read(
-      *pool_,
+      *pool_, *storage_, *index_accessor_,
       SelectParser("SELECT c_first, c_middle, c_id FROM " + new_table_name +
                    " WHERE c_w_id = 1"
                    " AND c_d_id = 10"
@@ -1360,14 +1414,16 @@ TEST_F(ExecutorTest, ReadSelectFindsTpccCustomerByNameWithFullCustomerRows) {
   ASSERT_EQ(rows.size(), 1u);
   EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[2]), 990);
 
-  executor::drop_table(DropTableParser("DROP TABLE " + new_table_name));
+  executor::drop_table(*storage_,
+                       DropTableParser("DROP TABLE " + new_table_name));
   EXPECT_FALSE(test_db::isPersisted(new_table_name));
 }
 
 TEST_F(ExecutorTest, ReadSelectRoundTripsTraceLikeWarehouseRow) {
   const std::string new_table_name = uniqueTableName("warehouse_read_test");
 
-  executor::create_table(CreateTableParser("CREATE TABLE " + new_table_name +
+  executor::create_table(*storage_,
+                         CreateTableParser("CREATE TABLE " + new_table_name +
                                            " ("
                                            "w_id int NOT NULL, "
                                            "w_ytd decimal(12, 2) NOT NULL, "
@@ -1388,13 +1444,13 @@ TEST_F(ExecutorTest, ReadSelectRoundTripsTraceLikeWarehouseRow) {
     EXPECT_EQ(warehouse.schema().columns()[5].getType(), Column::Type::Varchar);
 
     executor::insert(
-        *pool_, warehouse,
+        *pool_, *storage_, *index_accessor_, warehouse,
         InsertParser("INSERT INTO " + new_table_name +
                      " VALUES "
                      "(1, 300000.0, 0.1817, 'eiyjz', 'YX', '123456789')"));
 
     std::vector<TypedRow> rows = executor::read(
-        *pool_,
+        *pool_, *storage_, *index_accessor_,
         SelectParser("SELECT * FROM " + new_table_name + " WHERE w_id = 1"));
 
     ASSERT_EQ(rows.size(), 1u);
@@ -1414,17 +1470,17 @@ TEST_F(ExecutorTest, ReadSelectRoundTripsTraceLikeCustomerRow) {
   const std::string new_table_name = uniqueTableName("customer_read_test");
 
   executor::create_table(
-      CreateTableParser("CREATE TABLE " + new_table_name +
-                        " ("
-                        "c_w_id int NOT NULL, "
-                        "c_d_id int NOT NULL, "
-                        "c_id int NOT NULL, "
-                        "c_balance decimal(12, 2) NOT NULL, "
-                        "c_ytd_payment float NOT NULL, "
-                        "c_since timestamp NOT NULL, "
-                        "c_first varchar(16) NOT NULL, "
-                        "c_middle char(2) NOT NULL, "
-                        "PRIMARY KEY (c_w_id, c_d_id, c_id))"));
+      *storage_, CreateTableParser("CREATE TABLE " + new_table_name +
+                                   " ("
+                                   "c_w_id int NOT NULL, "
+                                   "c_d_id int NOT NULL, "
+                                   "c_id int NOT NULL, "
+                                   "c_balance decimal(12, 2) NOT NULL, "
+                                   "c_ytd_payment float NOT NULL, "
+                                   "c_since timestamp NOT NULL, "
+                                   "c_first varchar(16) NOT NULL, "
+                                   "c_middle char(2) NOT NULL, "
+                                   "PRIMARY KEY (c_w_id, c_d_id, c_id))"));
 
   {
     Table customer = test_db::getTable(new_table_name);
@@ -1439,16 +1495,17 @@ TEST_F(ExecutorTest, ReadSelectRoundTripsTraceLikeCustomerRow) {
     EXPECT_EQ(customer.schema().columns()[7].getType(), Column::Type::Varchar);
 
     executor::insert(
-        *pool_, customer,
+        *pool_, *storage_, *index_accessor_, customer,
         InsertParser("INSERT INTO " + new_table_name +
                      " VALUES "
                      "(1, 1, 1, -10.0, 10.0, '2026-04-18 04:43:47.487', "
                      "'xzgptnvhrvng', 'OE')"));
 
     std::vector<TypedRow> rows = executor::read(
-        *pool_, SelectParser("SELECT * FROM " + new_table_name +
-                             " "
-                             "WHERE c_w_id = 1 AND c_d_id = 1 AND c_id = 1"));
+        *pool_, *storage_, *index_accessor_,
+        SelectParser("SELECT * FROM " + new_table_name +
+                     " "
+                     "WHERE c_w_id = 1 AND c_d_id = 1 AND c_id = 1"));
 
     ASSERT_EQ(rows.size(), 1u);
     ASSERT_EQ(rows[0].values.size(), 8u);
