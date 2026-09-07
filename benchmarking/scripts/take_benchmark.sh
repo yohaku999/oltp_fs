@@ -8,7 +8,8 @@ RUNNER="${SCRIPT_DIR}/run_benchbase_docker.sh"
 COMPOSE_FILE="${BENCHMARKING_DIR}/docker-compose.yaml"
 TPCC_DBFS_STATS_CONFIG="${BENCHMARKING_DIR}/benchbase-config/dbfs_tpcc_controlled_stats.xml"
 TPCC_DBFS_THROUGHPUT_CONFIG="${BENCHMARKING_DIR}/benchbase-config/dbfs_tpcc_throughput.xml"
-TPCC_POSTGRES_CONFIG="${BENCHMARKING_DIR}/benchbase-config/postgres_tpcc_docker.xml"
+TPCC_POSTGRES_STATS_CONFIG="${BENCHMARKING_DIR}/benchbase-config/postgres_tpcc_controlled_stats.xml"
+TPCC_POSTGRES_THROUGHPUT_CONFIG="${BENCHMARKING_DIR}/benchbase-config/postgres_tpcc_throughput.xml"
 YCSB_DBFS_STATS_CONFIG="${BENCHMARKING_DIR}/benchbase-config/dbfs_ycsb_zipf_controlled_stats.xml"
 YCSB_DBFS_THROUGHPUT_CONFIG="${BENCHMARKING_DIR}/benchbase-config/dbfs_ycsb_zipf_throughput.xml"
 YCSB_POSTGRES_STATS_CONFIG="${BENCHMARKING_DIR}/benchbase-config/postgres_ycsb_zipf_controlled_stats.xml"
@@ -99,8 +100,8 @@ case "${WORKLOAD}" in
   tpcc)
     DBFS_STATS_CONFIG="${TPCC_DBFS_STATS_CONFIG}"
     DBFS_THROUGHPUT_CONFIG="${TPCC_DBFS_THROUGHPUT_CONFIG}"
-    POSTGRES_STATS_CONFIG="${TPCC_POSTGRES_CONFIG}"
-    POSTGRES_THROUGHPUT_CONFIG="${TPCC_POSTGRES_CONFIG}"
+    POSTGRES_STATS_CONFIG="${TPCC_POSTGRES_STATS_CONFIG}"
+    POSTGRES_THROUGHPUT_CONFIG="${TPCC_POSTGRES_THROUGHPUT_CONFIG}"
     ;;
   ycsb)
     DBFS_STATS_CONFIG="${YCSB_DBFS_STATS_CONFIG}"
@@ -149,6 +150,9 @@ log "workload=${WORKLOAD}"
 log "target=${TARGET}"
 if [[ "${TARGET}" == "dbfs" || "${TARGET}" == "both" ]]; then
   log "dbfs_config=${DBFS_CONFIG}"
+fi
+if [[ "${TARGET}" == "postgres" || "${TARGET}" == "both" ]]; then
+  log "postgres_config=${POSTGRES_CONFIG}"
 fi
 log "resetting compose services"
 cleanup

@@ -1,6 +1,5 @@
 <?xml version="1.0"?>
 <parameters>
-
     <type>POSTGRES</type>
     <driver>dev.yohaku.dbfs.jdbc.TracingPostgresDriver</driver>
     <url>jdbc:trace:postgresql://postgres:5432/benchbase?sslmode=disable&amp;ApplicationName=tpcc&amp;reWriteBatchedInserts=true</url>
@@ -8,34 +7,27 @@
     <password>password</password>
     <reconnectOnConnectionFailure>true</reconnectOnConnectionFailure>
     <isolation>TRANSACTION_SERIALIZABLE</isolation>
-    <batchsize>128</batchsize>
+    <batchsize>256</batchsize>
+    <randomSeed>42</randomSeed>
 
     <scalefactor>1</scalefactor>
 
     <terminals>1</terminals>
     <works>
         <work>
-            <time>60</time>
-            <rate>10000</rate>
+            <warmup>60</warmup>
+            <time>600</time>
+            <rate>2</rate>
+            <arrival>REGULAR</arrival>
             <weights>45,43,4,4,4</weights>
         </work>
     </works>
 
     <transactiontypes>
-        <transactiontype>
-            <name>NewOrder</name>
-        </transactiontype>
-        <transactiontype>
-            <name>Payment</name>
-        </transactiontype>
-        <transactiontype>
-            <name>OrderStatus</name>
-        </transactiontype>
-        <transactiontype>
-            <name>Delivery</name>
-        </transactiontype>
-        <transactiontype>
-            <name>StockLevel</name>
-        </transactiontype>
+        <transactiontype><name>NewOrder</name></transactiontype>
+        <transactiontype><name>Payment</name></transactiontype>
+        <transactiontype><name>OrderStatus</name></transactiontype>
+        <transactiontype><name>Delivery</name></transactiontype>
+        <transactiontype><name>StockLevel</name></transactiontype>
     </transactiontypes>
 </parameters>

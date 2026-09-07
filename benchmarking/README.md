@@ -43,8 +43,8 @@ Java benchmark / JDBC process
 - `benchbase-config/`
   - BenchBase configuration files.
   - Example:
-    - `postgres_tpcc_docker.xml` – repo-managed TPCC config for the
-      compose-based PostgreSQL baseline.
+    - `dbfs_tpcc_*.xml` and `postgres_tpcc_*.xml` – matching TPCC configs for
+      statistics and throughput runs.
     - `dbfs_tpcc_docker.xml` – TPCC config for the compose-based dbfs flow.
     - `dbfs_ycsb_zipf_*.xml` and `postgres_ycsb_zipf_*.xml` – matching
       Zipfian YCSB configs for statistics and throughput runs.
@@ -178,7 +178,8 @@ For TPC-C, the dbfs statistics mode uses a controlled workload from
 `dbfs_tpcc_controlled_stats.xml`: one terminal, random seed 42, a 60-second
 warmup, a 600-second measurement interval, and a regular target rate of two
 requests per second. Throughput mode uses `dbfs_tpcc_throughput.xml`: the same
-seed and warmup, followed by a 300-second saturated measurement interval.
+seed and warmup, followed by a 300-second saturated measurement interval. The
+corresponding `postgres_tpcc_*.xml` files use the same workload settings.
 
 The default mode is `--stats` for compatibility with existing invocations.
 Use throughput runs for performance numbers and flamegraphs, and statistics
