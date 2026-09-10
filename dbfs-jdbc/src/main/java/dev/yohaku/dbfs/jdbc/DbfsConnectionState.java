@@ -34,9 +34,9 @@ final class QueryResult {
 }
 
 interface DbfsClient extends AutoCloseable {
-    QueryResult executeQuery(String sql, List<Object> parameters) throws SQLException;
+    QueryResult executeQuery(String sql, List<Object> parameters, boolean prepared) throws SQLException;
 
-    int executeUpdate(String sql, List<Object> parameters) throws SQLException;
+    int executeUpdate(String sql, List<Object> parameters, boolean prepared) throws SQLException;
 
     int[] executeBatchUpdate(String sql, List<List<Object>> parameterSets) throws SQLException;
 
@@ -46,12 +46,12 @@ interface DbfsClient extends AutoCloseable {
 
 final class NoopDbfsClient implements DbfsClient {
     @Override
-    public QueryResult executeQuery(String sql, List<Object> parameters) {
+    public QueryResult executeQuery(String sql, List<Object> parameters, boolean prepared) {
         return QueryResult.empty();
     }
 
     @Override
-    public int executeUpdate(String sql, List<Object> parameters) {
+    public int executeUpdate(String sql, List<Object> parameters, boolean prepared) {
         return 0;
     }
 

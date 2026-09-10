@@ -58,11 +58,15 @@ class DbfsDriverTest {
             try (Statement statement = connection.createStatement()) {
                 assertFalse(statement.isClosed());
                 assertEquals(connection, statement.getConnection());
+                assertThrows(
+                        SQLFeatureNotSupportedException.class,
+                        () -> statement.executeQuery("SELECT 1"));
+            }
 
-                try (ResultSet resultSet = statement.executeQuery("SELECT 1")) {
-                    assertNotNull(resultSet.getMetaData());
-                    assertFalse(resultSet.next());
-                }
+            try (PreparedStatement statement = connection.prepareStatement("SELECT 1");
+                 ResultSet resultSet = statement.executeQuery()) {
+                assertNotNull(resultSet.getMetaData());
+                assertFalse(resultSet.next());
             }
         }
     }
@@ -208,12 +212,14 @@ class DbfsDriverTest {
                 "update",
                 "benchbase",
                 "INSERT INTO customer VALUES (?)",
-            Arrays.asList(timestamp, null));
+                Arrays.asList(timestamp, null),
+                true);
 
         JsonNode root = OBJECT_MAPPER.readTree(new String(encoded, StandardCharsets.UTF_8));
         assertEquals("update", root.get("operation").asText());
         assertEquals("benchbase", root.get("database").asText());
         assertEquals("INSERT INTO customer VALUES (?)", root.get("sql").asText());
+        assertTrue(root.get("prepared").asBoolean());
         assertEquals("2026-05-15 04:12:33.456", root.get("parameters").get(0).asText());
         assertTrue(root.get("parameters").get(0).isTextual());
         assertNull(root.get("parameters").get(1).textValue());

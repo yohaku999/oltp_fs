@@ -59,8 +59,8 @@ class DbfsStatementHandler extends DbfsProxyHandler {
             String sql = normalizedSql(args[0]);
             QueryResult result = builtInQueryResult(sql, List.of());
             if (result == null) {
-                result = executeWithTrace("QUERY", sql, () -> sql,
-                        () -> state.client().executeQuery(sql, List.of()));
+                throw new SQLFeatureNotSupportedException(
+                        "Statement queries are not supported; use PreparedStatement");
             }
             currentResultSet = DbfsJdbcProxyFactory.newResultSet(result);
             updateCount = -1;
@@ -69,8 +69,9 @@ class DbfsStatementHandler extends DbfsProxyHandler {
         if ((name.equals("executeUpdate") || name.equals("executeLargeUpdate")) && args.length >= 1) {
             ensureOpen();
             String sql = normalizedSql(args[0]);
+            requireDdl(sql);
             int updated = executeWithTrace("UPDATE", sql, () -> sql,
-                    () -> state.client().executeUpdate(sql, List.of()));
+                    () -> state.client().executeUpdate(sql, List.of(), false));
             currentResultSet = null;
             updateCount = updated;
             if (name.equals("executeLargeUpdate")) {
@@ -84,16 +85,17 @@ class DbfsStatementHandler extends DbfsProxyHandler {
             if (looksLikeQuery(sql)) {
                 QueryResult result = builtInQueryResult(sql, List.of());
                 if (result == null) {
-                    result = executeWithTrace("QUERY", sql, () -> sql,
-                            () -> state.client().executeQuery(sql, List.of()));
+                    throw new SQLFeatureNotSupportedException(
+                            "Statement queries are not supported; use PreparedStatement");
                 }
                 currentResultSet = DbfsJdbcProxyFactory.newResultSet(result);
                 updateCount = -1;
                 return true;
             }
 
+            requireDdl(sql);
             updateCount = executeWithTrace("UPDATE", sql, () -> sql,
-                    () -> state.client().executeUpdate(sql, List.of()));
+                    () -> state.client().executeUpdate(sql, List.of(), false));
             currentResultSet = null;
             return false;
         }
@@ -227,6 +229,14 @@ class DbfsStatementHandler extends DbfsProxyHandler {
         }
     }
 
+    private void requireDdl(String sql) throws SQLFeatureNotSupportedException {
+        String keyword = sql.stripLeading().split("\\s+", 2)[0].toLowerCase(Locale.ROOT);
+        if (!keyword.equals("create") && !keyword.equals("drop")) {
+            throw new SQLFeatureNotSupportedException(
+                    "Statement data access is not supported; use PreparedStatement");
+        }
+    }
+
     protected <T> T executeWithTrace(
             String kind,
             String shapeKey,
@@ -325,7 +335,7 @@ final class DbfsPreparedStatementHandler extends DbfsStatementHandler {
                         "QUERY",
                         sql,
                         () -> SqlLiteralRenderer.render(sql, ordered),
-                        () -> state.client().executeQuery(sql, ordered));
+                        () -> state.client().executeQuery(sql, ordered, true));
             }
             ResultSet resultSet = DbfsJdbcProxyFactory.newResultSet(result);
             setCurrentResultSet(resultSet);
@@ -339,7 +349,7 @@ final class DbfsPreparedStatementHandler extends DbfsStatementHandler {
                     "UPDATE",
                     sql,
                     () -> SqlLiteralRenderer.render(sql, ordered),
-                    () -> state.client().executeUpdate(sql, ordered));
+                    () -> state.client().executeUpdate(sql, ordered, true));
             setCurrentResultSet(null);
             setUpdateCount(updated);
             if (name.equals("executeLargeUpdate")) {
@@ -357,7 +367,7 @@ final class DbfsPreparedStatementHandler extends DbfsStatementHandler {
                             "QUERY",
                             sql,
                             () -> SqlLiteralRenderer.render(sql, ordered),
-                            () -> state.client().executeQuery(sql, ordered));
+                            () -> state.client().executeQuery(sql, ordered, true));
                 }
                 setCurrentResultSet(DbfsJdbcProxyFactory.newResultSet(result));
                 setUpdateCount(-1);
@@ -368,7 +378,7 @@ final class DbfsPreparedStatementHandler extends DbfsStatementHandler {
                     "UPDATE",
                     sql,
                     () -> SqlLiteralRenderer.render(sql, ordered),
-                    () -> state.client().executeUpdate(sql, ordered)));
+                    () -> state.client().executeUpdate(sql, ordered, true)));
             setCurrentResultSet(null);
             return false;
         }
@@ -441,7 +451,7 @@ final class DbfsPreparedStatementHandler extends DbfsStatementHandler {
                     "UPDATE",
                     sql,
                     () -> SqlLiteralRenderer.render(sql, ordered),
-                    () -> state.client().executeUpdate(sql, ordered));
+                    () -> state.client().executeUpdate(sql, ordered, true));
         }
         return updateCounts;
     }
