@@ -80,6 +80,7 @@ add_library(dbfs_src
     src/execution/operators/loop_join_operator.cpp
     src/execution/operators/orderby_operator.cpp
     src/execution/operators/seq_scan_operator.cpp
+    src/execution/operators/topN_operator.cpp
     src/parser/select_parser.cpp
     src/storage/table_metadata_store.cpp
     src/catalog/table.cpp
@@ -146,6 +147,9 @@ target_link_libraries(limit_operator_test dbfs_src GTest::gtest_main)
 add_executable(orderby_operator_test test/execution/orderby_operator.cpp)
 target_link_libraries(orderby_operator_test dbfs_src GTest::gtest_main)
 
+add_executable(topN_operator_test test/execution/topN_operator.cpp)
+target_link_libraries(topN_operator_test dbfs_src GTest::gtest_main)
+
 add_executable(exchange_operator_test test/execution/exchange_operator.cpp)
 target_link_libraries(exchange_operator_test dbfs_src GTest::gtest_main)
 
@@ -200,6 +204,7 @@ add_test(NAME LimitOperatorTest COMMAND limit_operator_test)
 add_test(NAME LoopJoinOperatorTest COMMAND loop_join_operator_test)
 add_test(NAME HashJoinOperatorTest COMMAND hash_join_operator_test)
 add_test(NAME OrderByOperatorTest COMMAND orderby_operator_test)
+add_test(NAME TopNOperatorTest COMMAND topN_operator_test)
 add_test(NAME ExchangeOperatorTest COMMAND exchange_operator_test)
 add_test(NAME ServerTest COMMAND server_test)
 add_test(NAME TableTest COMMAND table_test)
