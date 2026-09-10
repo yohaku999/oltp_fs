@@ -22,6 +22,7 @@
 #include "execution/operators/orderby_operator.h"
 #include "execution/operators/projection_operator.h"
 #include "execution/operators/seq_scan_operator.h"
+#include "execution/operators/topN_operator.h"
 #include "parser/create_index_parser.h"
 #include "parser/create_table_parser.h"
 #include "parser/delete_parser.h"
@@ -503,14 +504,13 @@ std::vector<TypedRow> executor::read(BufferPool& pool,
     }
     items = collectItems<TypedRow>(*pipeline);
   } else {
-    // order by
-    if (!query.order_by_specs.empty()) {
+    if (!query.order_by_specs.empty() && query.limit_count.has_value()) {
+      pipeline = std::make_unique<TopNOperator>(
+          std::move(pipeline), query.order_by_specs, query.limit_count.value());
+    } else if (!query.order_by_specs.empty()) {
       pipeline = std::make_unique<OrderByOperator>(std::move(pipeline),
                                                    query.order_by_specs);
-    }
-
-    // limit
-    if (query.limit_count.has_value()) {
+    } else if (query.limit_count.has_value()) {
       pipeline = std::make_unique<LimitOperator>(std::move(pipeline),
                                                  query.limit_count.value());
     }
