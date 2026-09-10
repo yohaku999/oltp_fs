@@ -47,8 +47,8 @@ final class ImplDbfsClient implements DbfsClient {
     }
 
     @Override
-    public QueryResult executeQuery(String sql, List<Object> parameters, boolean prepared) throws SQLException {
-        RemoteResponse response = send("query", sql, parameters, prepared);
+    public QueryResult executeQuery(String sql, List<Object> parameters) throws SQLException {
+        RemoteResponse response = send("query", sql, parameters);
         ensureSuccess(response);
         return new QueryResult(
                 response.columns == null ? List.of() : response.columns,
@@ -56,8 +56,8 @@ final class ImplDbfsClient implements DbfsClient {
     }
 
     @Override
-    public int executeUpdate(String sql, List<Object> parameters, boolean prepared) throws SQLException {
-        RemoteResponse response = send("update", sql, parameters, prepared);
+    public int executeUpdate(String sql, List<Object> parameters) throws SQLException {
+        RemoteResponse response = send("update", sql, parameters);
         ensureSuccess(response);
         if (response.updateCount == null) {
             throw new SQLException("dbfs server response did not include updateCount");
@@ -92,12 +92,11 @@ final class ImplDbfsClient implements DbfsClient {
         closeConnection();
     }
 
-    private synchronized RemoteResponse send(
-            String operation, String sql, List<Object> parameters, boolean prepared)
+    private synchronized RemoteResponse send(String operation, String sql, List<Object> parameters)
             throws SQLException {
         try {
             ensureConnected();
-            byte[] requestBytes = encodeRequest(operation, database, sql, parameters, prepared);
+            byte[] requestBytes = encodeRequest(operation, database, sql, parameters);
             output.writeInt(requestBytes.length);
             output.write(requestBytes);
             output.flush();
@@ -188,14 +187,12 @@ final class ImplDbfsClient implements DbfsClient {
             String operation,
             String database,
             String sql,
-            List<Object> parameters,
-            boolean prepared) throws IOException {
+            List<Object> parameters) throws IOException {
         Map<String, Object> request = new LinkedHashMap<>();
         request.put("operation", operation);
         request.put("database", database);
         request.put("sql", sql);
         request.put("parameters", normalizeParameters(parameters));
-        request.put("prepared", prepared);
         return OBJECT_MAPPER.writeValueAsBytes(request);
     }
 
@@ -206,7 +203,6 @@ final class ImplDbfsClient implements DbfsClient {
         request.put("database", database);
         request.put("sql", sql);
         request.put("parameterSets", normalizeParameterSets(parameterSets));
-        request.put("prepared", true);
         return OBJECT_MAPPER.writeValueAsBytes(request);
     }
 

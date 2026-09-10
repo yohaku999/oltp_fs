@@ -23,12 +23,12 @@ final class InMemoryDbfsClient implements DbfsClient {
     }
 
     @Override
-    public QueryResult executeQuery(String sql, List<Object> parameters, boolean prepared) throws SQLException {
+    public QueryResult executeQuery(String sql, List<Object> parameters) throws SQLException {
         return database.executeQuery(sql, parameters);
     }
 
     @Override
-    public int executeUpdate(String sql, List<Object> parameters, boolean prepared) throws SQLException {
+    public int executeUpdate(String sql, List<Object> parameters) throws SQLException {
         return database.executeUpdate(sql, parameters);
     }
 
