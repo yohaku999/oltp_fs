@@ -91,7 +91,8 @@ std::optional<BoundOperand> tryBindOperand(const UnboundOperand& operand,
 
 }  // namespace
 
-BoundSelectQuery bindSelectQuery(const SelectParser& parser) {
+BoundSelectQuery bindSelectQuery(const SelectParser& parser,
+                                 const QueryParameters& parameters) {
   BoundSelectQuery bound_query;
 
   const std::vector<std::string> table_names = parser.extractTableNames();
@@ -108,7 +109,7 @@ BoundSelectQuery bindSelectQuery(const SelectParser& parser) {
   const Schema joined_schema(std::move(columns));
 
   const std::vector<UnboundComparisonPredicate> unbound_predicates =
-      parser.extractComparisonPredicates(joined_schema);
+      parser.extractComparisonPredicates(joined_schema, parameters);
   bound_query.predicates =
       bindPredicates(unbound_predicates, bound_query.tables);
 
@@ -140,7 +141,7 @@ BoundSelectQuery bindSelectQuery(const SelectParser& parser) {
         "ORDER BY is not supported for aggregate queries.");
   }
 
-  bound_query.limit_count = parser.extractLimitCount();
+  bound_query.limit_count = parser.extractLimitCount(parameters);
   return bound_query;
 }
 

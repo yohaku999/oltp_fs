@@ -356,16 +356,17 @@ TEST_F(ServerTest, BatchUpdateInsertsPreparedStatementRows) {
   nlohmann::json create_response =
       sendRequest(port_, "update",
                   "CREATE TABLE batch_probe (id int NOT NULL, value varchar, "
+                  "quantity int, "
                   "PRIMARY KEY (id))",
                   nlohmann::json::array(), kConcurrentStockLevelTimeoutMs);
   ASSERT_TRUE(create_response.value("ok", false));
 
-  nlohmann::json batch_response =
-      sendBatchRequest(port_, "INSERT INTO batch_probe VALUES (?, ?)",
-                       nlohmann::json::array({nlohmann::json::array({1, "a"}),
-                                              nlohmann::json::array({2, "b"}),
-                                              nlohmann::json::array({3, "c"})}),
-                       kConcurrentStockLevelTimeoutMs);
+  nlohmann::json batch_response = sendBatchRequest(
+      port_, "INSERT INTO batch_probe VALUES (?, ?, ?)",
+      nlohmann::json::array({nlohmann::json::array({1, "a", 10}),
+                             nlohmann::json::array({2, "b", 20}),
+                             nlohmann::json::array({3, "c", 30})}),
+      kConcurrentStockLevelTimeoutMs);
   ASSERT_TRUE(batch_response.value("ok", false));
   EXPECT_EQ(3, batch_response.at("updateCount").get<int>());
   ASSERT_TRUE(batch_response.at("updateCounts").is_array());
@@ -381,6 +382,40 @@ TEST_F(ServerTest, BatchUpdateInsertsPreparedStatementRows) {
   ASSERT_EQ(1, query_response.at("rows").size());
   ASSERT_EQ(1, query_response.at("rows").at(0).size());
   EXPECT_EQ("b", query_response.at("rows").at(0).at(0).get<std::string>());
+
+  query_response =
+      sendRequest(port_, "query", "SELECT value FROM batch_probe WHERE id = ?",
+                  nlohmann::json::array({3}), kConcurrentStockLevelTimeoutMs);
+  ASSERT_TRUE(query_response.value("ok", false));
+  ASSERT_EQ(1, query_response.at("rows").size());
+  EXPECT_EQ("c", query_response.at("rows").at(0).at(0).get<std::string>());
+
+  nlohmann::json update_response = sendRequest(
+      port_, "update",
+      "UPDATE batch_probe SET value = ?, quantity = quantity + ? WHERE id = ?",
+      nlohmann::json::array({"updated", 5, 2}), kConcurrentStockLevelTimeoutMs);
+  ASSERT_TRUE(update_response.value("ok", false));
+
+  query_response = sendRequest(
+      port_, "query", "SELECT value, quantity FROM batch_probe WHERE id = ?",
+      nlohmann::json::array({2}), kConcurrentStockLevelTimeoutMs);
+  ASSERT_TRUE(query_response.value("ok", false));
+  ASSERT_EQ(1, query_response.at("rows").size());
+  EXPECT_EQ("updated",
+            query_response.at("rows").at(0).at(0).get<std::string>());
+  EXPECT_EQ(25, query_response.at("rows").at(0).at(1).get<int>());
+
+  nlohmann::json delete_response =
+      sendRequest(port_, "update", "DELETE FROM batch_probe WHERE id = ?",
+                  nlohmann::json::array({1}), kConcurrentStockLevelTimeoutMs);
+  ASSERT_TRUE(delete_response.value("ok", false));
+
+  query_response = sendRequest(
+      port_, "query", "SELECT id FROM batch_probe ORDER BY id LIMIT ?",
+      nlohmann::json::array({1}), kConcurrentStockLevelTimeoutMs);
+  ASSERT_TRUE(query_response.value("ok", false));
+  ASSERT_EQ(1, query_response.at("rows").size());
+  EXPECT_EQ(2, query_response.at("rows").at(0).at(0).get<int>());
 }
 
 TEST_F(ServerTest, CreatesUniqueSecondaryIndex) {

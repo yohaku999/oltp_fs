@@ -329,10 +329,11 @@ void updateMatchingRows(
     BufferPool& pool, const Table& table, HeapFile& heap,
     const std::vector<RID>& rids,
     const std::vector<UnboundComparisonPredicate>& predicates,
-    const UpdateParser& parser, OnRecordRelocated on_record_relocated) {
+    const UpdateParser& parser, const QueryParameters& parameters,
+    OnRecordRelocated on_record_relocated) {
   const std::vector<BoundUpdateAssignment> bound_assignments =
-      binder::bindUpdateAssignments(parser.extractAssignments(table.schema()),
-                                    table);
+      binder::bindUpdateAssignments(
+          parser.extractAssignments(table.schema(), parameters), table);
   std::vector<std::size_t> indexed_column_indexes;
   for (const IndexMetadata& index : table.indexes()) {
     const std::vector<std::size_t> column_indexes =
@@ -467,8 +468,9 @@ void createIndexForTable(LocalStorageManager& storage, Table& table,
 std::vector<TypedRow> executor::read(BufferPool& pool,
                                      LocalStorageManager& storage,
                                      IndexAccessor& index_accessor,
-                                     const SelectParser& parser) {
-  binder::BoundSelectQuery query = binder::bindSelectQuery(parser);
+                                     const SelectParser& parser,
+                                     const QueryParameters& parameters) {
+  binder::BoundSelectQuery query = binder::bindSelectQuery(parser, parameters);
 
   std::vector<std::unique_ptr<TypedRowOperator>> sources;
   for (std::size_t table_index = 0; table_index < query.tables.size();
@@ -572,8 +574,9 @@ void executor::drop_table(LocalStorageManager& storage,
 
 void executor::insert(BufferPool& pool, LocalStorageManager& storage,
                       IndexAccessor& index_accessor, Table& table,
-                      const InsertParser& parser) {
-  const TypedRow row = parser.extractRow(table.schema());
+                      const InsertParser& parser,
+                      const QueryParameters& parameters) {
+  const TypedRow row = parser.extractRow(table.schema(), parameters);
   HeapFile heap = storage.openHeap(table.heapFileName());
   const RecordCell cell = RecordSerializer::serialize(table.schema(), row);
   const std::vector<std::string> index_keys = encodeIndexKeys(table, row);
@@ -598,10 +601,11 @@ void executor::insert(BufferPool& pool, LocalStorageManager& storage,
 
 int executor::remove(BufferPool& pool, LocalStorageManager& storage,
                      IndexAccessor& index_accessor, Table& table,
-                     const DeleteParser& parser) {
+                     const DeleteParser& parser,
+                     const QueryParameters& parameters) {
   HeapFile heap = storage.openHeap(table.heapFileName());
   const std::vector<UnboundComparisonPredicate> predicates =
-      parser.extractComparisonPredicates(table.schema());
+      parser.extractComparisonPredicates(table.schema(), parameters);
   const std::vector<RID> rids = collectRidsNarrowedByPredicates(
       pool, index_accessor, table, heap, predicates);
   const int removed_count = removeMatchingRows(
@@ -629,14 +633,15 @@ int executor::remove(BufferPool& pool, LocalStorageManager& storage,
  */
 void executor::update(BufferPool& pool, LocalStorageManager& storage,
                       IndexAccessor& index_accessor, Table& table,
-                      const UpdateParser& parser) {
+                      const UpdateParser& parser,
+                      const QueryParameters& parameters) {
   HeapFile heap = storage.openHeap(table.heapFileName());
   const std::vector<UnboundComparisonPredicate> predicates =
-      parser.extractComparisonPredicates(table.schema());
+      parser.extractComparisonPredicates(table.schema(), parameters);
   const std::vector<RID> rids = collectRidsNarrowedByPredicates(
       pool, index_accessor, table, heap, predicates);
   updateMatchingRows(
-      pool, table, heap, rids, predicates, parser,
+      pool, table, heap, rids, predicates, parser, parameters,
       [&](const TypedRow& original_row, const RID& old_rid,
           const RID& new_rid) {
         const std::vector<std::string> index_keys =

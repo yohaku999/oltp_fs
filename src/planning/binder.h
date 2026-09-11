@@ -9,6 +9,7 @@
 #include "execution/order_by_spec.h"
 #include "execution/select_item.h"
 #include "execution/update_assignment.h"
+#include "parser/query_parameters.h"
 
 class SelectParser;
 
@@ -23,7 +24,8 @@ struct BoundSelectQuery {
   std::optional<std::size_t> limit_count;
 };
 
-BoundSelectQuery bindSelectQuery(const SelectParser& parser);
+BoundSelectQuery bindSelectQuery(const SelectParser& parser,
+                                 const QueryParameters& parameters = {});
 
 BoundColumnRef bindColumnRef(const ColumnRef& column_ref,
                              const std::vector<Table>& tables);

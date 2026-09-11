@@ -16,11 +16,14 @@ class Server {
   void start();
 
  private:
+  struct ParserCache;
+
   int port_;
   std::unique_ptr<WAL> wal_;
   std::unique_ptr<BufferPool> pool_;
   std::unique_ptr<LocalStorageManager> storage_;
   std::unique_ptr<IndexAccessor> index_accessor_;
+  std::unique_ptr<ParserCache> parser_cache_;
   std::mutex request_mutex_;
 
   std::string readFrame(int client_fd);

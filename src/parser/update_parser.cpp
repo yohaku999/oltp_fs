@@ -18,12 +18,13 @@ std::string UpdateParser::extractTableName() const {
 }
 
 std::vector<UnboundComparisonPredicate>
-UpdateParser::extractComparisonPredicates(const Schema& schema) const {
-  return parseWhereClausePredicates(updateStatement(), schema);
+UpdateParser::extractComparisonPredicates(
+    const Schema& schema, const QueryParameters& parameters) const {
+  return parseWhereClausePredicates(updateStatement(), schema, parameters);
 }
 
 std::vector<UnboundUpdateAssignment> UpdateParser::extractAssignments(
-    const Schema& schema) const {
+    const Schema& schema, const QueryParameters& parameters) const {
   const auto& target_list = updateStatement().at("targetList");
   std::vector<UnboundUpdateAssignment> assignments;
   assignments.reserve(target_list.size());
@@ -41,7 +42,8 @@ std::vector<UnboundUpdateAssignment> UpdateParser::extractAssignments(
                          res_target.at("val"), schema, column_name,
                          schema.columns()
                              .at(static_cast<std::size_t>(column_index))
-                             .getType())});
+                             .getType(),
+                         parameters)});
   }
 
   return assignments;

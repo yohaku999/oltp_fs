@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "parser/pg_query_json_parser.h"
+#include "parser/query_parameters.h"
 #include "tuple/typed_row.h"
 
 class Schema;
@@ -14,5 +15,6 @@ class InsertParser : private PgQueryJsonParser {
   ~InsertParser() = default;
 
   std::string extractTableName() const;
-  TypedRow extractRow(const Schema& schema) const;
+  TypedRow extractRow(const Schema& schema,
+                      const QueryParameters& parameters = {}) const;
 };

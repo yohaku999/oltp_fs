@@ -18,6 +18,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 #include "catalog/table.h"
@@ -39,72 +40,43 @@
 
 namespace {
 
-std::string quoteSqlString(const std::string& value) {
-  std::string escaped;
-  escaped.reserve(value.size());
-  for (char ch : value) {
-    escaped.push_back(ch);
-    if (ch == '\'') {
-      escaped.push_back('\'');
+QueryParameters queryParametersFromJson(const nlohmann::json& values) {
+  QueryParameters parameters;
+  parameters.reserve(values.size());
+  for (const nlohmann::json& value : values) {
+    if (value.is_null()) {
+      parameters.emplace_back(std::monostate{});
+    } else if (value.is_number_integer() || value.is_number_unsigned()) {
+      parameters.emplace_back(value.get<Column::IntegerType>());
+    } else if (value.is_number_float()) {
+      parameters.emplace_back(value.get<Column::DoubleType>());
+    } else if (value.is_string()) {
+      parameters.emplace_back(value.get<Column::VarcharType>());
+    } else {
+      throw std::runtime_error("Unsupported JSON parameter type.");
     }
   }
-  return "'" + escaped + "'";
+  return parameters;
 }
 
-std::string renderJsonLiteral(const nlohmann::json& value) {
-  if (value.is_null()) {
-    return "NULL";
-  }
-  if (value.is_string()) {
-    return quoteSqlString(value.get<std::string>());
-  }
-  if (value.is_boolean()) {
-    return value.get<bool>() ? "TRUE" : "FALSE";
-  }
-  if (value.is_number_integer() || value.is_number_unsigned() ||
-      value.is_number_float()) {
-    return value.dump();
-  }
-  throw std::runtime_error("Unsupported JSON parameter type.");
-}
-
-std::string renderSqlWithParameters(const std::string& sql,
-                                    const nlohmann::json& parameters) {
-  if (!parameters.is_array() || parameters.empty()) {
-    return sql;
-  }
-
-  std::string rendered;
-  rendered.reserve(sql.size() + parameters.size() * 8);
-  std::size_t parameter_index = 0;
-  bool in_single_quoted_string = false;
-
-  for (std::size_t index = 0; index < sql.size(); ++index) {
-    const char current = sql[index];
-    if (current == '\'') {
-      rendered.push_back(current);
-      if (in_single_quoted_string && index + 1 < sql.size() &&
-          sql[index + 1] == '\'') {
-        rendered.push_back(sql[index + 1]);
-        ++index;
-        continue;
-      }
-      in_single_quoted_string = !in_single_quoted_string;
-      continue;
+template <typename Parser>
+class ParsedStatementCache {
+ public:
+  const Parser& get(const std::string& sql_template) {
+    const auto cached = parsers_.find(sql_template);
+    if (cached != parsers_.end()) {
+      return *cached->second;
     }
 
-    if (current == '?' && !in_single_quoted_string &&
-        parameter_index < parameters.size()) {
-      rendered += renderJsonLiteral(parameters[parameter_index]);
-      ++parameter_index;
-      continue;
-    }
-
-    rendered.push_back(current);
+    auto parser = std::make_unique<Parser>(sql_template);
+    const Parser& result = *parser;
+    parsers_.emplace(sql_template, std::move(parser));
+    return result;
   }
 
-  return rendered;
-}
+ private:
+  std::unordered_map<std::string, std::unique_ptr<Parser>> parsers_;
+};
 
 std::string leadingKeyword(const std::string& sql) {
   const std::size_t first = sql.find_first_not_of(" \t\r\n");
@@ -230,6 +202,16 @@ void sendAll(int fd, const void* buffer, size_t length) {
 
 }  // namespace
 
+struct Server::ParserCache {
+  ParsedStatementCache<SelectParser> select;
+  ParsedStatementCache<InsertParser> insert;
+  ParsedStatementCache<UpdateParser> update;
+  ParsedStatementCache<DeleteParser> remove;
+  ParsedStatementCache<CreateTableParser> create_table;
+  ParsedStatementCache<CreateIndexParser> create_index;
+  ParsedStatementCache<DropTableParser> drop_table;
+};
+
 Server::Server(int port) : port_(port) {
   std::filesystem::create_directories("data");
   const std::string wal_path = "data/server.wal";
@@ -238,6 +220,7 @@ Server::Server(int port) : port_(port) {
   pool_ = std::make_unique<BufferPool>(*wal_);
   storage_ = std::make_unique<LocalStorageManager>();
   index_accessor_ = std::make_unique<IndexAccessor>(*pool_, *storage_);
+  parser_cache_ = std::make_unique<ParserCache>();
 }
 
 Server::~Server() = default;
@@ -397,14 +380,12 @@ std::string Server::handleRequest(const std::string& request) {
   }
 
   const std::string sql_template = req.at("sql").get<std::string>();
-  const nlohmann::json parameters =
+  const nlohmann::json parameter_values =
       req.value("parameters", nlohmann::json::array());
-  const std::string sql =
-      operation == "batchUpdate"
-          ? sql_template
-          : renderSqlWithParameters(sql_template, parameters);
+  const QueryParameters parameters = queryParametersFromJson(parameter_values);
+  const std::string keyword = leadingKeyword(sql_template);
 
-  dbfs_log::server().debug("parsed SQL: {}", sql);
+  dbfs_log::server().debug("SQL template: {}", sql_template);
 
   if (operation == "batchUpdate") {
     const nlohmann::json parameter_sets =
@@ -417,17 +398,15 @@ std::string Server::handleRequest(const std::string& request) {
       res["updateCounts"] = nlohmann::json::array();
       res["updateCount"] = 0;
     } else {
-      const std::string first_sql =
-          renderSqlWithParameters(sql_template, parameter_sets.front());
-      if (leadingKeyword(first_sql) != "INSERT") {
+      if (keyword != "INSERT") {
         res["ok"] = false;
         res["sqlState"] = "0A000";
         res["errorMessage"] =
             "batchUpdate currently supports INSERT statements only";
       } else {
-        InsertParser first_parser(first_sql);
+        const InsertParser& parser = parser_cache_->insert.get(sql_template);
         Table table =
-            TableMetadataStore::read(first_parser.extractTableName()).value();
+            TableMetadataStore::read(parser.extractTableName()).value();
         nlohmann::json update_counts = nlohmann::json::array();
 
         // Minimal TPC-C-oriented batch path. This reduces JDBC/server round
@@ -438,10 +417,8 @@ std::string Server::handleRequest(const std::string& request) {
             throw std::runtime_error(
                 "batchUpdate parameterSets must contain arrays");
           }
-          const std::string rendered_sql =
-              renderSqlWithParameters(sql_template, parameter_set);
-          InsertParser parser(rendered_sql);
-          executor::insert(*pool_, *storage_, *index_accessor_, table, parser);
+          executor::insert(*pool_, *storage_, *index_accessor_, table, parser,
+                           queryParametersFromJson(parameter_set));
           update_counts.push_back(1);
         }
 
@@ -449,10 +426,10 @@ std::string Server::handleRequest(const std::string& request) {
         res["updateCount"] = parameter_sets.size();
       }
     }
-  } else if (operation == "query" || leadingKeyword(sql) == "SELECT") {
-    SelectParser parser(sql);
+  } else if (operation == "query") {
+    const SelectParser& parser = parser_cache_->select.get(sql_template);
     const std::vector<TypedRow> rows =
-        executor::read(*pool_, *storage_, *index_accessor_, parser);
+        executor::read(*pool_, *storage_, *index_accessor_, parser, parameters);
     res["columns"] = selectColumnNames(parser);
     res["rows"] = nlohmann::json::array();
     for (const TypedRow& row : rows) {
@@ -462,37 +439,44 @@ std::string Server::handleRequest(const std::string& request) {
       }
       res["rows"].push_back(std::move(json_row));
     }
-  } else if (leadingKeyword(sql) == "CREATE") {
-    if (sql.find("CREATE INDEX") == 0 || sql.find("create index") == 0 ||
-        sql.find("CREATE UNIQUE INDEX") == 0 ||
-        sql.find("create unique index") == 0) {
-      executor::create_index(*storage_, CreateIndexParser(sql));
+  } else if (keyword == "CREATE") {
+    if (sql_template.find("CREATE INDEX") == 0 ||
+        sql_template.find("create index") == 0 ||
+        sql_template.find("CREATE UNIQUE INDEX") == 0 ||
+        sql_template.find("create unique index") == 0) {
+      executor::create_index(*storage_,
+                             parser_cache_->create_index.get(sql_template));
     } else {
-      executor::create_table(*storage_, CreateTableParser(sql));
+      executor::create_table(*storage_,
+                             parser_cache_->create_table.get(sql_template));
     }
     res["updateCount"] = 0;
-  } else if (leadingKeyword(sql) == "DROP") {
-    executor::drop_table(*storage_, DropTableParser(sql));
+  } else if (keyword == "DROP") {
+    executor::drop_table(*storage_,
+                         parser_cache_->drop_table.get(sql_template));
     res["updateCount"] = 0;
-  } else if (leadingKeyword(sql) == "INSERT") {
-    InsertParser parser(sql);
+  } else if (keyword == "INSERT") {
+    const InsertParser& parser = parser_cache_->insert.get(sql_template);
     Table table = TableMetadataStore::read(parser.extractTableName()).value();
-    executor::insert(*pool_, *storage_, *index_accessor_, table, parser);
+    executor::insert(*pool_, *storage_, *index_accessor_, table, parser,
+                     parameters);
     res["updateCount"] = 1;
-  } else if (leadingKeyword(sql) == "UPDATE") {
-    UpdateParser parser(sql);
+  } else if (keyword == "UPDATE") {
+    const UpdateParser& parser = parser_cache_->update.get(sql_template);
     Table table = TableMetadataStore::read(parser.extractTableName()).value();
-    executor::update(*pool_, *storage_, *index_accessor_, table, parser);
+    executor::update(*pool_, *storage_, *index_accessor_, table, parser,
+                     parameters);
     res["updateCount"] = 1;
-  } else if (leadingKeyword(sql) == "DELETE") {
-    DeleteParser parser(sql);
+  } else if (keyword == "DELETE") {
+    const DeleteParser& parser = parser_cache_->remove.get(sql_template);
     Table table = TableMetadataStore::read(parser.extractTableName()).value();
-    executor::remove(*pool_, *storage_, *index_accessor_, table, parser);
+    executor::remove(*pool_, *storage_, *index_accessor_, table, parser,
+                     parameters);
     res["updateCount"] = 1;
   } else {
     res["ok"] = false;
     res["sqlState"] = "0A000";
-    res["errorMessage"] = "unsupported SQL: " + sql;
+    res["errorMessage"] = "unsupported SQL: " + sql_template;
   }
 
   std::string response = res.dump();

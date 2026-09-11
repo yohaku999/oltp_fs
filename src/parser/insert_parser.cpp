@@ -19,7 +19,8 @@ std::string InsertParser::extractTableName() const {
       .get<std::string>();
 }
 
-TypedRow InsertParser::extractRow(const Schema& schema) const {
+TypedRow InsertParser::extractRow(const Schema& schema,
+                                  const QueryParameters& parameters) const {
   const auto& insert_stmt = statementNode().at("InsertStmt");
   const auto& items = insert_stmt.at("selectStmt")
                           .at("SelectStmt")
@@ -69,8 +70,9 @@ TypedRow InsertParser::extractRow(const Schema& schema) const {
   row.values.assign(schema.columns().size(), std::monostate{});
   for (std::size_t item_index = 0; item_index < items.size(); ++item_index) {
     const std::size_t column_index = target_column_indexes.at(item_index);
-    row.values[column_index] = parseConstFieldValue(
-        items.at(item_index), schema.columns().at(column_index).getType());
+    row.values[column_index] = parseFieldValue(
+        items.at(item_index), schema.columns().at(column_index).getType(),
+        parameters);
   }
 
   return row;

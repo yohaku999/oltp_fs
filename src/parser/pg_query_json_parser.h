@@ -3,14 +3,10 @@
 #include <nlohmann/json.hpp>
 #include <string>
 
-extern "C" {
-#include <pg_query.h>
-}
-
 class PgQueryJsonParser {
  public:
   explicit PgQueryJsonParser(std::string sql);
-  ~PgQueryJsonParser();
+  ~PgQueryJsonParser() = default;
 
   PgQueryJsonParser(const PgQueryJsonParser&) = delete;
   PgQueryJsonParser& operator=(const PgQueryJsonParser&) = delete;
@@ -21,7 +17,4 @@ class PgQueryJsonParser {
   const nlohmann::json& statementNode() const;
 
   nlohmann::json parse_tree_;
-
- private:
-  PgQueryParseResult result_{};
 };
