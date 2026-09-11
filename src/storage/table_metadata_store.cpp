@@ -41,12 +41,12 @@ std::string prepareMetadataPath(const std::string& path) {
 }  // namespace
 
 std::optional<Table> TableMetadataStore::read(const std::string& table_name) {
-  if (!exists(table_name)) {
-    return std::nullopt;
-  }
   const auto cached = metadata_cache.find(table_name);
   if (cached != metadata_cache.end()) {
     return cached->second;
+  }
+  if (!exists(table_name)) {
+    return std::nullopt;
   }
 
   Table table = readFromPath(pathFor(table_name));
