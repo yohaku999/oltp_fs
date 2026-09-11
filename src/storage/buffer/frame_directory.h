@@ -1,12 +1,13 @@
 #pragma once
 #include <array>
 #include <cstdint>
-#include <map>
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 
+#include "storage/buffer/page_key.h"
 #include "storage/page/page.h"
 
 struct FrameDirectoryStats {
@@ -42,7 +43,7 @@ class FrameDirectory {
     void clear() { *this = Frame{}; }
   };
   std::array<Frame, MAX_FRAME_COUNT> frames_;
-  std::map<std::pair<int, std::string>, int> page_to_frame_;
+  std::unordered_map<PageKey, int, PageKeyHash> page_to_frame_;
   // optimization to find free frames in O(1) and avoid sequential search.
   std::unordered_set<int> free_frames_;
   size_t next_victim_frame_ = 0;
@@ -52,11 +53,9 @@ class FrameDirectory {
   FrameDirectory();
 
   std::optional<int> reserveFreeFrame();
-  std::optional<int> findResidentFrame(int page_id,
-                                       const std::string& file_path);
+  std::optional<int> findResidentFrame(const PageKey& page_key) const;
 
-  void registerResidentPage(int frame_id, int page_id,
-                            const std::string& file_path,
+  void registerResidentPage(int frame_id, const PageKey& page_key,
                             std::unique_ptr<Page> page);
   void unregisterResidentPage(int frame_id);
   void reset();

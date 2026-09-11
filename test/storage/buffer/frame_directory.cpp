@@ -41,9 +41,10 @@ TEST_F(FrameDirectoryTest, RegisterAndFindPageByID) {
   ASSERT_TRUE(frame_opt.has_value());
   int frame_id = frame_opt.value();
 
-  directory.registerResidentPage(frame_id, 100, "test.db", std::move(page1));
+  const PageKey page_key{"test.db", 100};
+  directory.registerResidentPage(frame_id, page_key, std::move(page1));
 
-  auto found_frame = directory.findResidentFrame(100, "test.db");
+  auto found_frame = directory.findResidentFrame(page_key);
   ASSERT_TRUE(found_frame.has_value());
   EXPECT_EQ(frame_id, found_frame.value());
 
@@ -59,7 +60,8 @@ TEST_F(FrameDirectoryTest, RegisterAndFindPageByID) {
 }
 
 TEST_F(FrameDirectoryTest, FindNonExistentPageReturnsNullopt) {
-  auto result = directory.findResidentFrame(999, "nonexistent.db");
+  auto result =
+      directory.findResidentFrame(PageKey{"nonexistent.db", 999});
   EXPECT_FALSE(result.has_value());
 }
 
@@ -72,16 +74,16 @@ TEST_F(FrameDirectoryTest, RegisterMultiplePagesInDifferentFrames) {
   ASSERT_TRUE(frame2.has_value());
   ASSERT_TRUE(frame3.has_value());
 
-  directory.registerResidentPage(frame1.value(), 10, "file1.db",
+  directory.registerResidentPage(frame1.value(), PageKey{"file1.db", 10},
                                  std::move(page1));
-  directory.registerResidentPage(frame2.value(), 20, "file2.db",
+  directory.registerResidentPage(frame2.value(), PageKey{"file2.db", 20},
                                  std::move(page2));
-  directory.registerResidentPage(frame3.value(), 30, "file1.db",
+  directory.registerResidentPage(frame3.value(), PageKey{"file1.db", 30},
                                  std::move(page3));
 
-  auto found1 = directory.findResidentFrame(10, "file1.db");
-  auto found2 = directory.findResidentFrame(20, "file2.db");
-  auto found3 = directory.findResidentFrame(30, "file1.db");
+  auto found1 = directory.findResidentFrame(PageKey{"file1.db", 10});
+  auto found2 = directory.findResidentFrame(PageKey{"file2.db", 20});
+  auto found3 = directory.findResidentFrame(PageKey{"file1.db", 30});
 
   EXPECT_EQ(frame1.value(), found1.value());
   EXPECT_EQ(frame2.value(), found2.value());
@@ -97,14 +99,15 @@ TEST_F(FrameDirectoryTest, UnregisterPageFreesFrame) {
   ASSERT_TRUE(frame_opt.has_value());
   int frame_id = frame_opt.value();
 
-  directory.registerResidentPage(frame_id, 100, "test.db", std::move(page1));
+  const PageKey page_key{"test.db", 100};
+  directory.registerResidentPage(frame_id, page_key, std::move(page1));
 
-  auto found = directory.findResidentFrame(100, "test.db");
+  auto found = directory.findResidentFrame(page_key);
   ASSERT_TRUE(found.has_value());
 
   directory.unregisterResidentPage(frame_id);
 
-  found = directory.findResidentFrame(100, "test.db");
+  found = directory.findResidentFrame(page_key);
   EXPECT_FALSE(found.has_value());
 
   const auto& frame = directory.getFrame(frame_id);
@@ -119,7 +122,8 @@ TEST_F(FrameDirectoryTest, CheckOccupiedStatusBeforeAndAfterRegistration) {
 
   EXPECT_TRUE(directory.getFrame(frame_id).page == nullptr);
 
-  directory.registerResidentPage(frame_id, 100, "test.db", std::move(page1));
+  directory.registerResidentPage(frame_id, PageKey{"test.db", 100},
+                                 std::move(page1));
 
   EXPECT_FALSE(directory.getFrame(frame_id).page == nullptr);
 
@@ -131,13 +135,14 @@ TEST_F(FrameDirectoryTest, CheckOccupiedStatusBeforeAndAfterRegistration) {
 TEST_F(FrameDirectoryTest, ResetClearsResidentsPinsAndLookupState) {
   auto frame = directory.reserveFreeFrame();
   ASSERT_TRUE(frame.has_value());
-  directory.registerResidentPage(frame.value(), 100, "test.db",
+  const PageKey page_key{"test.db", 100};
+  directory.registerResidentPage(frame.value(), page_key,
                                  std::move(page1));
   directory.pin(frame.value());
 
   directory.reset();
 
-  EXPECT_FALSE(directory.findResidentFrame(100, "test.db").has_value());
+  EXPECT_FALSE(directory.findResidentFrame(page_key).has_value());
   const auto stats = directory.collectStats();
   EXPECT_EQ(FrameDirectory::MAX_FRAME_COUNT, stats.frames_free);
   EXPECT_EQ(0u, stats.frames_resident);
@@ -170,11 +175,12 @@ TEST_F(FrameDirectoryTest, CollectStatsCountsKindsPinnedAndDirtyPages) {
   ASSERT_TRUE(leaf_frame.has_value());
   ASSERT_TRUE(internal_frame.has_value());
 
-  directory.registerResidentPage(heap_frame.value(), 1, "heap.db",
+  directory.registerResidentPage(heap_frame.value(), PageKey{"heap.db", 1},
                                  std::move(heap_page));
-  directory.registerResidentPage(leaf_frame.value(), 2, "index.db",
+  directory.registerResidentPage(leaf_frame.value(), PageKey{"index.db", 2},
                                  std::move(leaf_page));
-  directory.registerResidentPage(internal_frame.value(), 3, "index.db",
+  directory.registerResidentPage(internal_frame.value(),
+                                 PageKey{"index.db", 3},
                                  std::move(internal_page));
   directory.pin(heap_frame.value());
   directory.pin(internal_frame.value());
@@ -216,10 +222,11 @@ TEST_F(FrameDirectoryTest, MultipleRegisterUnregisterCycles) {
       auto page = std::make_unique<Page>(buffer.data(), PageKind::Heap, 0, i);
       int page_id = cycle * 100 + i;
 
-      directory.registerResidentPage(frame_id, page_id, "test.db",
+      const PageKey page_key{"test.db", page_id};
+      directory.registerResidentPage(frame_id, page_key,
                                      std::move(page));
 
-      auto found = directory.findResidentFrame(page_id, "test.db");
+      auto found = directory.findResidentFrame(page_key);
       EXPECT_TRUE(found.has_value());
       EXPECT_EQ(frame_id, found.value());
     }
@@ -256,7 +263,8 @@ TEST_F(FrameDirectoryTest, FrameReuseAfterUnregister) {
 
     std::array<char, 4096> buffer;
     auto page = std::make_unique<Page>(buffer.data(), PageKind::Heap, 0, i);
-    directory.registerResidentPage(frame_id, i, "test.db", std::move(page));
+    directory.registerResidentPage(
+        frame_id, PageKey{"test.db", static_cast<int>(i)}, std::move(page));
   }
 
   EXPECT_FALSE(directory.reserveFreeFrame().has_value());
@@ -275,10 +283,10 @@ TEST_F(FrameDirectoryTest, FrameReuseAfterUnregister) {
   std::array<char, 4096> new_buffer;
   auto new_page =
       std::make_unique<Page>(new_buffer.data(), PageKind::Heap, 0, 99);
-  directory.registerResidentPage(reused_frame_id, 999, "new.db",
+  directory.registerResidentPage(reused_frame_id, PageKey{"new.db", 999},
                                  std::move(new_page));
 
-  auto found = directory.findResidentFrame(999, "new.db");
+  auto found = directory.findResidentFrame(PageKey{"new.db", 999});
   ASSERT_TRUE(found.has_value());
   EXPECT_EQ(reused_frame_id, found.value());
 }

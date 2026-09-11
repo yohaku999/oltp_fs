@@ -1,10 +1,10 @@
 #include "frame_directory.h"
 
 #include <optional>
-#include <utility>
 
 #include "logging.h"
 FrameDirectory::FrameDirectory() {
+  page_to_frame_.reserve(MAX_FRAME_COUNT);
   for (size_t i = 0; i < MAX_FRAME_COUNT; ++i) {
     free_frames_.insert(static_cast<int>(i));
   }
@@ -22,34 +22,33 @@ std::optional<int> FrameDirectory::reserveFreeFrame() {
 }
 
 std::optional<int> FrameDirectory::findResidentFrame(
-    int page_id, const std::string& file_path) {
-  auto key = std::make_pair(page_id, file_path);
-  auto resident_frame = page_to_frame_.find(key);
+    const PageKey& page_key) const {
+  auto resident_frame = page_to_frame_.find(page_key);
   if (resident_frame != page_to_frame_.end()) {
     return resident_frame->second;
   }
   return std::nullopt;
 }
 
-void FrameDirectory::registerResidentPage(int frame_id, int page_id,
-                                          const std::string& file_path,
+void FrameDirectory::registerResidentPage(int frame_id,
+                                          const PageKey& page_key,
                                           std::unique_ptr<Page> page) {
   frames_[frame_id].page = std::move(page);
-  frames_[frame_id].page_id = page_id;
-  frames_[frame_id].file_path = file_path;
+  frames_[frame_id].page_id = page_key.page_id;
+  frames_[frame_id].file_path = page_key.file_identifier;
   frames_[frame_id].pin_count = 0;
 
-  auto key = std::make_pair(page_id, file_path);
-  page_to_frame_[key] = frame_id;
+  page_to_frame_[page_key] = frame_id;
 
-  dbfs_log::storage().debug("Registered page {} from {} in frame {}", page_id,
-                            file_path, frame_id);
+  dbfs_log::storage().debug("Registered page {} from {} in frame {}",
+                            page_key.page_id, page_key.file_identifier,
+                            frame_id);
 }
 
 void FrameDirectory::unregisterResidentPage(int frame_id) {
-  auto key =
-      std::make_pair(frames_[frame_id].page_id, frames_[frame_id].file_path);
-  page_to_frame_.erase(key);
+  const PageKey page_key{frames_[frame_id].file_path,
+                         frames_[frame_id].page_id};
+  page_to_frame_.erase(page_key);
 
   frames_[frame_id].clear();
 
