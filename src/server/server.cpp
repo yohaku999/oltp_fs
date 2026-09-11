@@ -356,10 +356,11 @@ std::string Server::readFrame(int client_fd) {
 
 void Server::writeFrame(int client_fd, const std::string& payload) {
   uint32_t network_length = htonl(static_cast<uint32_t>(payload.size()));
-  sendAll(client_fd, &network_length, sizeof(network_length));
-  if (!payload.empty()) {
-    sendAll(client_fd, payload.data(), payload.size());
-  }
+  std::string frame(sizeof(network_length) + payload.size(), '\0');
+  std::memcpy(frame.data(), &network_length, sizeof(network_length));
+  std::memcpy(frame.data() + sizeof(network_length), payload.data(),
+              payload.size());
+  sendAll(client_fd, frame.data(), frame.size());
 }
 
 std::string Server::handleRequest(const std::string& request) {
