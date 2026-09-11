@@ -47,20 +47,25 @@ std::pair<uint16_t, std::vector<IndexEntry>> LeafIndexPage::findEntries(
       continue;
     }
     LeafCell cell = cellAt(idx);
-    const RID rid{cell.heap_page_id(), cell.slot_id()};
-    if (BTreeCursor::isInsideBoundary(cell.key(), left_boundary, true) &&
-        BTreeCursor::isInsideBoundary(cell.key(), right_boundary, false) &&
-        (!target_rid.has_value() ||
-         (rid.heap_page_id == target_rid->heap_page_id &&
-          rid.slot_id == target_rid->slot_id))) {
-      if (do_invalidate) {
-        page_.invalidateSlot(idx);
-      }
-      matching_entries.push_back(IndexEntry{cell.key(), rid});
-    } else if (!BTreeCursor::isInsideBoundary(cell.key(), right_boundary,
-                                              false)) {
+    const std::string& key = cell.key();
+    if (!BTreeCursor::isInsideBoundary(key, right_boundary, false)) {
       need_to_scan_next_page = false;
+      break;
     }
+    if (!BTreeCursor::isInsideBoundary(key, left_boundary, true)) {
+      continue;
+    }
+
+    const RID rid{cell.heap_page_id(), cell.slot_id()};
+    if (target_rid.has_value() &&
+        (rid.heap_page_id != target_rid->heap_page_id ||
+         rid.slot_id != target_rid->slot_id)) {
+      continue;
+    }
+    if (do_invalidate) {
+      page_.invalidateSlot(idx);
+    }
+    matching_entries.push_back(IndexEntry{key, rid});
   }
   if (need_to_scan_next_page) {
     return std::make_pair(this->getRightSiblingPageId(), matching_entries);

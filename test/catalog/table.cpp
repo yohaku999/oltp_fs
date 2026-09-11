@@ -186,7 +186,7 @@ TEST_F(TableTest, CatalogAndStorageCreateReadableTableBootstrap) {
   EXPECT_EQ(index_root.getPageLSN(), 0u);
 }
 
-TEST_F(TableTest, GetTableDoesNotCreateMissingDataDirectory) {
+TEST_F(TableTest, GetCachedTableDoesNotTouchMissingDataDirectory) {
   {
     Schema schema(std::vector<Column>{
         Column("id", Column::Type::Integer),
@@ -197,7 +197,7 @@ TEST_F(TableTest, GetTableDoesNotCreateMissingDataDirectory) {
 
   std::filesystem::remove_all("data");
 
-  EXPECT_THROW(test_db::getTable(kTableName), std::runtime_error);
+  EXPECT_NO_THROW(test_db::getTable(kTableName));
   EXPECT_FALSE(std::filesystem::exists("data"));
 }
 
