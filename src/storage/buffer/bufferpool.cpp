@@ -87,8 +87,7 @@ uint16_t BufferPool::createPage(PageKind kind, PagedFile& file,
 
   auto page = std::make_unique<Page>(frame_ptr, kind, right_most_child_page_id,
                                      page_id);
-  frame_directory_.registerResidentPage(frame_id, page_id, file.getFilePath(),
-                                        std::move(page));
+  frame_directory_.registerResidentPage(frame_id, page_key, std::move(page));
   replacement_policy.onNoneResidentPageAccess(frame_id, page_key);
   const char* kind_label = "unknown";
   switch (kind) {
@@ -117,12 +116,12 @@ Page* BufferPool::pinPage(int page_id, PagedFile& file) {
                     page_id, file.getFilePath()));
   }
 
+  const std::string& file_path = file.getFilePath();
   dbfs_log::storage().debug("Requesting page ID {} from file {}", page_id,
-                            file.getFilePath());
-  PageKey page_key{file.getFilePath(), page_id};
+                            file_path);
+  const PageKey page_key{file_path, page_id};
 
-  auto resident_frame_id =
-      frame_directory_.findResidentFrame(page_id, file.getFilePath());
+  auto resident_frame_id = frame_directory_.findResidentFrame(page_key);
   if (resident_frame_id.has_value()) {
     replacement_policy.onResidentPageAccess(page_key);
     stats_.resident_hits++;
@@ -139,8 +138,7 @@ Page* BufferPool::pinPage(int page_id, PagedFile& file) {
     file.readPageIntoBuffer(page_id, frame_buffer);
     auto page = std::make_unique<Page>(frame_buffer, page_id);
     Page* loaded_page = page.get();
-    frame_directory_.registerResidentPage(frame_id, page_id, file.getFilePath(),
-                                          std::move(page));
+    frame_directory_.registerResidentPage(frame_id, page_key, std::move(page));
     replacement_policy.onNoneResidentPageAccess(frame_id, page_key);
     frame_directory_.pin(frame_id);
     logBufferPoolPinEvent(file, page_id, frame_id, *loaded_page, false);
@@ -156,8 +154,8 @@ void BufferPool::unpinPage(Page* page, PagedFile& file) {
   if (!page) {
     throw std::invalid_argument("BufferPool::unpinPage called with null page");
   }
-  auto resident_frame_id =
-      frame_directory_.findResidentFrame(page->getPageID(), file.getFilePath());
+  const PageKey page_key{file.getFilePath(), page->getPageID()};
+  auto resident_frame_id = frame_directory_.findResidentFrame(page_key);
   if (!resident_frame_id.has_value()) {
     throw std::logic_error(
         fmt::format("BufferPool::unpinPage: page ID {} in file {} is not "

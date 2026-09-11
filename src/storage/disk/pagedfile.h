@@ -43,7 +43,7 @@ class PagedFile {
   void close();
   void readPageIntoBuffer(uint16_t const page_id, char* buffer);
   void writePageFromBuffer(uint16_t const page_id, char* buffer);
-  std::string getFilePath() const { return file_path_; }
+  const std::string& getFilePath() const { return file_path_; }
   uint16_t getMaxPageID() const { return state_->max_page_id; }
   uint16_t getRootPageID() const { return state_->root_page_id; }
   void setRootPageID(uint16_t root_page_id) {
