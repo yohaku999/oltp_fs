@@ -1,6 +1,5 @@
 #include "index_page.h"
 
-#include <algorithm>
 #include <cstring>
 #include <vector>
 
@@ -175,23 +174,14 @@ uint16_t InternalIndexPage::rightMostChildPageId() const {
  * If no such separator cell is found, it returns the rightmost child page ID.
  */
 uint16_t InternalIndexPage::findChildPage(const std::string& key) {
-  std::vector<IntermediateCell> cells;
-  cells.reserve(page_.getSlotCount());
+  std::optional<uint16_t> equal_key_child;
   for (int idx = 0; idx < page_.getSlotCount(); ++idx) {
     char* cell_data = page_.data() + page_.getCellOffsetOnXthPointer(idx);
     if (!Cell::isValid(cell_data)) {
       continue;
     }
-    cells.push_back(cellAt(idx));
-  }
 
-  std::sort(cells.begin(), cells.end(),
-            [](const IntermediateCell& a, const IntermediateCell& b) {
-              return index_key::compare(a.key(), b.key()) < 0;
-            });
-
-  std::optional<uint16_t> equal_key_child;
-  for (const IntermediateCell& cell : cells) {
+    const IntermediateCell cell = cellAt(idx);
     const int compare = index_key::compare(cell.key(), key);
     // break the loop since the cell with a key greater than the given key is found.
     if (compare > 0) {

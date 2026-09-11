@@ -167,9 +167,9 @@ TEST_F(BTreeCursorTest, ContainsKeyUsesExactKeyLookup) {
       BTreeCursor::containsKey(*pool_, *index_file_, encodeIntKey(420)));
 }
 
-TEST_F(BTreeCursorTest, ContainsKeyFindsKeyAfterLeafSplit) {
+TEST_F(BTreeCursorTest, ContainsKeyFindsOutOfOrderKeyAfterLeafSplit) {
   constexpr int kNumKeys = 500;
-  for (int key = 0; key < kNumKeys; ++key) {
+  for (int key = kNumKeys - 1; key >= 0; --key) {
     BTreeCursor::insertIntoIndex(*pool_, *index_file_, encodeIntKey(key), 7,
                                  static_cast<uint16_t>(key));
   }
