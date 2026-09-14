@@ -31,7 +31,8 @@ struct FrameDirectoryStats {
 
 class FrameDirectory {
  public:
-  static constexpr size_t MAX_FRAME_COUNT = 2048;
+  static constexpr size_t MAX_FRAME_COUNT =
+      128 * 1024 * 1024 / Page::PAGE_SIZE_BYTE;
 
  private:
   struct Frame {

@@ -45,8 +45,9 @@ class BufferPool {
   ~BufferPool();
 
  private:
-  static constexpr size_t BUFFER_SIZE_BYTE = 2048 * 2 * MAX_FRAME_COUNT;
-  static constexpr size_t FRAME_SIZE_BYTE = 2048 * 2;
+  static constexpr size_t BUFFER_SIZE_BYTE =
+      Page::PAGE_SIZE_BYTE * MAX_FRAME_COUNT;
+  static constexpr size_t FRAME_SIZE_BYTE = Page::PAGE_SIZE_BYTE;
   static constexpr size_t MAX_PAGE_COUNT = 2048;
   void* buffer_;
   WAL& wal_;
