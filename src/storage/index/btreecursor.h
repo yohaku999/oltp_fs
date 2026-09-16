@@ -31,7 +31,7 @@ class BTreeCursor {
   };
   static std::vector<IndexEntry> findEntries(
       BufferPool& pool, PagedFile& indexFile,
-      std::pair<Boundary, Boundary> boundaries, bool do_invalidate,
+      const std::pair<Boundary, Boundary>& boundaries, bool do_invalidate,
       std::optional<RID> target_rid = std::nullopt);
   static int findLeafPageID(BufferPool& pool, PagedFile& indexFile,
                             const std::string& key);
@@ -55,7 +55,7 @@ class BTreeCursor {
                                        const std::string& separate_key);
   static Page* ensureParentPage(BufferPool& pool, PagedFile& index_file,
                                 Page& old_page);
-  static bool isInsideBoundary(std::string_view key, Boundary boundary,
+  static bool isInsideBoundary(std::string_view key, const Boundary& boundary,
                                bool is_boundary_left);
 
  public:

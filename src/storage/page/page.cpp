@@ -166,13 +166,16 @@ std::optional<int> Page::insertCell(const Cell& cell) {
         insert_position++;
         continue;
       }
-      std::string existing_cell_key;
+      std::string owned_existing_cell_key;
+      std::string_view existing_cell_key;
       if (cell.kind() == CellKind::Intermediate) {
-        existing_cell_key = IntermediateCell::getKey(existing_cell_data_start);
+        owned_existing_cell_key =
+            IntermediateCell::getKey(existing_cell_data_start);
+        existing_cell_key = owned_existing_cell_key;
       } else {
-        existing_cell_key = LeafCell::getKey(existing_cell_data_start);
+        existing_cell_key = LeafCell::keyView(existing_cell_data_start);
       }
-      if (index_cell.key() < existing_cell_key) {
+      if (std::string_view(index_cell.key()) < existing_cell_key) {
         break;
       }
       insert_position++;

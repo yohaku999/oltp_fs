@@ -23,12 +23,16 @@ TEST(CellTest, IntermediateCellRoundTrip) {
 TEST(CellTest, LeafCellRoundTrip) {
   LeafCell original(index_key::encodeInteger(11111), 999, 15);
   std::vector<std::byte> serialized = original.serialize();
-  LeafCell decoded =
-      LeafCell::decodeCell(reinterpret_cast<char*>(serialized.data()));
+  char* serialized_data = reinterpret_cast<char*>(serialized.data());
+  LeafCell decoded = LeafCell::decodeCell(serialized_data);
 
   EXPECT_EQ(decoded.heap_page_id(), original.heap_page_id());
   EXPECT_EQ(decoded.slot_id(), original.slot_id());
   EXPECT_EQ(decoded.key(), original.key());
+  EXPECT_EQ(LeafCell::keyView(serialized_data), original.key());
+  EXPECT_EQ(LeafCell::readRID(serialized_data).heap_page_id,
+            original.heap_page_id());
+  EXPECT_EQ(LeafCell::readRID(serialized_data).slot_id, original.slot_id());
 }
 
 TEST(CellTest, IntermediateCellInvalidFlag) {

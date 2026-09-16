@@ -30,8 +30,9 @@ class LeafIndexPage {
   LeafCell cellAt(int slot_id) const;
   bool hasKey(const std::string& key) const;
   std::pair<uint16_t, std::vector<IndexEntry>> findEntries(
-      BTreeCursor::Boundary left_boundary, BTreeCursor::Boundary right_boundary,
-      bool do_invalidate, std::optional<RID> target_rid = std::nullopt);
+      const BTreeCursor::Boundary& left_boundary,
+      const BTreeCursor::Boundary& right_boundary, bool do_invalidate,
+      std::optional<RID> target_rid = std::nullopt);
   void compact();
   void getRightSidePageID();
 

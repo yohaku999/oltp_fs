@@ -96,13 +96,9 @@ TEST(PageTest, TransferCellsToCompactsSourcePage) {
 
   // Use key 3 as the split boundary and verify that compaction leaves the
   // source and destination pages in the expected partitioned state.
-  LeafCell separate_cell(encodeIntKey(3), 0, 0);
-  std::vector<std::byte> separate_serialized = separate_cell.serialize();
   LeafIndexPage src_leaf(*src_page);
   LeafIndexPage dst_leaf(*dst_page);
-  src_leaf.transferAndCompactTo(
-      dst_leaf,
-      LeafCell::getKey(reinterpret_cast<char*>(separate_serialized.data())));
+  src_leaf.transferAndCompactTo(dst_leaf, 3);
 
   EXPECT_FALSE(dst_leaf.hasKey(encodeIntKey(1)));
   EXPECT_FALSE(dst_leaf.hasKey(encodeIntKey(2)));

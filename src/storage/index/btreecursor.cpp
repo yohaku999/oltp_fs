@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <ostream>
@@ -160,8 +161,8 @@ bool BTreeCursor::containsKey(BufferPool& pool, PagedFile& indexFile,
  */
 std::vector<IndexEntry> BTreeCursor::findEntries(
     BufferPool& pool, PagedFile& indexFile,
-    std::pair<BTreeCursor::Boundary, BTreeCursor::Boundary> boundaries,
-  bool do_invalidate, std::optional<RID> target_rid) {
+    const std::pair<BTreeCursor::Boundary, BTreeCursor::Boundary>& boundaries,
+    bool do_invalidate, std::optional<RID> target_rid) {
   const auto& [left_boundary, right_boundary] = boundaries;
 
   // NOTE: we decided not to invalidate intermediate nodes during traversal for
@@ -184,8 +185,9 @@ std::vector<IndexEntry> BTreeCursor::findEntries(
         leaf.findEntries(left_boundary, right_boundary, do_invalidate,
                          target_rid);
     pool.unpinPage(leaf_page, indexFile);
-    matching_entries.insert(matching_entries.end(), entries.begin(),
-                            entries.end());
+    matching_entries.insert(matching_entries.end(),
+                            std::make_move_iterator(entries.begin()),
+                            std::make_move_iterator(entries.end()));
     page_id = next_page;
   }
 
@@ -384,7 +386,8 @@ BTreeCursor::SplitResult BTreeCursor::splitPage(BufferPool& pool,
   SplitResult split_result =
       old_page->isLeaf()
           ? splitLeafPage(pool, index_file, *old_page,
-                          LeafCell::getKey(old_page->getSplitKeyCellStart()))
+                          std::string(LeafCell::keyView(
+                              old_page->getSplitKeyCellStart())))
           : splitInternalPage(
                 pool, index_file, *old_page,
                 IntermediateCell::getKey(old_page->getSplitKeyCellStart()));
@@ -419,7 +422,7 @@ void BTreeCursor::dumpTree(BufferPool& pool, PagedFile& indexFile,
 
 /** check if key is inside the boundary */
 bool BTreeCursor::isInsideBoundary(std::string_view key,
-                                   BTreeCursor::Boundary boundary,
+                                   const BTreeCursor::Boundary& boundary,
                                    bool is_boundary_left) {
   const std::string_view boundary_key = boundary.composite_key;
   const std::size_t compare_size = std::min(key.size(), boundary_key.size());

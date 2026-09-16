@@ -35,8 +35,9 @@ bool LeafIndexPage::hasKey(const std::string& key) const {
  *
  */
 std::pair<uint16_t, std::vector<IndexEntry>> LeafIndexPage::findEntries(
-    BTreeCursor::Boundary left_boundary, BTreeCursor::Boundary right_boundary,
-  bool do_invalidate, std::optional<RID> target_rid) {
+    const BTreeCursor::Boundary& left_boundary,
+    const BTreeCursor::Boundary& right_boundary, bool do_invalidate,
+    std::optional<RID> target_rid) {
   std::vector<IndexEntry> matching_entries;
   bool need_to_scan_next_page = true;
   for (int idx = 0; idx < page_.getSlotCount(); ++idx) {
@@ -46,8 +47,7 @@ std::pair<uint16_t, std::vector<IndexEntry>> LeafIndexPage::findEntries(
           "LeafIndexPage::findEntries skipping invalid slot {}", idx);
       continue;
     }
-    LeafCell cell = cellAt(idx);
-    const std::string& key = cell.key();
+    const std::string_view key = LeafCell::keyView(cell_data);
     if (!BTreeCursor::isInsideBoundary(key, right_boundary, false)) {
       need_to_scan_next_page = false;
       break;
@@ -56,7 +56,7 @@ std::pair<uint16_t, std::vector<IndexEntry>> LeafIndexPage::findEntries(
       continue;
     }
 
-    const RID rid{cell.heap_page_id(), cell.slot_id()};
+    const RID rid = LeafCell::readRID(cell_data);
     if (target_rid.has_value() &&
         (rid.heap_page_id != target_rid->heap_page_id ||
          rid.slot_id != target_rid->slot_id)) {
@@ -65,7 +65,7 @@ std::pair<uint16_t, std::vector<IndexEntry>> LeafIndexPage::findEntries(
     if (do_invalidate) {
       page_.invalidateSlot(idx);
     }
-    matching_entries.push_back(IndexEntry{key, rid});
+    matching_entries.push_back(IndexEntry{std::string(key), rid});
   }
   if (need_to_scan_next_page) {
     return std::make_pair(this->getRightSiblingPageId(), matching_entries);

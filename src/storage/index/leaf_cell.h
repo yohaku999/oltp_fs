@@ -2,7 +2,9 @@
 #include <cstdint>
 #include <cstring>
 #include <string>
+#include <string_view>
 
+#include "storage/index/rid.h"
 #include "storage/page/cell.h"
 
 class LeafCell : public IndexCell {
@@ -14,7 +16,8 @@ class LeafCell : public IndexCell {
 
  public:
   static LeafCell decodeCell(char* data_p);
-  static std::string getKey(const char* data_p);
+  static std::string_view keyView(const char* data_p);
+  static RID readRID(const char* data_p);
   LeafCell(std::string key, uint16_t heap_page_id, uint16_t slot_id)
       : key_size_(static_cast<uint16_t>(key.size())),
         heap_page_id_(heap_page_id),
