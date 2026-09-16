@@ -23,11 +23,13 @@
 #include "execution/operators/projection_operator.h"
 #include "execution/operators/seq_scan_operator.h"
 #include "execution/operators/topN_operator.h"
+#include "execution/prepared_statement_cache.h"
 #include "parser/create_index_parser.h"
 #include "parser/create_table_parser.h"
 #include "parser/delete_parser.h"
 #include "parser/drop_table_parser.h"
 #include "parser/insert_parser.h"
+#include "parser/parser_ast_helpers.h"
 #include "parser/select_parser.h"
 #include "parser/update_parser.h"
 #include "planning/binder.h"
@@ -303,9 +305,8 @@ void appendUpdateLog(BufferPool& pool, const RID& rid, const RecordCell& before,
  */
 std::vector<RID> collectRidsNarrowedByPredicates(
     BufferPool& pool, IndexAccessor& index_accessor, const Table& table,
-    HeapFile& heap, const std::vector<UnboundComparisonPredicate>& predicates) {
-  const std::vector<BoundComparisonPredicate> bound_predicates =
-      binder::bindPredicatesResolvableByTable(predicates, table);
+    HeapFile& heap,
+    const std::vector<BoundComparisonPredicate>& bound_predicates) {
   std::optional<IndexLookupPlan> index_plan =
       planIndexLookup(table, bound_predicates);
   if (!index_plan.has_value()) {
@@ -328,12 +329,9 @@ template <typename OnRecordRelocated>
 void updateMatchingRows(
     BufferPool& pool, const Table& table, HeapFile& heap,
     const std::vector<RID>& rids,
-    const std::vector<UnboundComparisonPredicate>& predicates,
-    const UpdateParser& parser, const QueryParameters& parameters,
+    const std::vector<BoundComparisonPredicate>& bound_predicates,
+    const std::vector<BoundUpdateAssignment>& bound_assignments,
     OnRecordRelocated on_record_relocated) {
-  const std::vector<BoundUpdateAssignment> bound_assignments =
-      binder::bindUpdateAssignments(
-          parser.extractAssignments(table.schema(), parameters), table);
   std::vector<std::size_t> indexed_column_indexes;
   for (const IndexMetadata& index : table.indexes()) {
     const std::vector<std::size_t> column_indexes =
@@ -350,8 +348,6 @@ void updateMatchingRows(
     }
   }
 
-  const std::vector<BoundComparisonPredicate> bound_predicates =
-      binder::bindPredicates(predicates, {table});
   for (const RID& rid : rids) {
     std::optional<TypedRow> original_row = readTypedRow(pool, table, heap, rid);
     if (!original_row.has_value()) {
@@ -386,10 +382,8 @@ template <typename BeforeRecordRemoval>
 int removeMatchingRows(
     BufferPool& pool, const Table& table, HeapFile& heap,
     const std::vector<RID>& rids,
-    const std::vector<UnboundComparisonPredicate>& predicates,
+    const std::vector<BoundComparisonPredicate>& bound_predicates,
     BeforeRecordRemoval before_record_removal) {
-  const std::vector<BoundComparisonPredicate> bound_predicates =
-      binder::bindPredicates(predicates, {table});
   int removed_count = 0;
 
   for (const RID& rid : rids) {
@@ -468,9 +462,12 @@ void createIndexForTable(LocalStorageManager& storage, Table& table,
 std::vector<TypedRow> executor::read(BufferPool& pool,
                                      LocalStorageManager& storage,
                                      IndexAccessor& index_accessor,
+                                     PreparedStatementCache& cache,
                                      const SelectParser& parser,
                                      const QueryParameters& parameters) {
-  binder::BoundSelectQuery query = binder::bindSelectQuery(parser, parameters);
+  const binder::PreparedSelectQuery& prepared = cache.select(parser);
+  binder::BoundSelectQuery query =
+      binder::bindSelectQuery(prepared, parameters);
 
   std::vector<std::unique_ptr<TypedRowOperator>> sources;
   for (std::size_t table_index = 0; table_index < query.tables.size();
@@ -528,6 +525,7 @@ std::vector<TypedRow> executor::read(BufferPool& pool,
 }
 
 void executor::create_table(LocalStorageManager& storage,
+                            PreparedStatementCache& cache,
                             const CreateTableParser& parser) {
   const std::string table_name = parser.extractTableName();
   const std::string heap_file_name = storage.heapFileNameFor(table_name);
@@ -546,21 +544,26 @@ void executor::create_table(LocalStorageManager& storage,
   if (!primary_key_columns.empty()) {
     createIndexForTable(storage, table, primary_key_columns, true);
   }
+  cache.clear();
 }
 
 void executor::create_index(LocalStorageManager& storage,
+                            PreparedStatementCache& cache,
                             const CreateIndexParser& parser) {
-  const std::vector<std::string> column_names = parser.extractColumnNames();
   Table table = TableMetadataStore::read(parser.extractTableName()).value();
-  createIndexForTable(storage, table, column_names, parser.isUnique());
+  createIndexForTable(storage, table, parser.extractColumnNames(),
+                      parser.isUnique());
+  cache.clear();
 }
 
 void executor::drop_table(LocalStorageManager& storage,
+                          PreparedStatementCache& cache,
                           const DropTableParser& parser) {
   const std::string table_name = parser.extractTableName();
   std::optional<Table> table = TableMetadataStore::read(table_name);
   if (!table.has_value()) {
     if (parser.hasIfExists()) {
+      cache.clear();
       return;
     }
     throw std::runtime_error("Table is not in the catalog: " + table_name);
@@ -570,13 +573,20 @@ void executor::drop_table(LocalStorageManager& storage,
   }
   storage.remove(table->heapFileName());
   TableMetadataStore::remove(table_name);
+  cache.clear();
 }
 
 void executor::insert(BufferPool& pool, LocalStorageManager& storage,
-                      IndexAccessor& index_accessor, Table& table,
-                      const InsertParser& parser,
+                      IndexAccessor& index_accessor,
+                      PreparedStatementCache& cache, const InsertParser& parser,
                       const QueryParameters& parameters) {
-  const TypedRow row = parser.extractRow(table.schema(), parameters);
+  const PreparedInsertStatement& statement = cache.insert(parser);
+  TypedRow row;
+  row.values.reserve(statement.values.size());
+  for (const PreparedFieldValue& value : statement.values) {
+    row.values.push_back(bindPreparedFieldValue(value, parameters));
+  }
+  const Table& table = statement.table;
   HeapFile heap = storage.openHeap(table.heapFileName());
   const RecordCell cell = RecordSerializer::serialize(table.schema(), row);
   const std::vector<std::string> index_keys = encodeIndexKeys(table, row);
@@ -600,12 +610,14 @@ void executor::insert(BufferPool& pool, LocalStorageManager& storage,
 }
 
 int executor::remove(BufferPool& pool, LocalStorageManager& storage,
-                     IndexAccessor& index_accessor, Table& table,
-                     const DeleteParser& parser,
+                     IndexAccessor& index_accessor,
+                     PreparedStatementCache& cache, const DeleteParser& parser,
                      const QueryParameters& parameters) {
+  const PreparedDeleteStatement& statement = cache.remove(parser);
+  const Table& table = statement.table;
+  const std::vector<BoundComparisonPredicate> predicates =
+      binder::bindPreparedPredicates(statement.predicates, parameters);
   HeapFile heap = storage.openHeap(table.heapFileName());
-  const std::vector<UnboundComparisonPredicate> predicates =
-      parser.extractComparisonPredicates(table.schema(), parameters);
   const std::vector<RID> rids = collectRidsNarrowedByPredicates(
       pool, index_accessor, table, heap, predicates);
   const int removed_count = removeMatchingRows(
@@ -632,16 +644,20 @@ int executor::remove(BufferPool& pool, LocalStorageManager& storage,
  * special-case split handling.
  */
 void executor::update(BufferPool& pool, LocalStorageManager& storage,
-                      IndexAccessor& index_accessor, Table& table,
-                      const UpdateParser& parser,
+                      IndexAccessor& index_accessor,
+                      PreparedStatementCache& cache, const UpdateParser& parser,
                       const QueryParameters& parameters) {
+  const PreparedUpdateStatement& statement = cache.update(parser);
+  const Table& table = statement.table;
+  const std::vector<BoundComparisonPredicate> predicates =
+      binder::bindPreparedPredicates(statement.predicates, parameters);
+  const std::vector<BoundUpdateAssignment> assignments =
+      binder::bindPreparedUpdateAssignments(statement.assignments, parameters);
   HeapFile heap = storage.openHeap(table.heapFileName());
-  const std::vector<UnboundComparisonPredicate> predicates =
-      parser.extractComparisonPredicates(table.schema(), parameters);
   const std::vector<RID> rids = collectRidsNarrowedByPredicates(
       pool, index_accessor, table, heap, predicates);
   updateMatchingRows(
-      pool, table, heap, rids, predicates, parser, parameters,
+      pool, table, heap, rids, predicates, assignments,
       [&](const TypedRow& original_row, const RID& old_rid,
           const RID& new_rid) {
         const std::vector<std::string> index_keys =

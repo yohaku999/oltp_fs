@@ -42,8 +42,9 @@ std::string toPostgresParameterSyntax(const std::string& sql_template) {
 
 }  // namespace
 
-PgQueryJsonParser::PgQueryJsonParser(std::string sql_template) {
-  const std::string sql = toPostgresParameterSyntax(sql_template);
+PgQueryJsonParser::PgQueryJsonParser(std::string sql_template)
+    : sql_template_(std::move(sql_template)) {
+  const std::string sql = toPostgresParameterSyntax(sql_template_);
   PgQueryParseResult result = pg_query_parse(sql.c_str());
   if (result.error != nullptr) {
     const std::string message = result.error->message != nullptr
@@ -60,6 +61,10 @@ PgQueryJsonParser::PgQueryJsonParser(std::string sql_template) {
     throw;
   }
   pg_query_free_parse_result(result);
+}
+
+const std::string& PgQueryJsonParser::sqlTemplate() const {
+  return sql_template_;
 }
 
 const nlohmann::json& PgQueryJsonParser::statementNode() const {

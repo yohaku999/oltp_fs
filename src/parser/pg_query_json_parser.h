@@ -13,8 +13,12 @@ class PgQueryJsonParser {
   PgQueryJsonParser(PgQueryJsonParser&&) = delete;
   PgQueryJsonParser& operator=(PgQueryJsonParser&&) = delete;
 
+  const std::string& sqlTemplate() const;
+
  protected:
   const nlohmann::json& statementNode() const;
 
+ private:
+  std::string sql_template_;
   nlohmann::json parse_tree_;
 };

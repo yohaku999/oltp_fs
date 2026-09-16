@@ -17,7 +17,6 @@ std::string DeleteParser::extractTableName() const {
 }
 
 std::vector<UnboundComparisonPredicate>
-DeleteParser::extractComparisonPredicates(
-    const Schema& schema, const QueryParameters& parameters) const {
-  return parseWhereClausePredicates(deleteStatement(), schema, parameters);
+DeleteParser::extractPreparedComparisonPredicates(const Schema& schema) const {
+  return parsePreparedWhereClausePredicates(deleteStatement(), schema);
 }

@@ -1,7 +1,9 @@
 #pragma once
 
+#include <cstddef>
 #include <optional>
 #include <string>
+#include <variant>
 #include <vector>
 
 class Schema;
@@ -14,6 +16,8 @@ class Schema;
 
 class SelectParser : private PgQueryJsonParser {
  public:
+  using PgQueryJsonParser::sqlTemplate;
+
   explicit SelectParser(std::string sql);
   ~SelectParser() = default;
 
@@ -21,8 +25,8 @@ class SelectParser : private PgQueryJsonParser {
   std::vector<UnboundSelectItem> extractSelectItems() const;
   std::vector<std::optional<std::string>> extractSelectAliases() const;
   std::vector<OrderBySpec> extractOrderBySpecs(const Schema& schema) const;
-  std::optional<std::size_t> extractLimitCount(
-      const QueryParameters& parameters = {}) const;
-  std::vector<UnboundComparisonPredicate> extractComparisonPredicates(
-      const Schema& schema, const QueryParameters& parameters = {}) const;
+  std::optional<std::variant<std::size_t, QueryParameterRef>>
+  extractPreparedLimit() const;
+  std::vector<UnboundComparisonPredicate> extractPreparedComparisonPredicates(
+      const Schema& schema) const;
 };

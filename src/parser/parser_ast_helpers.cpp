@@ -8,14 +8,6 @@
 #include "execution/comparison_predicate.h"
 #include "schema/schema.h"
 
-namespace {
-
-Column::Type requireColumnType(const nlohmann::json& expression,
-                               const Schema& schema);
-UnboundOperand parseOperand(const nlohmann::json& expression,
-                            const Schema& schema, Column::Type constant_type,
-                            const QueryParameters& parameters);
-
 FieldValue coerceParameter(const FieldValue& parameter,
                            Column::Type column_type) {
   if (isNullFieldValue(parameter)) {
@@ -53,12 +45,12 @@ FieldValue coerceParameter(const FieldValue& parameter,
   throw std::runtime_error("Unknown column type in parser AST helper");
 }
 
-const FieldValue& parameterValue(const nlohmann::json& item,
-                                 const QueryParameters& parameters) {
-  const std::size_t parameter_index =
-      item.at("ParamRef").at("number").get<std::size_t>() - 1;
-  return parameters.at(parameter_index);
-}
+namespace {
+
+Column::Type requireColumnType(const nlohmann::json& expression,
+                               const Schema& schema);
+UnboundOperand parseOperand(const nlohmann::json& expression,
+                            const Schema& schema, Column::Type constant_type);
 
 Op parseComparisonOp(const nlohmann::json& expr) {
   const std::string op =
@@ -94,7 +86,6 @@ UpdateBinaryOperator parseUpdateBinaryOperator(const nlohmann::json& expr) {
 }
 
 void extractPredicatesFromNode(const nlohmann::json& node, const Schema& schema,
-                               const QueryParameters& parameters,
                                std::vector<UnboundComparisonPredicate>& out) {
   if (node.contains("BoolExpr")) {
     const auto& bool_expr = node.at("BoolExpr");
@@ -103,7 +94,7 @@ void extractPredicatesFromNode(const nlohmann::json& node, const Schema& schema,
       throw std::runtime_error("Only AND predicates are supported.");
     }
     for (const auto& child : bool_expr.at("args")) {
-      extractPredicatesFromNode(child, schema, parameters, out);
+      extractPredicatesFromNode(child, schema, out);
     }
     return;
   }
@@ -123,9 +114,8 @@ void extractPredicatesFromNode(const nlohmann::json& node, const Schema& schema,
                                          ? requireColumnType(lhs, schema)
                                          : requireColumnType(rhs, schema);
   out.push_back(UnboundComparisonPredicate{
-      parseComparisonOp(expr),
-      parseOperand(lhs, schema, constant_type, parameters),
-      parseOperand(rhs, schema, constant_type, parameters)});
+      parseComparisonOp(expr), parseOperand(lhs, schema, constant_type),
+      parseOperand(rhs, schema, constant_type)});
 }
 
 ColumnRef parseColumnRef(const nlohmann::json& column_ref) {
@@ -158,8 +148,7 @@ Column::Type requireColumnType(const nlohmann::json& expression,
 }
 
 UnboundOperand parseOperand(const nlohmann::json& expression,
-                            const Schema& schema, Column::Type constant_type,
-                            const QueryParameters& parameters) {
+                            const Schema& schema, Column::Type constant_type) {
   if (expression.contains("ColumnRef")) {
     const ColumnRef column_ref = parseColumnRef(expression.at("ColumnRef"));
     const int column_index = schema.getColumnIndex(column_ref.column_name);
@@ -170,11 +159,13 @@ UnboundOperand parseOperand(const nlohmann::json& expression,
     return column_ref;
   }
 
-  if (expression.contains("A_Const") || expression.contains("ParamRef")) {
-    return parseFieldValue(expression, constant_type, parameters);
+  if (expression.contains("A_Const")) {
+    return parseConstFieldValue(expression, constant_type);
   }
 
-  throw std::runtime_error("Unsupported predicate operand.");
+  return QueryParameterRef{
+      expression.at("ParamRef").at("number").get<std::size_t>() - 1,
+      constant_type};
 }
 
 }  // namespace
@@ -227,14 +218,6 @@ int parseConstIntegerValue(const nlohmann::json& item) {
   throw std::runtime_error("Unsupported integer constant shape");
 }
 
-int parseIntegerValue(const nlohmann::json& item,
-                      const QueryParameters& parameters) {
-  if (item.contains("A_Const")) {
-    return parseConstIntegerValue(item);
-  }
-  return std::get<Column::IntegerType>(parameterValue(item, parameters));
-}
-
 FieldValue parseConstFieldValue(const nlohmann::json& item,
                                 Column::Type column_type) {
   const auto& constant = item.at("A_Const");
@@ -279,20 +262,30 @@ FieldValue parseConstFieldValue(const nlohmann::json& item,
   throw std::runtime_error("Unknown column type in parser AST helper");
 }
 
-FieldValue parseFieldValue(const nlohmann::json& item, Column::Type column_type,
-                           const QueryParameters& parameters) {
+PreparedFieldValue parsePreparedFieldValue(const nlohmann::json& item,
+                                           Column::Type column_type) {
   if (item.contains("A_Const")) {
     return parseConstFieldValue(item, column_type);
   }
-  return coerceParameter(parameterValue(item, parameters), column_type);
+  return QueryParameterRef{
+      item.at("ParamRef").at("number").get<std::size_t>() - 1, column_type};
 }
 
-UnboundUpdateValue parseUpdateAssignmentValue(
+FieldValue bindPreparedFieldValue(const PreparedFieldValue& value,
+                                  const QueryParameters& parameters) {
+  if (const auto* literal = std::get_if<FieldValue>(&value)) {
+    return *literal;
+  }
+  const QueryParameterRef& parameter = std::get<QueryParameterRef>(value);
+  return coerceParameter(parameters.at(parameter.index), parameter.type);
+}
+
+PreparedUnboundUpdateValue parsePreparedUpdateAssignmentValue(
     const nlohmann::json& expression, const Schema& schema,
-    const std::string& target_column_name, Column::Type target_type,
-    const QueryParameters& parameters) {
+    const std::string& target_column_name, Column::Type target_type) {
   if (expression.contains("A_Const") || expression.contains("ParamRef")) {
-    return parseFieldValue(expression, target_type, parameters);
+    return PreparedUnboundUpdateValue{
+        parsePreparedFieldValue(expression, target_type)};
   }
 
   if (!expression.contains("A_Expr")) {
@@ -314,27 +307,23 @@ UnboundUpdateValue parseUpdateAssignmentValue(
     throw std::runtime_error(
         "UPDATE arithmetic supports only self plus/minus literal.");
   }
-
-  const int column_index = schema.getColumnIndex(column_ref.column_name);
-  if (column_index < 0) {
+  if (schema.getColumnIndex(column_ref.column_name) < 0) {
     throw std::runtime_error("Unknown UPDATE expression column: " +
                              column_ref.column_name);
   }
 
-  return UnboundSelfArithmeticUpdate{
+  return PreparedUnboundSelfArithmeticUpdate{
       parseUpdateBinaryOperator(binary_expr),
-      parseFieldValue(rhs, target_type, parameters)};
+      parsePreparedFieldValue(rhs, target_type)};
 }
 
-std::vector<UnboundComparisonPredicate> parseWhereClausePredicates(
-    const nlohmann::json& statement, const Schema& schema,
-    const QueryParameters& parameters) {
+std::vector<UnboundComparisonPredicate> parsePreparedWhereClausePredicates(
+    const nlohmann::json& statement, const Schema& schema) {
   if (!statement.contains("whereClause")) {
     return {};
   }
 
   std::vector<UnboundComparisonPredicate> predicates;
-  extractPredicatesFromNode(statement.at("whereClause"), schema, parameters,
-                            predicates);
+  extractPredicatesFromNode(statement.at("whereClause"), schema, predicates);
   return predicates;
 }

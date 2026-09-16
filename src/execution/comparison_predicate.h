@@ -5,6 +5,7 @@
 #include <variant>
 #include <vector>
 
+#include "parser/query_parameters.h"
 #include "schema/column.h"
 #include "tuple/field_value.h"
 
@@ -15,7 +16,7 @@ struct ColumnRef {
   std::string column_name;
 };
 
-using UnboundOperand = std::variant<ColumnRef, FieldValue>;
+using UnboundOperand = std::variant<ColumnRef, FieldValue, QueryParameterRef>;
 
 enum class Op { Eq, Gt, Ge, Lt, Le };
 

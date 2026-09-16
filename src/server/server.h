@@ -9,6 +9,10 @@ class IndexAccessor;
 class LocalStorageManager;
 class WAL;
 
+namespace executor {
+class PreparedStatementCache;
+}
+
 class Server {
  public:
   explicit Server(int port = 25432);
@@ -24,6 +28,7 @@ class Server {
   std::unique_ptr<LocalStorageManager> storage_;
   std::unique_ptr<IndexAccessor> index_accessor_;
   std::unique_ptr<ParserCache> parser_cache_;
+  std::unique_ptr<executor::PreparedStatementCache> statement_cache_;
   std::mutex request_mutex_;
 
   std::string readFrame(int client_fd);

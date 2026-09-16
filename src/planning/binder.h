@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <optional>
+#include <variant>
 #include <vector>
 
 #include "catalog/table.h"
@@ -15,38 +16,73 @@ class SelectParser;
 
 namespace binder {
 
-struct BoundSelectQuery {
+using PreparedOperand =
+    std::variant<BoundColumnRef, FieldValue, QueryParameterRef>;
+
+struct PreparedComparisonPredicate {
+  Op op;
+  PreparedOperand left;
+  PreparedOperand right;
+};
+
+struct PreparedSelfArithmeticUpdate {
+  std::size_t target_column_index;
+  UpdateBinaryOperator op;
+  PreparedFieldValue literal;
+};
+
+using PreparedUpdateValue =
+    std::variant<PreparedFieldValue, PreparedSelfArithmeticUpdate>;
+
+struct PreparedUpdateAssignment {
+  std::size_t target_column_index;
+  PreparedUpdateValue value;
+};
+
+struct PreparedSelectQuery {
   std::vector<Table> tables;
   std::vector<BoundSelectItem> select_items;
+  std::vector<PreparedComparisonPredicate> predicates;
+  std::vector<std::vector<PreparedComparisonPredicate>> table_predicates;
+  std::vector<OrderBySpec> order_by_specs;
+  std::optional<std::variant<std::size_t, QueryParameterRef>> limit;
+};
+
+struct BoundSelectQuery {
+  const std::vector<Table>& tables;
+  const std::vector<BoundSelectItem>& select_items;
   std::vector<BoundComparisonPredicate> predicates;
   std::vector<std::vector<BoundComparisonPredicate>> table_predicates;
-  std::vector<OrderBySpec> order_by_specs;
+  const std::vector<OrderBySpec>& order_by_specs;
   std::optional<std::size_t> limit_count;
 };
 
-BoundSelectQuery bindSelectQuery(const SelectParser& parser,
+PreparedSelectQuery prepareSelectQuery(const SelectParser& parser);
+
+BoundSelectQuery bindSelectQuery(const PreparedSelectQuery& prepared,
                                  const QueryParameters& parameters = {});
+
+std::vector<PreparedComparisonPredicate> preparePredicates(
+    const std::vector<UnboundComparisonPredicate>& predicates,
+    const std::vector<Table>& tables);
+
+std::vector<BoundComparisonPredicate> bindPreparedPredicates(
+    const std::vector<PreparedComparisonPredicate>& predicates,
+    const QueryParameters& parameters = {});
+
+std::vector<PreparedUpdateAssignment> prepareUpdateAssignments(
+    const std::vector<PreparedUnboundUpdateAssignment>& assignments,
+    const Table& table);
+
+std::vector<BoundUpdateAssignment> bindPreparedUpdateAssignments(
+    const std::vector<PreparedUpdateAssignment>& assignments,
+    const QueryParameters& parameters = {});
 
 BoundColumnRef bindColumnRef(const ColumnRef& column_ref,
                              const std::vector<Table>& tables);
 
-BoundOperand bindOperand(const UnboundOperand& operand,
-                         const std::vector<Table>& tables);
-
 std::vector<BoundSelectItem> bindSelectItems(
     const std::vector<UnboundSelectItem>& select_items,
     const std::vector<Table>& tables);
-
-std::vector<BoundComparisonPredicate> bindPredicates(
-    const std::vector<UnboundComparisonPredicate>& predicates,
-    const std::vector<Table>& tables);
-
-std::vector<BoundComparisonPredicate> bindPredicatesResolvableByTable(
-    const std::vector<UnboundComparisonPredicate>& predicates,
-    const Table& table);
-
-std::vector<BoundUpdateAssignment> bindUpdateAssignments(
-    const std::vector<UnboundUpdateAssignment>& assignments,
-    const Table& table);
 
 }  // namespace binder

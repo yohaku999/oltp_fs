@@ -6,7 +6,6 @@
 
 #include "parser/parser_ast_helpers.h"
 #include "schema/schema.h"
-#include "tuple/typed_row.h"
 
 InsertParser::InsertParser(std::string sql)
     : PgQueryJsonParser(std::move(sql)) {}
@@ -19,8 +18,8 @@ std::string InsertParser::extractTableName() const {
       .get<std::string>();
 }
 
-TypedRow InsertParser::extractRow(const Schema& schema,
-                                  const QueryParameters& parameters) const {
+std::vector<PreparedFieldValue> InsertParser::extractPreparedValues(
+    const Schema& schema) const {
   const auto& insert_stmt = statementNode().at("InsertStmt");
   const auto& items = insert_stmt.at("selectStmt")
                           .at("SelectStmt")
@@ -66,14 +65,13 @@ TypedRow InsertParser::extractRow(const Schema& schema,
     }
   }
 
-  TypedRow row;
-  row.values.assign(schema.columns().size(), std::monostate{});
+  std::vector<PreparedFieldValue> values(schema.columns().size(),
+                                         FieldValue{std::monostate{}});
   for (std::size_t item_index = 0; item_index < items.size(); ++item_index) {
     const std::size_t column_index = target_column_indexes.at(item_index);
-    row.values[column_index] = parseFieldValue(
-        items.at(item_index), schema.columns().at(column_index).getType(),
-        parameters);
+    values[column_index] = parsePreparedFieldValue(
+        items.at(item_index), schema.columns().at(column_index).getType());
   }
 
-  return row;
+  return values;
 }

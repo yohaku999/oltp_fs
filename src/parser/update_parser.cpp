@@ -18,15 +18,14 @@ std::string UpdateParser::extractTableName() const {
 }
 
 std::vector<UnboundComparisonPredicate>
-UpdateParser::extractComparisonPredicates(
-    const Schema& schema, const QueryParameters& parameters) const {
-  return parseWhereClausePredicates(updateStatement(), schema, parameters);
+UpdateParser::extractPreparedComparisonPredicates(const Schema& schema) const {
+  return parsePreparedWhereClausePredicates(updateStatement(), schema);
 }
 
-std::vector<UnboundUpdateAssignment> UpdateParser::extractAssignments(
-    const Schema& schema, const QueryParameters& parameters) const {
+std::vector<PreparedUnboundUpdateAssignment>
+UpdateParser::extractPreparedAssignments(const Schema& schema) const {
   const auto& target_list = updateStatement().at("targetList");
-  std::vector<UnboundUpdateAssignment> assignments;
+  std::vector<PreparedUnboundUpdateAssignment> assignments;
   assignments.reserve(target_list.size());
 
   for (const auto& target : target_list) {
@@ -37,13 +36,12 @@ std::vector<UnboundUpdateAssignment> UpdateParser::extractAssignments(
       throw std::runtime_error("Unknown UPDATE column: " + column_name);
     }
 
-    assignments.push_back(UnboundUpdateAssignment{
-        column_name, parseUpdateAssignmentValue(
+    assignments.push_back(PreparedUnboundUpdateAssignment{
+        column_name, parsePreparedUpdateAssignmentValue(
                          res_target.at("val"), schema, column_name,
                          schema.columns()
                              .at(static_cast<std::size_t>(column_index))
-                             .getType(),
-                         parameters)});
+                             .getType())});
   }
 
   return assignments;

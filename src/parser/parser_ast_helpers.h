@@ -10,24 +10,25 @@
 
 class Schema;
 
+FieldValue coerceParameter(const FieldValue& parameter,
+                           Column::Type column_type);
+
 ColumnRef parseColumnRef(const nlohmann::json& column_ref);
 
 int parseConstIntegerValue(const nlohmann::json& item);
 
-int parseIntegerValue(const nlohmann::json& item,
-                      const QueryParameters& parameters);
-
 FieldValue parseConstFieldValue(const nlohmann::json& item,
                                 Column::Type column_type);
 
-FieldValue parseFieldValue(const nlohmann::json& item, Column::Type column_type,
-                           const QueryParameters& parameters);
+PreparedFieldValue parsePreparedFieldValue(const nlohmann::json& item,
+                                           Column::Type column_type);
 
-UnboundUpdateValue parseUpdateAssignmentValue(
+FieldValue bindPreparedFieldValue(const PreparedFieldValue& value,
+                                  const QueryParameters& parameters);
+
+PreparedUnboundUpdateValue parsePreparedUpdateAssignmentValue(
     const nlohmann::json& expression, const Schema& schema,
-    const std::string& target_column_name, Column::Type target_type,
-    const QueryParameters& parameters);
+    const std::string& target_column_name, Column::Type target_type);
 
-std::vector<UnboundComparisonPredicate> parseWhereClausePredicates(
-    const nlohmann::json& statement, const Schema& schema,
-    const QueryParameters& parameters);
+std::vector<UnboundComparisonPredicate> parsePreparedWhereClausePredicates(
+    const nlohmann::json& statement, const Schema& schema);

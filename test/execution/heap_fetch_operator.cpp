@@ -12,6 +12,7 @@
 #include "catalog/table.h"
 #include "execution/comparison_predicate.h"
 #include "execution/executor.h"
+#include "execution/prepared_statement_cache.h"
 #include "parser/insert_parser.h"
 #include "planning/binder.h"
 #include "storage/buffer/bufferpool.h"
@@ -31,6 +32,7 @@ class HeapFetchOperatorTest : public ::testing::Test {
   std::unique_ptr<WAL> wal_;
   std::unique_ptr<Table> table_;
   std::vector<RID> inserted_rids_;
+  executor::PreparedStatementCache statement_cache_;
 
   void SetUp() override {
     test_db::removeTable(kTableName);
@@ -51,11 +53,13 @@ class HeapFetchOperatorTest : public ::testing::Test {
     // id=3, value="c", quantity=15
     // id=4, value="d", quantity=20
     for (int i = 1; i <= 4; ++i) {
-      InsertParser parser("INSERT INTO " + std::string(kTableName) +
-                          " VALUES (" + std::to_string(i) + ", '" +
-                          char('a' + i - 1) + "', " + std::to_string(i * 5) +
-                          ")");
-      executor::insert(*pool_, *storage_, *index_accessor_, *table_, parser);
+      const std::string sql = "INSERT INTO " + std::string(kTableName) +
+                              " VALUES (" + std::to_string(i) + ", '" +
+                              char('a' + i - 1) + "', " +
+                              std::to_string(i * 5) + ")";
+      const InsertParser parser(sql);
+      executor::insert(*pool_, *storage_, *index_accessor_, statement_cache_,
+                       parser);
     }
     inserted_rids_ =
         storage_->openHeap(table_->heapFileName()).collectRids(*pool_);

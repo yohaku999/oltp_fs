@@ -23,6 +23,7 @@
 
 #include "catalog/table.h"
 #include "execution/executor.h"
+#include "execution/prepared_statement_cache.h"
 #include "execution/select_item.h"
 #include "logging.h"
 #include "parser/create_index_parser.h"
@@ -221,6 +222,7 @@ Server::Server(int port) : port_(port) {
   storage_ = std::make_unique<LocalStorageManager>();
   index_accessor_ = std::make_unique<IndexAccessor>(*pool_, *storage_);
   parser_cache_ = std::make_unique<ParserCache>();
+  statement_cache_ = std::make_unique<executor::PreparedStatementCache>();
 }
 
 Server::~Server() = default;
@@ -406,8 +408,6 @@ std::string Server::handleRequest(const std::string& request) {
             "batchUpdate currently supports INSERT statements only";
       } else {
         const InsertParser& parser = parser_cache_->insert.get(sql_template);
-        Table table =
-            TableMetadataStore::read(parser.extractTableName()).value();
         nlohmann::json update_counts = nlohmann::json::array();
 
         // Minimal TPC-C-oriented batch path. This reduces JDBC/server round
@@ -418,7 +418,8 @@ std::string Server::handleRequest(const std::string& request) {
             throw std::runtime_error(
                 "batchUpdate parameterSets must contain arrays");
           }
-          executor::insert(*pool_, *storage_, *index_accessor_, table, parser,
+          executor::insert(*pool_, *storage_, *index_accessor_,
+                           *statement_cache_, parser,
                            queryParametersFromJson(parameter_set));
           update_counts.push_back(1);
         }
@@ -430,7 +431,8 @@ std::string Server::handleRequest(const std::string& request) {
   } else if (operation == "query") {
     const SelectParser& parser = parser_cache_->select.get(sql_template);
     const std::vector<TypedRow> rows =
-        executor::read(*pool_, *storage_, *index_accessor_, parser, parameters);
+        executor::read(*pool_, *storage_, *index_accessor_, *statement_cache_,
+                       parser, parameters);
     res["columns"] = selectColumnNames(parser);
     res["rows"] = nlohmann::json::array();
     for (const TypedRow& row : rows) {
@@ -445,34 +447,31 @@ std::string Server::handleRequest(const std::string& request) {
         sql_template.find("create index") == 0 ||
         sql_template.find("CREATE UNIQUE INDEX") == 0 ||
         sql_template.find("create unique index") == 0) {
-      executor::create_index(*storage_,
+      executor::create_index(*storage_, *statement_cache_,
                              parser_cache_->create_index.get(sql_template));
     } else {
-      executor::create_table(*storage_,
+      executor::create_table(*storage_, *statement_cache_,
                              parser_cache_->create_table.get(sql_template));
     }
     res["updateCount"] = 0;
   } else if (keyword == "DROP") {
-    executor::drop_table(*storage_,
+    executor::drop_table(*storage_, *statement_cache_,
                          parser_cache_->drop_table.get(sql_template));
     res["updateCount"] = 0;
   } else if (keyword == "INSERT") {
     const InsertParser& parser = parser_cache_->insert.get(sql_template);
-    Table table = TableMetadataStore::read(parser.extractTableName()).value();
-    executor::insert(*pool_, *storage_, *index_accessor_, table, parser,
-                     parameters);
+    executor::insert(*pool_, *storage_, *index_accessor_, *statement_cache_,
+                     parser, parameters);
     res["updateCount"] = 1;
   } else if (keyword == "UPDATE") {
     const UpdateParser& parser = parser_cache_->update.get(sql_template);
-    Table table = TableMetadataStore::read(parser.extractTableName()).value();
-    executor::update(*pool_, *storage_, *index_accessor_, table, parser,
-                     parameters);
+    executor::update(*pool_, *storage_, *index_accessor_, *statement_cache_,
+                     parser, parameters);
     res["updateCount"] = 1;
   } else if (keyword == "DELETE") {
     const DeleteParser& parser = parser_cache_->remove.get(sql_template);
-    Table table = TableMetadataStore::read(parser.extractTableName()).value();
-    executor::remove(*pool_, *storage_, *index_accessor_, table, parser,
-                     parameters);
+    executor::remove(*pool_, *storage_, *index_accessor_, *statement_cache_,
+                     parser, parameters);
     res["updateCount"] = 1;
   } else {
     res["ok"] = false;

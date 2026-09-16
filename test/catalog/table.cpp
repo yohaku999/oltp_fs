@@ -11,6 +11,7 @@
 
 #include "../test_database.h"
 #include "execution/executor.h"
+#include "execution/prepared_statement_cache.h"
 #include "parser/delete_parser.h"
 #include "parser/insert_parser.h"
 #include "parser/select_parser.h"
@@ -31,6 +32,7 @@ class TableTest : public ::testing::Test {
   std::unique_ptr<LocalStorageManager> storage_;
   std::unique_ptr<IndexAccessor> index_accessor_;
   std::unique_ptr<WAL> wal_;
+  executor::PreparedStatementCache statement_cache_;
 
   void SetUp() override {
     std::filesystem::create_directories("data");
@@ -202,13 +204,13 @@ TEST_F(TableTest, GetCachedTableDoesNotTouchMissingDataDirectory) {
 }
 
 TEST_F(TableTest, InsertIndexFindRIDAndReadRowRoundTrip) {
-  Table table = createSingleColumnTable();
+  createSingleColumnTable();
 
   executor::insert(
-      *pool_, *storage_, *index_accessor_, table,
+      *pool_, *storage_, *index_accessor_, statement_cache_,
       InsertParser("INSERT INTO table_test_table VALUES (11, 'table-value')"));
   std::vector<TypedRow> rows = executor::read(
-      *pool_, *storage_, *index_accessor_,
+      *pool_, *storage_, *index_accessor_, statement_cache_,
       SelectParser("SELECT id, value FROM table_test_table WHERE id = 11"));
   ASSERT_EQ(rows.size(), 1u);
   TypedRow restored = rows.front();
@@ -271,10 +273,10 @@ TEST_F(TableTest, PersistsMultipleIndexesAndUniqueness) {
 }
 
 TEST_F(TableTest, InsertHeapRecordWithWalWritesInsertRecord) {
-  Table table = createSingleColumnTable();
+  createSingleColumnTable();
 
   executor::insert(
-      *pool_, *storage_, *index_accessor_, table,
+      *pool_, *storage_, *index_accessor_, statement_cache_,
       InsertParser("INSERT INTO table_test_table VALUES (11, 'wal')"));
   wal_->flush();
 
@@ -289,12 +291,12 @@ TEST_F(TableTest, InsertHeapRecordWithWalWritesInsertRecord) {
 }
 
 TEST_F(TableTest, InvalidateHeapRecordWithWalWritesDeleteRecord) {
-  Table table = createSingleColumnTable();
+  createSingleColumnTable();
 
   executor::insert(
-      *pool_, *storage_, *index_accessor_, table,
+      *pool_, *storage_, *index_accessor_, statement_cache_,
       InsertParser("INSERT INTO table_test_table VALUES (22, 'gone')"));
-  executor::remove(*pool_, *storage_, *index_accessor_, table,
+  executor::remove(*pool_, *storage_, *index_accessor_, statement_cache_,
                    DeleteParser("DELETE FROM table_test_table WHERE id = 22"));
   wal_->flush();
 
@@ -310,7 +312,7 @@ TEST_F(TableTest, InvalidateHeapRecordWithWalWritesDeleteRecord) {
 
   EXPECT_TRUE(
       executor::read(
-          *pool_, *storage_, *index_accessor_,
+          *pool_, *storage_, *index_accessor_, statement_cache_,
           SelectParser("SELECT id, value FROM table_test_table WHERE id = 22"))
           .empty());
 }

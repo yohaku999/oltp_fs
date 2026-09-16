@@ -61,6 +61,7 @@ add_library(dbfs_src
     src/planning/binder.cpp
     src/planning/physical/join_planner.cpp
     src/execution/comparison_predicate.cpp
+    src/execution/prepared_statement_cache.cpp
     src/execution/join_pipeline_builder.cpp
     src/execution/select_item.cpp
     src/parser/parser_ast_helpers.cpp

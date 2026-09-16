@@ -5,6 +5,7 @@
 #include <variant>
 #include <vector>
 
+#include "parser/query_parameters.h"
 #include "schema/column.h"
 #include "tuple/field_value.h"
 
@@ -13,17 +14,17 @@ enum class UpdateBinaryOperator {
   Subtract,
 };
 
-struct UnboundSelfArithmeticUpdate {
+struct PreparedUnboundSelfArithmeticUpdate {
   UpdateBinaryOperator op;
-  FieldValue literal;
+  PreparedFieldValue literal;
 };
 
-using UnboundUpdateValue =
-    std::variant<FieldValue, UnboundSelfArithmeticUpdate>;
+using PreparedUnboundUpdateValue =
+    std::variant<PreparedFieldValue, PreparedUnboundSelfArithmeticUpdate>;
 
-struct UnboundUpdateAssignment {
+struct PreparedUnboundUpdateAssignment {
   std::string target_column_name;
-  UnboundUpdateValue value;
+  PreparedUnboundUpdateValue value;
 };
 
 struct BoundSelfArithmeticUpdate {

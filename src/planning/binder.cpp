@@ -6,6 +6,7 @@
 #include <utility>
 #include <vector>
 
+#include "parser/parser_ast_helpers.h"
 #include "parser/select_parser.h"
 #include "schema/schema.h"
 #include "storage/table_metadata_store.h"
@@ -69,62 +70,191 @@ std::optional<BoundColumnRef> tryBindColumnRef(
   return matched_column;
 }
 
-std::optional<BoundOperand> tryBindOperand(const UnboundOperand& operand,
-                                           const std::vector<Table>& tables) {
-  // when the operand is a column reference
+std::optional<PreparedOperand> tryPrepareOperand(
+    const UnboundOperand& operand, const std::vector<Table>& tables) {
   if (const auto* column_ref = std::get_if<ColumnRef>(&operand)) {
     const std::optional<BoundColumnRef> bound_column =
         tryBindColumnRef(*column_ref, tables);
     if (!bound_column.has_value()) {
       return std::nullopt;
     }
-    return BoundOperand{*bound_column};
+    return PreparedOperand{*bound_column};
   }
-
-  // when the operand is a literal value
   if (const auto* value = std::get_if<FieldValue>(&operand)) {
-    return BoundOperand{*value};
+    return PreparedOperand{*value};
+  }
+  return PreparedOperand{std::get<QueryParameterRef>(operand)};
+}
+
+PreparedOperand prepareOperand(const UnboundOperand& operand,
+                               const std::vector<Table>& tables) {
+  if (const std::optional<PreparedOperand> prepared =
+          tryPrepareOperand(operand, tables);
+      prepared.has_value()) {
+    return *prepared;
   }
 
-  throw std::logic_error("Unsupported unbound operand.");
+  return PreparedOperand{bindColumnRef(std::get<ColumnRef>(operand), tables)};
+}
+
+std::vector<PreparedComparisonPredicate> preparePredicatesResolvableByTable(
+    const std::vector<UnboundComparisonPredicate>& predicates,
+    const Table& table) {
+  std::vector<PreparedComparisonPredicate> prepared_predicates;
+  prepared_predicates.reserve(predicates.size());
+  const std::vector<Table> tables{table};
+  for (const auto& predicate : predicates) {
+    const std::optional<PreparedOperand> left =
+        tryPrepareOperand(predicate.left, tables);
+    const std::optional<PreparedOperand> right =
+        tryPrepareOperand(predicate.right, tables);
+    if (left.has_value() && right.has_value()) {
+      prepared_predicates.push_back(
+          PreparedComparisonPredicate{predicate.op, *left, *right});
+    }
+  }
+  return prepared_predicates;
+}
+
+BoundOperand bindPreparedOperand(const PreparedOperand& operand,
+                                 const QueryParameters& parameters) {
+  if (const auto* column = std::get_if<BoundColumnRef>(&operand)) {
+    return *column;
+  }
+  if (const auto* value = std::get_if<FieldValue>(&operand)) {
+    return *value;
+  }
+
+  const auto& parameter = std::get<QueryParameterRef>(operand);
+  return coerceParameter(parameters.at(parameter.index), parameter.type);
 }
 
 }  // namespace
 
-BoundSelectQuery bindSelectQuery(const SelectParser& parser,
-                                 const QueryParameters& parameters) {
-  BoundSelectQuery bound_query;
+std::vector<PreparedComparisonPredicate> preparePredicates(
+    const std::vector<UnboundComparisonPredicate>& predicates,
+    const std::vector<Table>& tables) {
+  std::vector<PreparedComparisonPredicate> prepared_predicates;
+  prepared_predicates.reserve(predicates.size());
+  for (const auto& predicate : predicates) {
+    prepared_predicates.push_back(PreparedComparisonPredicate{
+        predicate.op, prepareOperand(predicate.left, tables),
+        prepareOperand(predicate.right, tables)});
+  }
+  return prepared_predicates;
+}
 
+std::vector<BoundComparisonPredicate> bindPreparedPredicates(
+    const std::vector<PreparedComparisonPredicate>& predicates,
+    const QueryParameters& parameters) {
+  std::vector<BoundComparisonPredicate> bound_predicates;
+  bound_predicates.reserve(predicates.size());
+  for (const auto& predicate : predicates) {
+    bound_predicates.push_back(BoundComparisonPredicate{
+        predicate.op, bindPreparedOperand(predicate.left, parameters),
+        bindPreparedOperand(predicate.right, parameters)});
+  }
+  return bound_predicates;
+}
+
+std::vector<PreparedUpdateAssignment> prepareUpdateAssignments(
+    const std::vector<PreparedUnboundUpdateAssignment>& assignments,
+    const Table& table) {
+  std::vector<PreparedUpdateAssignment> prepared_assignments;
+  prepared_assignments.reserve(assignments.size());
+  for (const PreparedUnboundUpdateAssignment& assignment : assignments) {
+    const int column_index =
+        table.schema().getColumnIndex(assignment.target_column_name);
+    if (column_index < 0) {
+      throw std::runtime_error("Unknown UPDATE column: " +
+                               assignment.target_column_name);
+    }
+    const std::size_t target_column_index =
+        static_cast<std::size_t>(column_index);
+    const Column::Type target_type =
+        table.schema().columns().at(target_column_index).getType();
+
+    if (const auto* value =
+            std::get_if<PreparedFieldValue>(&assignment.value)) {
+      prepared_assignments.push_back(
+          PreparedUpdateAssignment{target_column_index, *value});
+      continue;
+    }
+
+    const auto& arithmetic =
+        std::get<PreparedUnboundSelfArithmeticUpdate>(assignment.value);
+    if (!isNumericType(target_type)) {
+      throw std::runtime_error(
+          "UPDATE arithmetic requires a numeric target column.");
+    }
+    prepared_assignments.push_back(PreparedUpdateAssignment{
+        target_column_index,
+        PreparedSelfArithmeticUpdate{target_column_index, arithmetic.op,
+                                     arithmetic.literal}});
+  }
+  return prepared_assignments;
+}
+
+std::vector<BoundUpdateAssignment> bindPreparedUpdateAssignments(
+    const std::vector<PreparedUpdateAssignment>& assignments,
+    const QueryParameters& parameters) {
+  std::vector<BoundUpdateAssignment> bound_assignments;
+  bound_assignments.reserve(assignments.size());
+  for (const PreparedUpdateAssignment& assignment : assignments) {
+    if (const auto* value =
+            std::get_if<PreparedFieldValue>(&assignment.value)) {
+      bound_assignments.push_back(
+          BoundUpdateAssignment{assignment.target_column_index,
+                                bindPreparedFieldValue(*value, parameters)});
+      continue;
+    }
+
+    const auto& arithmetic =
+        std::get<PreparedSelfArithmeticUpdate>(assignment.value);
+    bound_assignments.push_back(BoundUpdateAssignment{
+        assignment.target_column_index,
+        BoundSelfArithmeticUpdate{
+            arithmetic.target_column_index, arithmetic.op,
+            bindPreparedFieldValue(arithmetic.literal, parameters)}});
+  }
+  return bound_assignments;
+}
+
+PreparedSelectQuery prepareSelectQuery(const SelectParser& parser) {
+  PreparedSelectQuery prepared_query;
   const std::vector<std::string> table_names = parser.extractTableNames();
-  bound_query.tables.reserve(table_names.size());
+  prepared_query.tables.reserve(table_names.size());
   for (const auto& table_name : table_names) {
-    bound_query.tables.push_back(TableMetadataStore::read(table_name).value());
+    prepared_query.tables.push_back(
+        TableMetadataStore::read(table_name).value());
   }
 
   std::vector<Column> columns;
-  for (const auto& table : bound_query.tables) {
+  for (const auto& table : prepared_query.tables) {
     const auto& table_columns = table.schema().columns();
     columns.insert(columns.end(), table_columns.begin(), table_columns.end());
   }
   const Schema joined_schema(std::move(columns));
 
   const std::vector<UnboundComparisonPredicate> unbound_predicates =
-      parser.extractComparisonPredicates(joined_schema, parameters);
-  bound_query.predicates =
-      bindPredicates(unbound_predicates, bound_query.tables);
+      parser.extractPreparedComparisonPredicates(joined_schema);
+  prepared_query.predicates =
+      preparePredicates(unbound_predicates, prepared_query.tables);
 
-  bound_query.table_predicates.reserve(bound_query.tables.size());
-  for (const auto& table : bound_query.tables) {
-    bound_query.table_predicates.push_back(
-        bindPredicatesResolvableByTable(unbound_predicates, table));
+  prepared_query.table_predicates.reserve(prepared_query.tables.size());
+  for (const auto& table : prepared_query.tables) {
+    prepared_query.table_predicates.push_back(
+        preparePredicatesResolvableByTable(unbound_predicates, table));
   }
 
-  bound_query.select_items =
-      bindSelectItems(parser.extractSelectItems(), bound_query.tables);
+  const std::vector<UnboundSelectItem> unbound_select_items =
+      parser.extractSelectItems();
+  prepared_query.select_items =
+      bindSelectItems(unbound_select_items, prepared_query.tables);
 
   bool has_aggregate = false;
   bool has_projection = false;
-  for (const auto& item : bound_query.select_items) {
+  for (const auto& item : prepared_query.select_items) {
     has_aggregate =
         has_aggregate || std::holds_alternative<BoundAggregateCall>(item);
     has_projection =
@@ -135,13 +265,41 @@ BoundSelectQuery bindSelectQuery(const SelectParser& parser,
         "Mixing aggregate and non-aggregate select items is not supported.");
   }
 
-  bound_query.order_by_specs = parser.extractOrderBySpecs(joined_schema);
-  if (has_aggregate && !bound_query.order_by_specs.empty()) {
+  prepared_query.order_by_specs = parser.extractOrderBySpecs(joined_schema);
+  if (has_aggregate && !prepared_query.order_by_specs.empty()) {
     throw std::runtime_error(
         "ORDER BY is not supported for aggregate queries.");
   }
 
-  bound_query.limit_count = parser.extractLimitCount(parameters);
+  prepared_query.limit = parser.extractPreparedLimit();
+  return prepared_query;
+}
+
+BoundSelectQuery bindSelectQuery(const PreparedSelectQuery& prepared,
+                                 const QueryParameters& parameters) {
+  BoundSelectQuery bound_query{
+      prepared.tables,
+      prepared.select_items,
+      bindPreparedPredicates(prepared.predicates, parameters),
+      {},
+      prepared.order_by_specs,
+      std::nullopt};
+  bound_query.table_predicates.reserve(prepared.table_predicates.size());
+  for (const auto& predicates : prepared.table_predicates) {
+    bound_query.table_predicates.push_back(
+        bindPreparedPredicates(predicates, parameters));
+  }
+
+  if (prepared.limit.has_value()) {
+    if (const auto* limit = std::get_if<std::size_t>(&*prepared.limit)) {
+      bound_query.limit_count = *limit;
+    } else {
+      const auto& parameter = std::get<QueryParameterRef>(*prepared.limit);
+      bound_query.limit_count =
+          static_cast<std::size_t>(std::get<Column::IntegerType>(
+              coerceParameter(parameters.at(parameter.index), parameter.type)));
+    }
+  }
   return bound_query;
 }
 
@@ -159,19 +317,6 @@ BoundColumnRef bindColumnRef(const ColumnRef& column_ref,
                              column_ref.column_name);
   }
   throw std::runtime_error("Unknown column: " + column_ref.column_name);
-}
-
-BoundOperand bindOperand(const UnboundOperand& operand,
-                         const std::vector<Table>& tables) {
-  if (const auto* column_ref = std::get_if<ColumnRef>(&operand)) {
-    return bindColumnRef(*column_ref, tables);
-  }
-
-  if (const auto* value = std::get_if<FieldValue>(&operand)) {
-    return *value;
-  }
-
-  throw std::logic_error("Unsupported unbound operand.");
 }
 
 std::vector<BoundSelectItem> bindSelectItems(
@@ -217,98 +362,6 @@ std::vector<BoundSelectItem> bindSelectItems(
   }
 
   return bound_select_items;
-}
-
-std::vector<BoundComparisonPredicate> bindPredicates(
-    const std::vector<UnboundComparisonPredicate>& predicates,
-    const std::vector<Table>& tables) {
-  std::vector<BoundComparisonPredicate> bound_predicates;
-  bound_predicates.reserve(predicates.size());
-
-  for (const auto& predicate : predicates) {
-    bound_predicates.push_back(BoundComparisonPredicate{
-        predicate.op, bindOperand(predicate.left, tables),
-        bindOperand(predicate.right, tables)});
-  }
-
-  return bound_predicates;
-}
-
-/**
- * Binds as many predicates as possible using only the specified table, and
- * returns the bound predicates. Predicates that cannot be fully bound using the
- * specified table are silently dropped.
- */
-std::vector<BoundComparisonPredicate> bindPredicatesResolvableByTable(
-    const std::vector<UnboundComparisonPredicate>& predicates,
-    const Table& table) {
-  std::vector<BoundComparisonPredicate> bound_predicates;
-  bound_predicates.reserve(predicates.size());
-
-  for (const auto& predicate : predicates) {
-    std::optional<BoundOperand> left =
-        tryBindOperand(predicate.left, std::vector<Table>{table});
-    if (!left.has_value()) {
-      continue;
-    }
-
-    std::optional<BoundOperand> right =
-        tryBindOperand(predicate.right, std::vector<Table>{table});
-    if (!right.has_value()) {
-      continue;
-    }
-
-    bound_predicates.push_back(
-        BoundComparisonPredicate{predicate.op, *left, *right});
-  }
-
-  return bound_predicates;
-}
-
-std::vector<BoundUpdateAssignment> bindUpdateAssignments(
-    const std::vector<UnboundUpdateAssignment>& assignments,
-    const Table& table) {
-  std::vector<BoundUpdateAssignment> bound_assignments;
-  bound_assignments.reserve(assignments.size());
-
-  for (const auto& assignment : assignments) {
-    const int column_index =
-        table.schema().getColumnIndex(assignment.target_column_name);
-    if (column_index < 0) {
-      throw std::runtime_error("Unknown UPDATE target column: " +
-                               assignment.target_column_name);
-    }
-
-    const std::size_t target_column_index =
-        static_cast<std::size_t>(column_index);
-    const Column::Type target_type =
-        table.schema().columns().at(target_column_index).getType();
-
-    if (const auto* literal = std::get_if<FieldValue>(&assignment.value)) {
-      bound_assignments.push_back(
-          BoundUpdateAssignment{target_column_index, *literal});
-      continue;
-    }
-
-    if (!isNumericType(target_type)) {
-      throw std::runtime_error(
-          "UPDATE arithmetic requires a numeric target column.");
-    }
-
-    const auto& arithmetic =
-        std::get<UnboundSelfArithmeticUpdate>(assignment.value);
-    if (!std::holds_alternative<Column::IntegerType>(arithmetic.literal) &&
-        !std::holds_alternative<Column::DoubleType>(arithmetic.literal)) {
-      throw std::runtime_error("UPDATE arithmetic requires a numeric literal.");
-    }
-
-    bound_assignments.push_back(BoundUpdateAssignment{
-        target_column_index,
-        BoundSelfArithmeticUpdate{target_column_index, arithmetic.op,
-                                  arithmetic.literal}});
-  }
-
-  return bound_assignments;
 }
 
 }  // namespace binder
