@@ -388,9 +388,9 @@ BTreeCursor::SplitResult BTreeCursor::splitPage(BufferPool& pool,
           ? splitLeafPage(pool, index_file, *old_page,
                           std::string(LeafCell::keyView(
                               old_page->getSplitKeyCellStart())))
-          : splitInternalPage(
-                pool, index_file, *old_page,
-                IntermediateCell::getKey(old_page->getSplitKeyCellStart()));
+          : splitInternalPage(pool, index_file, *old_page,
+                              std::string(IntermediateCell::keyView(
+                                  old_page->getSplitKeyCellStart())));
 
   // Since cell on internalindexpage points to the leaf page larger then its
   // value, we have to replace child page ID

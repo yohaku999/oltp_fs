@@ -3,6 +3,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 
 #include "index_key.h"
 #include "intermediate_cell.h"
@@ -69,7 +70,8 @@ class InternalIndexPage {
   void transferAndCompactTo(InternalIndexPage& dst,
                             const std::string& separate_key);
   uint16_t leftMostChildPageId() const {
-    std::optional<IntermediateCell> leftmost;
+    std::optional<std::string_view> leftmost_key;
+    uint16_t leftmost_page_id = 0;
 
     for (int idx = 0; idx < page_.getSlotCount(); ++idx) {
       char* cell_data = page_.data() + page_.getCellOffsetOnXthPointer(idx);
@@ -77,20 +79,21 @@ class InternalIndexPage {
         continue;
       }
 
-      IntermediateCell cell = cellAt(idx);
-      if (!leftmost.has_value() ||
-          index_key::compare(cell.key(), leftmost->key()) < 0) {
-        leftmost = cell;
+      const std::string_view key = IntermediateCell::keyView(cell_data);
+      if (!leftmost_key.has_value() ||
+          index_key::compare(key, leftmost_key.value()) < 0) {
+        leftmost_key = key;
+        leftmost_page_id = IntermediateCell::readPageID(cell_data);
       }
     }
 
-    if (!leftmost.has_value()) {
+    if (!leftmost_key.has_value()) {
       throw std::logic_error(
           "InternalIndexPage::leftMostChildPageId: internal page has no valid "
           "separator cell");
     }
 
-    return leftmost->page_id();
+    return leftmost_page_id;
   }
 
  private:

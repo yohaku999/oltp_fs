@@ -7,20 +7,18 @@
  * | key size (2 bytes) | page ID (2 bytes) | key bytes |
  */
 IntermediateCell IntermediateCell::decodeCell(char* data_p) {
-  data_p += Cell::FLAG_FIELD_SIZE;
-  uint16_t key_size = readValue<uint16_t>(data_p);
-  char* page_id_p = data_p + sizeof(uint16_t);
-  uint16_t cell_pageID = readValue<uint16_t>(page_id_p);
-  char* key_p = page_id_p + sizeof(uint16_t);
-  std::string cell_key(key_p, key_p + key_size);
-  return IntermediateCell(cell_pageID, std::move(cell_key));
+  return IntermediateCell(readPageID(data_p), std::string(keyView(data_p)));
 }
 
-std::string IntermediateCell::getKey(const char* data_p) {
+std::string_view IntermediateCell::keyView(const char* data_p) {
   // Skip: FLAG (1 byte) + key_size (2 bytes) + page_id (2 bytes)
   const uint16_t key_size = readValue<uint16_t>(data_p + Cell::FLAG_FIELD_SIZE);
   const char* key_p = data_p + Cell::FLAG_FIELD_SIZE + sizeof(uint16_t) * 2;
-  return std::string(key_p, key_p + key_size);
+  return std::string_view(key_p, key_size);
+}
+
+uint16_t IntermediateCell::readPageID(const char* data_p) {
+  return readValue<uint16_t>(data_p + Cell::FLAG_FIELD_SIZE + sizeof(uint16_t));
 }
 
 std::vector<std::byte> IntermediateCell::serialize() const {

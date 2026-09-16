@@ -186,15 +186,16 @@ uint16_t InternalIndexPage::findChildPage(const std::string& key) {
       continue;
     }
 
-    const IntermediateCell cell = cellAt(idx);
-    const int compare = index_key::compare(cell.key(), key);
+    const std::string_view cell_key = IntermediateCell::keyView(cell_data);
+    const uint16_t cell_page_id = IntermediateCell::readPageID(cell_data);
+    const int compare = index_key::compare(cell_key, key);
     // break the loop since the cell with a key greater than the given key is found.
     if (compare > 0) {
-      return equal_key_child.value_or(cell.page_id());
+      return equal_key_child.value_or(cell_page_id);
     }
     // Continue searching since there can be separator cells with the same key in non-unique indexes.
     if (compare == 0) {
-      equal_key_child = cell.page_id();
+      equal_key_child = cell_page_id;
     }
   }
   // If multiple separator cells with the same key exists, return the child page ID of the last one.
@@ -280,7 +281,7 @@ void InternalIndexPage::transferAndCompactTo(InternalIndexPage& dst,
       continue;
     }
 
-    const std::string cell_key = IntermediateCell::getKey(cell_data);
+    const std::string_view cell_key = IntermediateCell::keyView(cell_data);
     const int compare = index_key::compare(cell_key, separate_key);
     if (compare < 0) {
       dst.page_.insertCell(IntermediateCell::decodeCell(cell_data));

@@ -14,10 +14,14 @@ TEST(CellTest, IntermediateCellRoundTrip) {
 
   IntermediateCell decoded =
       IntermediateCell::decodeCell(reinterpret_cast<char*>(serialized.data()));
+  const char* serialized_data =
+      reinterpret_cast<const char*>(serialized.data());
 
   EXPECT_EQ(decoded.key_size(), original.key_size());
   EXPECT_EQ(decoded.page_id(), original.page_id());
   EXPECT_EQ(decoded.key(), original.key());
+  EXPECT_EQ(IntermediateCell::keyView(serialized_data), original.key());
+  EXPECT_EQ(IntermediateCell::readPageID(serialized_data), original.page_id());
 }
 
 TEST(CellTest, LeafCellRoundTrip) {
