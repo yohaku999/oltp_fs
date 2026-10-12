@@ -12,16 +12,36 @@ LeafCell LeafIndexPage::cellAt(int slot_id) const {
 }
 
 bool LeafIndexPage::hasKey(const std::string& key) const {
-  for (int idx = 0; idx < page_.getSlotCount(); ++idx) {
-    char* cell_data = page_.data() + page_.getCellOffsetOnXthPointer(idx);
-    if (!Cell::isValid(cell_data)) {
+  const int slot_count = page_.getSlotCount();
+  int lower = 0;
+  int upper = slot_count - 1;
+  while (lower <= upper) {
+    const int middle = lower + (upper - lower) / 2;
+    int probe = middle;
+    const char* cell_data = nullptr;
+    while (probe <= upper) {
+      cell_data = page_.data() + page_.getCellOffsetOnXthPointer(probe);
+      if (Cell::isValid(cell_data)) {
+        break;
+      }
+      ++probe;
+    }
+
+    if (probe > upper) {
+      upper = middle - 1;
       continue;
     }
-    LeafCell cell = cellAt(idx);
-    if (index_key::compare(cell.key(), key) == 0) {
+
+    const int compare = index_key::compare(LeafCell::keyView(cell_data), key);
+    if (compare < 0) {
+      lower = probe + 1;
+    } else if (compare > 0) {
+      upper = middle - 1;
+    } else {
       return true;
     }
   }
+
   return false;
 }
 
@@ -171,37 +191,73 @@ uint16_t InternalIndexPage::rightMostChildPageId() const {
 }
 
 /**
- * returns the child page ID to follow for a given key
- * The child page ID is determined based on the separator keys in the internal
- * index page. The function iterates through the valid separator cells in the
- * page and compares their keys with the given key. It returns the page ID of
- * the first separator cell whose key is greater than or equal to the given key.
- * If no such separator cell is found, it returns the rightmost child page ID.
+ * This function returns the child page ID to follow for a given key.
+ * Each separator is the inclusive upper bound of its child page.
+ * It returns the last child whose separator equals the key, or the first child
+ * whose separator is greater. If neither exists, it returns the rightmost
+ * child page ID.
  */
 uint16_t InternalIndexPage::findChildPage(const std::string& key) {
-  std::optional<uint16_t> equal_key_child;
-  for (int idx = 0; idx < page_.getSlotCount(); ++idx) {
-    char* cell_data = page_.data() + page_.getCellOffsetOnXthPointer(idx);
-    if (!Cell::isValid(cell_data)) {
+  const int slot_count = page_.getSlotCount();
+  int lower = 0;
+  int upper = slot_count;
+  while (lower < upper) {
+    const int middle = lower + (upper - lower) / 2;
+    int probe = middle;
+    const char* cell_data = nullptr;
+    while (probe < upper) {
+      cell_data = page_.data() + page_.getCellOffsetOnXthPointer(probe);
+      if (Cell::isValid(cell_data)) {
+        break;
+      }
+      ++probe;
+    }
+
+    if (probe == upper) {
+      upper = middle;
       continue;
     }
 
     const std::string_view cell_key = IntermediateCell::keyView(cell_data);
-    const uint16_t cell_page_id = IntermediateCell::readPageID(cell_data);
-    const int compare = index_key::compare(cell_key, key);
-    // break the loop since the cell with a key greater than the given key is found.
-    if (compare > 0) {
-      return equal_key_child.value_or(cell_page_id);
-    }
-    // Continue searching since there can be separator cells with the same key in non-unique indexes.
-    if (compare == 0) {
-      equal_key_child = cell_page_id;
+    if (index_key::compare(cell_key, key) <= 0) {
+      lower = probe + 1;
+    } else {
+      upper = middle;
     }
   }
-  // If multiple separator cells with the same key exists, return the child page ID of the last one.
-  if (equal_key_child.has_value()) {
-    return equal_key_child.value();
+
+  int first_greater_slot = lower;
+  const char* first_greater_cell_data = nullptr;
+  while (first_greater_slot < slot_count) {
+    first_greater_cell_data =
+        page_.data() + page_.getCellOffsetOnXthPointer(first_greater_slot);
+    if (Cell::isValid(first_greater_cell_data)) {
+      break;
+    }
+    ++first_greater_slot;
   }
+
+  int previous_slot = first_greater_slot - 1;
+  while (previous_slot >= 0) {
+    const char* previous_cell_data =
+        page_.data() + page_.getCellOffsetOnXthPointer(previous_slot);
+    if (!Cell::isValid(previous_cell_data)) {
+      --previous_slot;
+      continue;
+    }
+
+    const std::string_view previous_key =
+        IntermediateCell::keyView(previous_cell_data);
+    if (index_key::compare(previous_key, key) == 0) {
+      return IntermediateCell::readPageID(previous_cell_data);
+    }
+    break;
+  }
+
+  if (first_greater_slot < slot_count) {
+    return IntermediateCell::readPageID(first_greater_cell_data);
+  }
+
   dbfs_log::index().debug(
       "InternalIndexPage::findChildPage: Going to right most child {}.",
       rightMostChildPageId());

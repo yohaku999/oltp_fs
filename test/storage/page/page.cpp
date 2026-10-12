@@ -217,6 +217,52 @@ TEST(PageTest, InsertIntermediatePageAndFind) {
   EXPECT_EQ(88, internal.findChildPage(encodeIntKey(entries[1].key + 1)));
 }
 
+TEST(PageTest, FindChildPageUsesLastMatchingSeparator) {
+  std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
+  auto page = std::make_unique<Page>(page_data.data(), PageKind::InternalIndex,
+                                     999, 1);
+
+  ASSERT_TRUE(page->insertCell(IntermediateCell(10, encodeIntKey(100))));
+  ASSERT_TRUE(page->insertCell(IntermediateCell(20, encodeIntKey(200))));
+  ASSERT_TRUE(page->insertCell(IntermediateCell(21, encodeIntKey(200))));
+  ASSERT_TRUE(page->insertCell(IntermediateCell(30, encodeIntKey(300))));
+
+  InternalIndexPage internal(*page);
+  EXPECT_EQ(10, internal.findChildPage(encodeIntKey(50)));
+  EXPECT_EQ(20, internal.findChildPage(encodeIntKey(150)));
+  EXPECT_EQ(21, internal.findChildPage(encodeIntKey(200)));
+  EXPECT_EQ(30, internal.findChildPage(encodeIntKey(250)));
+  EXPECT_EQ(999, internal.findChildPage(encodeIntKey(350)));
+}
+
+TEST(PageTest, FindChildPageSkipsInvalidSeparators) {
+  std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
+  auto page = std::make_unique<Page>(page_data.data(), PageKind::InternalIndex,
+                                     999, 1);
+
+  ASSERT_TRUE(page->insertCell(IntermediateCell(10, encodeIntKey(100))));
+  auto key_200_slot =
+      page->insertCell(IntermediateCell(20, encodeIntKey(200)));
+  ASSERT_TRUE(key_200_slot.has_value());
+  ASSERT_TRUE(page->insertCell(IntermediateCell(30, encodeIntKey(300))));
+  auto key_400_slot =
+      page->insertCell(IntermediateCell(40, encodeIntKey(400)));
+  ASSERT_TRUE(key_400_slot.has_value());
+  ASSERT_TRUE(page->insertCell(IntermediateCell(50, encodeIntKey(500))));
+
+  page->invalidateSlot(key_200_slot.value());
+  page->invalidateSlot(key_400_slot.value());
+  ASSERT_TRUE(page->insertCell(IntermediateCell(15, encodeIntKey(150))));
+
+  InternalIndexPage internal(*page);
+  EXPECT_EQ(10, internal.findChildPage(encodeIntKey(50)));
+  EXPECT_EQ(15, internal.findChildPage(encodeIntKey(150)));
+  EXPECT_EQ(30, internal.findChildPage(encodeIntKey(200)));
+  EXPECT_EQ(30, internal.findChildPage(encodeIntKey(300)));
+  EXPECT_EQ(50, internal.findChildPage(encodeIntKey(400)));
+  EXPECT_EQ(999, internal.findChildPage(encodeIntKey(600)));
+}
+
 TEST(PageTest, InvalidateSlotSetsFlag) {
   // Verify invalidation through the public Page API for index and record cells.
   auto assertInvalidation = [](PageKind kind, const Cell& cell) {
@@ -286,6 +332,35 @@ TEST(PageTest, LeafSearchSkipsInvalidEntries) {
       leaf.findEntries(left_boundary, right_boundary, false);
   EXPECT_EQ(LeafIndexPage::NO_RIGHT_SIBLING, next_page);
   EXPECT_TRUE(entries.empty());
+}
+
+TEST(PageTest, LeafHasKeyUsesBinarySearchAcrossInvalidSlots) {
+  std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
+  auto page = std::make_unique<Page>(page_data.data(), PageKind::LeafIndex,
+                                     LeafIndexPage::NO_RIGHT_SIBLING, 1);
+  LeafIndexPage leaf(*page);
+  EXPECT_FALSE(leaf.hasKey(encodeIntKey(10)));
+
+  ASSERT_TRUE(page->insertCell(LeafCell(encodeIntKey(10), 1, 1)));
+  auto key_20_slot = page->insertCell(LeafCell(encodeIntKey(20), 1, 2));
+  ASSERT_TRUE(key_20_slot.has_value());
+  ASSERT_TRUE(page->insertCell(LeafCell(encodeIntKey(30), 1, 3)));
+  auto key_40_slot = page->insertCell(LeafCell(encodeIntKey(40), 1, 4));
+  ASSERT_TRUE(key_40_slot.has_value());
+  ASSERT_TRUE(page->insertCell(LeafCell(encodeIntKey(50), 1, 5)));
+
+  page->invalidateSlot(key_20_slot.value());
+  page->invalidateSlot(key_40_slot.value());
+  ASSERT_TRUE(page->insertCell(LeafCell(encodeIntKey(15), 1, 6)));
+
+  EXPECT_TRUE(leaf.hasKey(encodeIntKey(10)));
+  EXPECT_TRUE(leaf.hasKey(encodeIntKey(15)));
+  EXPECT_TRUE(leaf.hasKey(encodeIntKey(30)));
+  EXPECT_TRUE(leaf.hasKey(encodeIntKey(50)));
+  EXPECT_FALSE(leaf.hasKey(encodeIntKey(20)));
+  EXPECT_FALSE(leaf.hasKey(encodeIntKey(25)));
+  EXPECT_FALSE(leaf.hasKey(encodeIntKey(40)));
+  EXPECT_FALSE(leaf.hasKey(encodeIntKey(60)));
 }
 
 TEST(PageTest, LeafInsertInvalidateReuseSlot) {
