@@ -184,6 +184,43 @@ TEST_F(BTreeCursorTest, ContainsKeyFindsOutOfOrderKeyAfterLeafSplit) {
       BTreeCursor::containsKey(*pool_, *index_file_, encodeIntKey(500)));
 }
 
+TEST_F(BTreeCursorTest, FindExactEntriesHandlesHitsMissesAndInvalidSlots) {
+  for (int key = 1; key <= 5; ++key) {
+    BTreeCursor::insertIntoIndex(*pool_, *index_file_, encodeIntKey(key), 7,
+                                 static_cast<uint16_t>(key));
+  }
+  BTreeCursor::insertIntoIndex(*pool_, *index_file_, encodeIntKey(2), 8, 20);
+  BTreeCursor::removeRID(*pool_, *index_file_, encodeIntKey(3), RID{7, 3});
+
+  const std::vector<std::string> keys = {
+      encodeIntKey(0), encodeIntKey(2), encodeIntKey(3),
+      encodeIntKey(5), encodeIntKey(6)};
+  const std::vector<IndexEntry> entries =
+      BTreeCursor::findExactEntries(*pool_, *index_file_, keys);
+
+  ASSERT_EQ(entries.size(), 3u);
+  EXPECT_EQ(entries[0].key, encodeIntKey(2));
+  EXPECT_EQ(entries[0].rid.heap_page_id, 7);
+  EXPECT_EQ(entries[0].rid.slot_id, 2);
+  EXPECT_EQ(entries[1].key, encodeIntKey(2));
+  EXPECT_EQ(entries[1].rid.heap_page_id, 8);
+  EXPECT_EQ(entries[1].rid.slot_id, 20);
+  EXPECT_EQ(entries[2].key, encodeIntKey(5));
+  EXPECT_EQ(entries[2].rid.heap_page_id, 7);
+  EXPECT_EQ(entries[2].rid.slot_id, 5);
+}
+
+TEST_F(BTreeCursorTest, FindExactEntriesRejectsUnsortedOrDuplicateKeys) {
+  EXPECT_THROW(BTreeCursor::findExactEntries(
+                   *pool_, *index_file_,
+                   {encodeIntKey(2), encodeIntKey(1)}),
+               std::invalid_argument);
+  EXPECT_THROW(BTreeCursor::findExactEntries(
+                   *pool_, *index_file_,
+                   {encodeIntKey(1), encodeIntKey(1)}),
+               std::invalid_argument);
+}
+
 TEST_F(BTreeCursorTest, ReplaceRIDUpdatesRecordLocationForKey) {
   const std::string key = encodeIntKey(42);
   BTreeCursor::insertIntoIndex(*pool_, *index_file_, key, 5, 3);
@@ -226,6 +263,17 @@ TEST_F(BTreeCursorTest, DuplicateKeysSurviveLeafSplits) {
   for (int slot_id = 0; slot_id < kNumEntries; ++slot_id) {
     EXPECT_NE(slots.find(static_cast<uint16_t>(slot_id)), slots.end());
   }
+
+  const std::vector<IndexEntry> batch_entries =
+      BTreeCursor::findExactEntries(*pool_, *index_file_, {key});
+  ASSERT_EQ(batch_entries.size(), static_cast<std::size_t>(kNumEntries));
+  std::set<uint16_t> batch_slots;
+  for (const IndexEntry& entry : batch_entries) {
+    EXPECT_EQ(entry.key, key);
+    EXPECT_EQ(entry.rid.heap_page_id, 7);
+    batch_slots.insert(entry.rid.slot_id);
+  }
+  EXPECT_EQ(batch_slots, slots);
 }
 
 TEST_F(BTreeCursorTest, DuplicateKeyOperationsIdentifyRID) {
@@ -273,6 +321,39 @@ TEST_F(BTreeCursorTest, InsertManyKeysTriggersSplitAndIsSearchable) {
               heap_page_id);
     EXPECT_EQ(entries[static_cast<std::size_t>(key)].rid.slot_id, key);
   }
+}
+
+TEST_F(BTreeCursorTest, FindExactEntriesSharesInternalTraversal) {
+  constexpr int kNumKeys = 500;
+  for (int key = 0; key < kNumKeys; ++key) {
+    BTreeCursor::insertIntoIndex(*pool_, *index_file_, encodeIntKey(key), 7,
+                                 static_cast<uint16_t>(key));
+  }
+
+  std::vector<std::string> lookup_keys;
+  for (int key = 0; key < kNumKeys; key += 25) {
+    lookup_keys.push_back(encodeIntKey(key));
+  }
+
+  const std::uint64_t individual_start = pool_->stats().pin_page_calls;
+  for (const std::string& key : lookup_keys) {
+    const std::vector<IndexEntry> entries = BTreeCursor::findEntries(
+        *pool_, *index_file_, exactBoundary(key), false);
+    ASSERT_EQ(entries.size(), 1u);
+  }
+  const std::uint64_t individual_pins =
+      pool_->stats().pin_page_calls - individual_start;
+
+  const std::uint64_t batch_start = pool_->stats().pin_page_calls;
+  const std::vector<IndexEntry> batch_entries =
+      BTreeCursor::findExactEntries(*pool_, *index_file_, lookup_keys);
+  const std::uint64_t batch_pins = pool_->stats().pin_page_calls - batch_start;
+
+  ASSERT_EQ(batch_entries.size(), lookup_keys.size());
+  for (std::size_t index = 0; index < lookup_keys.size(); ++index) {
+    EXPECT_EQ(batch_entries[index].key, lookup_keys[index]);
+  }
+  EXPECT_LT(batch_pins, individual_pins);
 }
 
 TEST_F(BTreeCursorTest, FindEntriesSupportsRangeOperatorsWithinLeaf) {
@@ -375,5 +456,18 @@ TEST_F(BTreeCursorTest,
     ASSERT_FALSE(rids.empty())
         << "missing composite index entry for customer_id=" << customer_id;
     EXPECT_EQ(rids.front().heap_page_id, heap_page_id);
+  }
+
+  std::vector<std::string> lookup_keys;
+  for (int customer_id : {1, 2, 127, 2297, 4096, 16384, 30000, 30001}) {
+    lookup_keys.push_back(
+        encodeCustomerPrimaryKey(1, 7, customer_id));
+  }
+  const std::vector<IndexEntry> entries =
+      BTreeCursor::findExactEntries(*pool_, *index_file_, lookup_keys);
+  ASSERT_EQ(entries.size(), 7u);
+  for (std::size_t index = 0; index < entries.size(); ++index) {
+    EXPECT_EQ(entries[index].key, lookup_keys[index]);
+    EXPECT_EQ(entries[index].rid.heap_page_id, heap_page_id);
   }
 }

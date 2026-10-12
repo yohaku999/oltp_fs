@@ -26,6 +26,10 @@ class IndexAccessor {
 
   std::vector<IndexEntry> find(const IndexMetadata& index,
                                const Boundaries& boundaries);
+  // Keys must be strictly increasing. Entries are returned in key order.
+  std::vector<IndexEntry> findExact(
+      const IndexMetadata& index,
+      const std::vector<std::string>& sorted_unique_keys);
   bool contains(const IndexMetadata& index, const std::string& key);
   void insert(const IndexMetadata& index, const std::string& key,
               const RID& rid);

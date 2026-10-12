@@ -18,6 +18,13 @@ std::vector<IndexEntry> IndexAccessor::find(const IndexMetadata& index,
                                   btree_boundaries, false);
 }
 
+std::vector<IndexEntry> IndexAccessor::findExact(
+    const IndexMetadata& index,
+    const std::vector<std::string>& sorted_unique_keys) {
+  return BTreeCursor::findExactEntries(
+      pool_, storage_.open(index.file_name), sorted_unique_keys);
+}
+
 bool IndexAccessor::contains(const IndexMetadata& index,
                              const std::string& key) {
   return BTreeCursor::containsKey(pool_, storage_.open(index.file_name), key);

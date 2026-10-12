@@ -45,6 +45,39 @@ bool LeafIndexPage::hasKey(const std::string& key) const {
   return false;
 }
 
+// Appends exact entries from this leaf page based on sorted unique keys.
+// Returns the lookup-key position from which the next leaf page should resume.
+std::size_t LeafIndexPage::appendExactEntries(
+    const std::vector<std::string>& sorted_unique_keys,
+    std::size_t lookup_key_pos, std::size_t lookup_key_end,
+    std::vector<IndexEntry>& matching_entries) const {
+  for (uint16_t leaf_slot = 0; leaf_slot < page_.slotCount(); ++leaf_slot) {
+    const char* cell_data = page_.slotCellStartUnchecked(leaf_slot);
+    if (!Cell::isValid(cell_data)) {
+      continue;
+    }
+
+    const std::string_view indexed_key = LeafCell::keyView(cell_data);
+    while (lookup_key_pos < lookup_key_end) {
+      const int lookup_vs_indexed = index_key::compare(
+          sorted_unique_keys[lookup_key_pos], indexed_key);
+      if (lookup_vs_indexed < 0) {
+        ++lookup_key_pos;
+        continue;
+      }
+      if (lookup_vs_indexed == 0) {
+        matching_entries.push_back(
+            IndexEntry{std::string(indexed_key), LeafCell::readRID(cell_data)});
+      }
+      break;
+    }
+    if (lookup_key_pos == lookup_key_end) {
+      break;
+    }
+  }
+  return lookup_key_pos;
+}
+
 /**
  * Find the index entries inside right_boundary.
  * Invalidates the corresponding slots if do_invalidate is true.
@@ -52,6 +85,8 @@ bool LeafIndexPage::hasKey(const std::string& key) const {
  * right sibling page ID if the right_boundary is not found in the current page
  * and we need to continue searching; otherwise, it is NO_RIGHT_SIBLING
  * indicating we can stop searching.
+ *
+ * If target_rid is provided, only the entries with the matching RID will be returned/deleted.
  *
  */
 std::pair<uint16_t, std::vector<IndexEntry>> LeafIndexPage::findEntries(

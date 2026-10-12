@@ -1,9 +1,11 @@
 #pragma once
 
+#include <cstddef>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "index_key.h"
 #include "intermediate_cell.h"
@@ -30,6 +32,10 @@ class LeafIndexPage {
 
   LeafCell cellAt(int slot_id) const;
   bool hasKey(const std::string& key) const;
+  std::size_t appendExactEntries(
+      const std::vector<std::string>& sorted_unique_keys,
+      std::size_t lookup_key_pos, std::size_t lookup_key_end,
+      std::vector<IndexEntry>& matching_entries) const;
   std::pair<uint16_t, std::vector<IndexEntry>> findEntries(
       const BTreeCursor::Boundary& left_boundary,
       const BTreeCursor::Boundary& right_boundary, bool do_invalidate,

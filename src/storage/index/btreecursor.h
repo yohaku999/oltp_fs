@@ -33,6 +33,10 @@ class BTreeCursor {
       BufferPool& pool, PagedFile& indexFile,
       const std::pair<Boundary, Boundary>& boundaries, bool do_invalidate,
       std::optional<RID> target_rid = std::nullopt);
+  // Keys must be strictly increasing. Entries are returned in key order.
+  static std::vector<IndexEntry> findExactEntries(
+      BufferPool& pool, PagedFile& indexFile,
+      const std::vector<std::string>& sorted_unique_keys);
   static int findLeafPageID(BufferPool& pool, PagedFile& indexFile,
                             const std::string& key);
   static bool containsKey(BufferPool& pool, PagedFile& indexFile,

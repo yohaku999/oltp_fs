@@ -194,6 +194,92 @@ std::vector<IndexEntry> BTreeCursor::findEntries(
   return matching_entries;
 }
 
+/**
+ * Traverses the B-tree to find all index entries matching one of the provided
+ * keys. sorted_unique_keys must be strictly increasing.
+ */
+std::vector<IndexEntry> BTreeCursor::findExactEntries(
+    BufferPool& pool, PagedFile& indexFile,
+    const std::vector<std::string>& sorted_unique_keys) {
+  if (sorted_unique_keys.empty()) {
+    return {};
+  }
+  for (std::size_t lookup_key_pos = 1;
+       lookup_key_pos < sorted_unique_keys.size(); ++lookup_key_pos) {
+    if (index_key::compare(sorted_unique_keys[lookup_key_pos - 1],
+                           sorted_unique_keys[lookup_key_pos]) >= 0) {
+      throw std::invalid_argument(
+          "findExactEntries requires strictly increasing keys");
+    }
+  }
+
+  struct TraversalRange {
+    int page_id;
+    std::size_t lookup_key_begin;
+    std::size_t lookup_key_end;
+  };
+
+  std::vector<TraversalRange> pending_ranges;
+  pending_ranges.push_back(TraversalRange{indexFile.getRootPageID(), 0,
+                                          sorted_unique_keys.size()});
+  std::vector<IndexEntry> matching_entries;
+
+  while (!pending_ranges.empty()) {
+    const TraversalRange range = pending_ranges.back();
+    pending_ranges.pop_back();
+
+    Page* page = pool.pinPage(range.page_id, indexFile);
+    if (!page->isLeaf()) {
+      InternalIndexPage internal(*page);
+      std::vector<TraversalRange> child_ranges;
+      std::size_t group_begin = range.lookup_key_begin;
+      int child_page_id =
+          internal.findChildPage(sorted_unique_keys[group_begin]);
+      for (std::size_t lookup_key_pos = group_begin + 1;
+           lookup_key_pos < range.lookup_key_end; ++lookup_key_pos) {
+        const int next_child_page_id =
+            internal.findChildPage(sorted_unique_keys[lookup_key_pos]);
+        if (next_child_page_id == child_page_id) {
+          continue;
+        }
+        child_ranges.push_back(
+            TraversalRange{child_page_id, group_begin, lookup_key_pos});
+        group_begin = lookup_key_pos;
+        child_page_id = next_child_page_id;
+      }
+      child_ranges.push_back(
+          TraversalRange{child_page_id, group_begin, range.lookup_key_end});
+      pool.unpinPage(page, indexFile);
+
+      for (auto child = child_ranges.rbegin(); child != child_ranges.rend();
+           ++child) {
+        pending_ranges.push_back(*child);
+      }
+      continue;
+    }
+
+    std::size_t lookup_key_pos = range.lookup_key_begin;
+    Page* leaf_page = page;
+    while (leaf_page != nullptr &&
+           lookup_key_pos < range.lookup_key_end) {
+      LeafIndexPage leaf(*leaf_page);
+      lookup_key_pos = leaf.appendExactEntries(
+          sorted_unique_keys, lookup_key_pos, range.lookup_key_end,
+          matching_entries);
+
+      const uint16_t next_page_id = leaf.getRightSiblingPageId();
+      pool.unpinPage(leaf_page, indexFile);
+      leaf_page = nullptr;
+      if (lookup_key_pos < range.lookup_key_end &&
+          next_page_id != LeafIndexPage::NO_RIGHT_SIBLING) {
+        leaf_page = pool.pinPage(next_page_id, indexFile);
+      }
+    }
+  }
+
+  return matching_entries;
+}
+
 void BTreeCursor::insertIntoIndex(BufferPool& pool, PagedFile& indexFile,
                                   const std::string& key, uint16_t heap_page_id,
                                   uint16_t slot_id) {

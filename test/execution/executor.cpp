@@ -13,6 +13,7 @@
 
 #include "../test_database.h"
 #include "catalog/table.h"
+#include "execution/operators/index_lookup_join_operator.h"
 #include "execution/prepared_statement_cache.h"
 #include "parser/create_index_parser.h"
 #include "parser/create_table_parser.h"
@@ -26,6 +27,7 @@
 #include "storage/index/btreecursor.h"
 #include "storage/index/index_accessor.h"
 #include "storage/wal/wal.h"
+#include "stub_row_operator.h"
 
 class ExecutorTest : public ::testing::Test {
  protected:
@@ -280,6 +282,62 @@ TEST_F(ExecutorTest, ReadSelectHandlesThousandByThousandJoinInput) {
   EXPECT_EQ(std::get<Column::IntegerType>(rows[2].values[0]), 1993);
   EXPECT_EQ(std::get<Column::IntegerType>(rows[3].values[0]), 1992);
   EXPECT_EQ(std::get<Column::IntegerType>(rows[4].values[0]), 1991);
+}
+
+TEST_F(ExecutorTest,
+       IndexLookupJoinBatchesKeysAndPreservesOuterRowOrder) {
+  Table join_table = test_db::createTable(
+      kJoinTableName,
+      Schema(std::vector<Column>{Column("code", Column::Type::Integer),
+                                 Column("label", Column::Type::Varchar),
+                                 Column("enabled", Column::Type::Integer)}));
+  test_db::createIndex(join_table, {"label"}, false);
+
+  for (const std::string& values : {
+           "(201, 'twenty', 1)", "(202, 'twenty', 1)",
+           "(101, 'ten', 1)", "(102, 'ten', 0)"}) {
+    executor::insert(
+        *pool_, *storage_, *index_accessor_, statement_cache_,
+        InsertParser("INSERT INTO executor_join_table VALUES " + values));
+  }
+
+  std::vector<TypedRow> outer_rows = {
+      TypedRow{{1, Column::VarcharType("twenty")}},
+      TypedRow{{2, Column::VarcharType("ten")}},
+      TypedRow{{3, Column::VarcharType("twenty")}},
+      TypedRow{{4, Column::VarcharType("missing")}},
+      TypedRow{{5, Column::VarcharType("ten")}}};
+  for (int id = 6; id <= 512; ++id) {
+    outer_rows.push_back(
+        TypedRow{{id, Column::VarcharType("missing")}});
+  }
+  outer_rows.push_back(
+      TypedRow{{513, Column::VarcharType("ten")}});
+  const IndexMetadata& inner_index = join_table.indexes().front();
+  IndexLookupJoinOperator join(
+      std::make_unique<StubRowOperator>(std::move(outer_rows)), *pool_,
+      storage_->openHeap(join_table.heapFileName()), *index_accessor_,
+      inner_index, join_table.schema(),
+      join_table.indexedColumnIndexes(inner_index),
+      std::vector<physical::JoinColumnPair>{{1, 1}},
+      std::vector<physical::ColumnValuePair>{},
+      std::vector<BoundComparisonPredicate>{
+          {Op::Eq, BoundColumnRef{0, 2, Column::Type::Integer},
+           FieldValue{Column::IntegerType{1}}}});
+
+  join.open();
+  std::vector<std::pair<int, int>> joined_ids;
+  while (std::optional<TypedRow> row = join.next()) {
+    joined_ids.emplace_back(
+        std::get<Column::IntegerType>(row->values[0]),
+        std::get<Column::IntegerType>(row->values[2]));
+  }
+  join.close();
+
+  EXPECT_EQ(joined_ids,
+            (std::vector<std::pair<int, int>>{{1, 201}, {1, 202}, {2, 101},
+                                              {3, 201}, {3, 202}, {5, 101},
+                                              {513, 101}}));
 }
 
 TEST_F(ExecutorTest, ReadSelectReturnsSumForIntegerColumn) {
