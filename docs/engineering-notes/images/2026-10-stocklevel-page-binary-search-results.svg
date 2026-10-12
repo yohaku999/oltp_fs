@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="430" viewBox="0 0 1100 430" role="img" aria-labelledby="title description">
+  <title id="title">StockLevel page-level binary search results</title>
+  <desc id="description">Before and after bars for controlled StockLevel latency and the inclusive profile share of InternalIndexPage findChildPage.</desc>
+  <style>
+    text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #263238; }
+    .title { font-size: 18px; font-weight: 600; }
+    .axis { font-size: 12px; }
+    .value { font-size: 12px; font-weight: 600; }
+    .legend { font-size: 13px; }
+    .grid { stroke: #d9dee5; stroke-width: 1; }
+    .baseline { stroke: #aab2bc; stroke-width: 1; }
+    .before { fill: #8a96a3; }
+    .after { fill: #2e6fbb; }
+  </style>
+  <rect width="1100" height="430" fill="#ffffff"/>
+
+  <text class="title" x="55" y="32">StockLevel controlled latency</text>
+  <text class="axis" x="18" y="210" transform="rotate(-90 18 210)">Latency (ms)</text>
+  <line class="grid" x1="70" y1="70" x2="520" y2="70"/>
+  <line class="grid" x1="70" y1="124" x2="520" y2="124"/>
+  <line class="grid" x1="70" y1="178" x2="520" y2="178"/>
+  <line class="grid" x1="70" y1="232" x2="520" y2="232"/>
+  <line class="grid" x1="70" y1="286" x2="520" y2="286"/>
+  <line class="baseline" x1="70" y1="340" x2="520" y2="340"/>
+  <text class="axis" x="58" y="344" text-anchor="end">0</text>
+  <text class="axis" x="58" y="290" text-anchor="end">50</text>
+  <text class="axis" x="58" y="236" text-anchor="end">100</text>
+  <text class="axis" x="58" y="182" text-anchor="end">150</text>
+  <text class="axis" x="58" y="128" text-anchor="end">200</text>
+  <text class="axis" x="58" y="74" text-anchor="end">250</text>
+
+  <rect class="before" x="110" y="281.1" width="30" height="58.9"/>
+  <rect class="after" x="146" y="286.2" width="30" height="53.8"/>
+  <text class="value" x="125" y="273" text-anchor="middle">54.5</text>
+  <text class="value" x="161" y="278" text-anchor="middle">49.8</text>
+  <text class="axis" x="143" y="362" text-anchor="middle">Median</text>
+
+  <rect class="before" x="245" y="258.0" width="30" height="82.0"/>
+  <rect class="after" x="281" y="274.6" width="30" height="65.4"/>
+  <text class="value" x="260" y="250" text-anchor="middle">76.0</text>
+  <text class="value" x="296" y="267" text-anchor="middle">60.6</text>
+  <text class="axis" x="278" y="362" text-anchor="middle">P75</text>
+
+  <rect class="before" x="380" y="98.9" width="30" height="241.1"/>
+  <rect class="after" x="416" y="232.8" width="30" height="107.2"/>
+  <text class="value" x="395" y="91" text-anchor="middle">223.2</text>
+  <text class="value" x="431" y="225" text-anchor="middle">99.2</text>
+  <text class="axis" x="413" y="362" text-anchor="middle">P95</text>
+
+  <rect class="before" x="160" y="391" width="16" height="12"/>
+  <text class="legend" x="183" y="402">Before</text>
+  <rect class="after" x="260" y="391" width="16" height="12"/>
+  <text class="legend" x="283" y="402">After</text>
+
+  <text class="title" x="600" y="32">findChildPage inclusive profile share</text>
+  <text class="axis" x="565" y="210" transform="rotate(-90 565 210)">Sampled weight (%)</text>
+  <line class="grid" x1="610" y1="70" x2="1070" y2="70"/>
+  <line class="grid" x1="610" y1="108.6" x2="1070" y2="108.6"/>
+  <line class="grid" x1="610" y1="147.1" x2="1070" y2="147.1"/>
+  <line class="grid" x1="610" y1="185.7" x2="1070" y2="185.7"/>
+  <line class="grid" x1="610" y1="224.3" x2="1070" y2="224.3"/>
+  <line class="grid" x1="610" y1="262.9" x2="1070" y2="262.9"/>
+  <line class="grid" x1="610" y1="301.4" x2="1070" y2="301.4"/>
+  <line class="baseline" x1="610" y1="340" x2="1070" y2="340"/>
+  <text class="axis" x="598" y="344" text-anchor="end">0</text>
+  <text class="axis" x="598" y="305" text-anchor="end">1</text>
+  <text class="axis" x="598" y="267" text-anchor="end">2</text>
+  <text class="axis" x="598" y="228" text-anchor="end">3</text>
+  <text class="axis" x="598" y="190" text-anchor="end">4</text>
+  <text class="axis" x="598" y="151" text-anchor="end">5</text>
+  <text class="axis" x="598" y="113" text-anchor="end">6</text>
+  <text class="axis" x="598" y="74" text-anchor="end">7</text>
+
+  <rect class="before" x="680" y="256.3" width="34" height="83.7"/>
+  <rect class="after" x="720" y="305.3" width="34" height="34.7"/>
+  <text class="value" x="697" y="248" text-anchor="middle">2.17%</text>
+  <text class="value" x="737" y="297" text-anchor="middle">0.90%</text>
+  <text class="axis" x="717" y="362" text-anchor="middle">Whole profile</text>
+
+  <rect class="before" x="870" y="89.3" width="34" height="250.7"/>
+  <rect class="after" x="910" y="248.8" width="34" height="91.2"/>
+  <text class="value" x="887" y="81" text-anchor="middle">6.50%</text>
+  <text class="value" x="927" y="241" text-anchor="middle">2.37%</text>
+  <text class="axis" x="907" y="362" text-anchor="middle">StockLevel join</text>
+
+  <rect class="before" x="760" y="391" width="16" height="12"/>
+  <text class="legend" x="783" y="402">Before</text>
+  <rect class="after" x="860" y="391" width="16" height="12"/>
+  <text class="legend" x="883" y="402">After</text>
+</svg>
