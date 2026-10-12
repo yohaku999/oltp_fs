@@ -95,3 +95,43 @@ std::vector<std::string> CreateTableParser::extractPrimaryKeyColumnNames()
 
   return inline_primary_key_columns;
 }
+
+std::vector<std::vector<std::string>>
+CreateTableParser::extractUniqueColumnNameGroups() const {
+  const auto& table_elements = statementNode().at("CreateStmt").at("tableElts");
+  std::vector<std::vector<std::string>> unique_column_groups;
+
+  for (const auto& table_element : table_elements) {
+    if (table_element.contains("ColumnDef")) {
+      const auto& column = table_element.at("ColumnDef");
+      if (!column.contains("constraints")) {
+        continue;
+      }
+      for (const auto& column_constraint : column.at("constraints")) {
+        if (column_constraint.contains("Constraint") &&
+            column_constraint.at("Constraint").value("contype", "") ==
+                "CONSTR_UNIQUE") {
+          unique_column_groups.push_back(
+              {column.at("colname").get<std::string>()});
+        }
+      }
+      continue;
+    }
+
+    if (!table_element.contains("Constraint")) {
+      continue;
+    }
+    const auto& constraint = table_element.at("Constraint");
+    if (constraint.value("contype", "") != "CONSTR_UNIQUE") {
+      continue;
+    }
+
+    std::vector<std::string> column_names;
+    for (const auto& key : constraint.at("keys")) {
+      column_names.push_back(key.at("String").at("sval").get<std::string>());
+    }
+    unique_column_groups.push_back(std::move(column_names));
+  }
+
+  return unique_column_groups;
+}

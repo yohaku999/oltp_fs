@@ -541,8 +541,19 @@ void executor::create_table(LocalStorageManager& storage,
 
   const std::vector<std::string> primary_key_columns =
       parser.extractPrimaryKeyColumnNames();
+  std::vector<std::vector<std::string>> indexed_column_groups;
   if (!primary_key_columns.empty()) {
     createIndexForTable(storage, table, primary_key_columns, true);
+    indexed_column_groups.push_back(primary_key_columns);
+  }
+  for (const std::vector<std::string>& unique_columns :
+       parser.extractUniqueColumnNameGroups()) {
+    if (std::find(indexed_column_groups.begin(), indexed_column_groups.end(),
+                  unique_columns) != indexed_column_groups.end()) {
+      continue;
+    }
+    createIndexForTable(storage, table, unique_columns, true);
+    indexed_column_groups.push_back(unique_columns);
   }
   cache.clear();
 }

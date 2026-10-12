@@ -15,4 +15,5 @@ class CreateTableParser : private PgQueryJsonParser {
   std::string extractTableName() const;
   Schema extractSchema() const;
   std::vector<std::string> extractPrimaryKeyColumnNames() const;
+  std::vector<std::vector<std::string>> extractUniqueColumnNameGroups() const;
 };

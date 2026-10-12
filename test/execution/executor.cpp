@@ -1193,6 +1193,55 @@ TEST_F(ExecutorTest, CreateTableBuildsIndexFromInlinePrimaryKey) {
   EXPECT_FALSE(test_db::isPersisted(new_table_name));
 }
 
+TEST_F(ExecutorTest, CreateTableBuildsIndexesFromUniqueConstraints) {
+  const std::string new_table_name =
+      uniqueTableName("unique_constraint_index_test");
+
+  executor::create_table(
+      *storage_, statement_cache_,
+      CreateTableParser(
+          "CREATE TABLE " + new_table_name +
+          " (warehouse_id int NOT NULL, district_id int NOT NULL, "
+          "order_id int NOT NULL, customer_id int NOT NULL, "
+          "reference varchar UNIQUE, "
+          "PRIMARY KEY (warehouse_id, district_id, order_id), "
+          "UNIQUE (warehouse_id, district_id, customer_id, order_id))"));
+
+  {
+    Table table = test_db::getTable(new_table_name);
+    ASSERT_EQ(table.indexes().size(), 3u);
+    EXPECT_EQ(table.indexes()[0].column_names,
+              (std::vector<std::string>{"warehouse_id", "district_id",
+                                        "order_id"}));
+    EXPECT_EQ(table.indexes()[1].column_names,
+              (std::vector<std::string>{"reference"}));
+    EXPECT_EQ(table.indexes()[2].column_names,
+              (std::vector<std::string>{"warehouse_id", "district_id",
+                                        "customer_id", "order_id"}));
+    EXPECT_TRUE(table.indexes()[0].is_unique);
+    EXPECT_TRUE(table.indexes()[1].is_unique);
+    EXPECT_TRUE(table.indexes()[2].is_unique);
+    for (const IndexMetadata& index : table.indexes()) {
+      EXPECT_TRUE(storage_->exists(index.file_name));
+    }
+
+    executor::insert(
+        *pool_, *storage_, *index_accessor_, statement_cache_,
+        InsertParser("INSERT INTO " + new_table_name +
+                     " VALUES (1, 1, 1, 10, 'reference')"));
+    EXPECT_THROW(
+        executor::insert(
+            *pool_, *storage_, *index_accessor_, statement_cache_,
+            InsertParser("INSERT INTO " + new_table_name +
+                         " VALUES (1, 1, 2, 11, 'reference')")),
+        std::runtime_error);
+  }
+
+  executor::drop_table(*storage_, statement_cache_,
+                       DropTableParser("DROP TABLE " + new_table_name));
+  EXPECT_FALSE(test_db::isPersisted(new_table_name));
+}
+
 TEST_F(ExecutorTest, CreateTableRejectsDuplicateCompositePrimaryKeyRows) {
   const std::string new_table_name =
       uniqueTableName("composite_primary_key_test");
