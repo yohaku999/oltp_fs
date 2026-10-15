@@ -162,7 +162,8 @@ bool BTreeCursor::containsKey(BufferPool& pool, PagedFile& indexFile,
 std::vector<IndexEntry> BTreeCursor::findEntries(
     BufferPool& pool, PagedFile& indexFile,
     const std::pair<BTreeCursor::Boundary, BTreeCursor::Boundary>& boundaries,
-    bool do_invalidate, std::optional<RID> target_rid) {
+    bool do_invalidate, std::optional<RID> target_rid,
+    std::optional<std::size_t> limit_count) {
   const auto& [left_boundary, right_boundary] = boundaries;
 
   // NOTE: we decided not to invalidate intermediate nodes during traversal for
@@ -178,16 +179,25 @@ std::vector<IndexEntry> BTreeCursor::findEntries(
 
   // leaf page traversal
   std::vector<IndexEntry> matching_entries;
-  while (page_id != LeafIndexPage::NO_RIGHT_SIBLING) {
+  while (page_id != LeafIndexPage::NO_RIGHT_SIBLING &&
+         (!limit_count.has_value() ||
+          matching_entries.size() < limit_count.value())) {
     Page* leaf_page = pool.pinPage(page_id, indexFile);
     LeafIndexPage leaf(*leaf_page);
     auto [next_page, entries] =
         leaf.findEntries(left_boundary, right_boundary, do_invalidate,
                          target_rid);
     pool.unpinPage(leaf_page, indexFile);
-    matching_entries.insert(matching_entries.end(),
-                            std::make_move_iterator(entries.begin()),
-                            std::make_move_iterator(entries.end()));
+
+    std::size_t append_count = entries.size();
+    if (limit_count.has_value()) {
+      const std::size_t remaining_count =
+          limit_count.value() - matching_entries.size();
+      append_count = std::min(remaining_count, entries.size());
+    }
+    matching_entries.insert(
+        matching_entries.end(), std::make_move_iterator(entries.begin()),
+        std::make_move_iterator(entries.begin() + append_count));
     page_id = next_page;
   }
 

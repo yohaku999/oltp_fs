@@ -32,7 +32,8 @@ class BTreeCursor {
   static std::vector<IndexEntry> findEntries(
       BufferPool& pool, PagedFile& indexFile,
       const std::pair<Boundary, Boundary>& boundaries, bool do_invalidate,
-      std::optional<RID> target_rid = std::nullopt);
+      std::optional<RID> target_rid = std::nullopt,
+      std::optional<std::size_t> limit_count = std::nullopt);
   // Keys must be strictly increasing. Entries are returned in key order.
   static std::vector<IndexEntry> findExactEntries(
       BufferPool& pool, PagedFile& indexFile,

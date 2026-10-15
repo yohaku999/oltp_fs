@@ -321,7 +321,7 @@ std::vector<RID> collectRidsNarrowedByPredicates(
   IndexScanOperator scan(
       index_accessor, index,
       buildTraversalBoundaries(index_plan->ordered_predicates),
-      std::move(index_plan->ordered_predicates));
+      std::move(index_plan->ordered_predicates), std::nullopt);
   return collectItems<RID>(scan);
 }
 
@@ -405,12 +405,59 @@ int removeMatchingRows(
   return removed_count;
 }
 
+// Push LIMIT into the index scan only when it already emits qualifying rows
+// in query order: leading index keys are fixed by equality predicates, and
+// ORDER BY, if present, matches the next index key in ascending order.
+std::optional<std::size_t> limitForIndexScan(
+    const Table& table, const IndexLookupPlan& index_plan,
+    const std::vector<BoundComparisonPredicate>& bound_predicates,
+    const std::vector<OrderBySpec>& order_by_specs,
+    const std::optional<std::size_t>& query_limit_count,
+    const physical::JoinPlan& join_plan, bool has_aggregate) {
+  if (!query_limit_count.has_value() ||
+      !std::holds_alternative<physical::NoJoinPlan>(join_plan) ||
+      has_aggregate) {
+    return std::nullopt;
+  }
+
+  std::size_t equality_prefix_length = 0;
+  while (equality_prefix_length < index_plan.ordered_predicates.size()) {
+    const auto& predicates =
+        index_plan.ordered_predicates[equality_prefix_length];
+    if (predicates.size() != 1 || predicates.front().op != Op::Eq) {
+      break;
+    }
+    ++equality_prefix_length;
+  }
+
+  if (equality_prefix_length != bound_predicates.size()) {
+    return std::nullopt;
+  }
+  if (!order_by_specs.empty()) {
+    if (order_by_specs.size() != 1 ||
+        order_by_specs.front().direction != OrderByDirection::Asc) {
+      return std::nullopt;
+    }
+
+    const std::vector<std::size_t> index_column_indexes =
+        table.indexedColumnIndexes(
+            table.indexes().at(index_plan.index_position));
+    if (equality_prefix_length >= index_column_indexes.size() ||
+        order_by_specs.front().column_index !=
+            index_column_indexes[equality_prefix_length]) {
+      return std::nullopt;
+    }
+  }
+
+  return query_limit_count;
+}
+
 std::unique_ptr<TypedRowOperator> buildReadSource(
     BufferPool& pool, LocalStorageManager& storage,
     IndexAccessor& index_accessor, const Table& table,
-    std::vector<BoundComparisonPredicate> bound_predicates) {
-  std::optional<IndexLookupPlan> index_plan =
-      planIndexLookup(table, bound_predicates);
+    std::vector<BoundComparisonPredicate> bound_predicates,
+    std::optional<IndexLookupPlan> index_plan,
+    std::optional<std::size_t> limit_count) {
   if (!index_plan.has_value()) {
     dbfs_log::execution().debug(
         "Building sequential scan operator for table {} because index scan "
@@ -424,7 +471,7 @@ std::unique_ptr<TypedRowOperator> buildReadSource(
   auto scan = std::make_unique<IndexScanOperator>(
       index_accessor, table.indexes().at(index_plan->index_position),
       buildTraversalBoundaries(index_plan->ordered_predicates),
-      std::move(index_plan->ordered_predicates));
+      std::move(index_plan->ordered_predicates), limit_count);
   return std::make_unique<HeapFetchOperator>(
       std::move(scan), pool, storage.openHeap(table.heapFileName()),
       table.schema(), bound_predicates);
@@ -469,16 +516,34 @@ std::vector<TypedRow> executor::read(BufferPool& pool,
   binder::BoundSelectQuery query =
       binder::bindSelectQuery(prepared, parameters);
 
+  physical::JoinPlan join_plan = physical::planJoin(query);
+  const bool has_aggregate =
+      std::any_of(query.select_items.begin(), query.select_items.end(),
+                  [](const BoundSelectItem& item) {
+                    return std::holds_alternative<BoundAggregateCall>(item);
+                  });
+
   std::vector<std::unique_ptr<TypedRowOperator>> sources;
   for (std::size_t table_index = 0; table_index < query.tables.size();
        ++table_index) {
+    const Table& table = query.tables[table_index];
+    std::vector<BoundComparisonPredicate> bound_predicates =
+        query.table_predicates[table_index];
+    std::optional<IndexLookupPlan> index_plan =
+        planIndexLookup(table, bound_predicates);
+    const std::optional<std::size_t> limit_count =
+        index_plan.has_value()
+            ? limitForIndexScan(table, index_plan.value(), bound_predicates,
+                                query.order_by_specs, query.limit_count,
+                                join_plan, has_aggregate)
+            : std::nullopt;
+
     std::unique_ptr<TypedRowOperator> source = buildReadSource(
-        pool, storage, index_accessor, query.tables[table_index],
-        query.table_predicates[table_index]);
+        pool, storage, index_accessor, table, std::move(bound_predicates),
+        std::move(index_plan), limit_count);
     sources.push_back(std::move(source));
   }
 
-  physical::JoinPlan join_plan = physical::planJoin(query);
   std::unique_ptr<TypedRowOperator> pipeline =
       execution::buildJoinPipeline(std::move(join_plan), std::move(sources),
                                    pool, storage, index_accessor, query);
@@ -487,11 +552,6 @@ std::vector<TypedRow> executor::read(BufferPool& pool,
   pipeline =
       std::make_unique<FilterOperator>(std::move(pipeline), query.predicates);
   std::vector<TypedRow> items;
-  const bool has_aggregate =
-      std::any_of(query.select_items.begin(), query.select_items.end(),
-                  [](const BoundSelectItem& item) {
-                    return std::holds_alternative<BoundAggregateCall>(item);
-                  });
   if (has_aggregate) {
     pipeline = std::make_unique<AggregateOperator>(
         std::move(pipeline),

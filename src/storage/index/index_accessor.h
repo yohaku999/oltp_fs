@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -25,7 +26,8 @@ class IndexAccessor {
   IndexAccessor& operator=(const IndexAccessor&) = delete;
 
   std::vector<IndexEntry> find(const IndexMetadata& index,
-                               const Boundaries& boundaries);
+                               const Boundaries& boundaries,
+                               std::optional<std::size_t> limit_count);
   // Keys must be strictly increasing. Entries are returned in key order.
   std::vector<IndexEntry> findExact(
       const IndexMetadata& index,

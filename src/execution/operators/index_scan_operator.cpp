@@ -22,11 +22,13 @@ std::vector<BoundComparisonPredicate> flattenPredicates(
 IndexScanOperator::IndexScanOperator(
     IndexAccessor& index_accessor, IndexMetadata index,
     IndexAccessor::Boundaries boundaries,
-    std::vector<std::vector<BoundComparisonPredicate>> index_ordered_predicates)
+    std::vector<std::vector<BoundComparisonPredicate>> index_ordered_predicates,
+    std::optional<std::size_t> limit_count)
     : index_accessor_(index_accessor),
       index_(std::move(index)),
       boundaries_(boundaries),
       index_ordered_predicates_(std::move(index_ordered_predicates)),
+      limit_count_(limit_count),
       lookup_done_(false) {}
 
 void IndexScanOperator::open() {
@@ -44,7 +46,7 @@ std::optional<RID> IndexScanOperator::next() {
     const std::vector<BoundComparisonPredicate> index_predicates =
         flattenPredicates(index_ordered_predicates_);
     const std::vector<IndexEntry> entries =
-        index_accessor_.find(index_, boundaries_);
+        index_accessor_.find(index_, boundaries_, limit_count_);
     current_rids_.clear();
     current_rids_.reserve(entries.size());
     for (const IndexEntry& entry : entries) {

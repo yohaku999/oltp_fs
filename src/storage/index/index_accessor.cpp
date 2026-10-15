@@ -7,22 +7,24 @@
 IndexAccessor::IndexAccessor(BufferPool& pool, LocalStorageManager& storage)
     : pool_(pool), storage_(storage) {}
 
-std::vector<IndexEntry> IndexAccessor::find(const IndexMetadata& index,
-                                            const Boundaries& boundaries) {
+std::vector<IndexEntry> IndexAccessor::find(
+    const IndexMetadata& index, const Boundaries& boundaries,
+    std::optional<std::size_t> limit_count) {
   const auto btree_boundaries =
       std::make_pair(BTreeCursor::Boundary{boundaries.first.composite_key,
                                            boundaries.first.is_inclusive},
                      BTreeCursor::Boundary{boundaries.second.composite_key,
                                            boundaries.second.is_inclusive});
   return BTreeCursor::findEntries(pool_, storage_.open(index.file_name),
-                                  btree_boundaries, false);
+                                  btree_boundaries, false, std::nullopt,
+                                  limit_count);
 }
 
 std::vector<IndexEntry> IndexAccessor::findExact(
     const IndexMetadata& index,
     const std::vector<std::string>& sorted_unique_keys) {
-  return BTreeCursor::findExactEntries(
-      pool_, storage_.open(index.file_name), sorted_unique_keys);
+  return BTreeCursor::findExactEntries(pool_, storage_.open(index.file_name),
+                                       sorted_unique_keys);
 }
 
 bool IndexAccessor::contains(const IndexMetadata& index,

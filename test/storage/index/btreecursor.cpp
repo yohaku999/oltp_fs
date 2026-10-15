@@ -323,6 +323,27 @@ TEST_F(BTreeCursorTest, InsertManyKeysTriggersSplitAndIsSearchable) {
   }
 }
 
+TEST_F(BTreeCursorTest, FindEntriesStopsAtLimit) {
+  constexpr int kNumKeys = 500;
+  constexpr std::size_t kLimit = 150;
+  for (int key = 0; key < kNumKeys; ++key) {
+    BTreeCursor::insertIntoIndex(*pool_, *index_file_, encodeIntKey(key), 7,
+                                 static_cast<uint16_t>(key));
+  }
+
+  const auto all_keys = boundaries("", true, "", true);
+  const std::vector<IndexEntry> entries = BTreeCursor::findEntries(
+      *pool_, *index_file_, all_keys, false, std::nullopt, kLimit);
+
+  ASSERT_EQ(entries.size(), kLimit);
+  for (std::size_t index = 0; index < entries.size(); ++index) {
+    EXPECT_EQ(entries[index].key, encodeIntKey(static_cast<int>(index)));
+  }
+  EXPECT_TRUE(BTreeCursor::findEntries(*pool_, *index_file_, all_keys, false,
+                                       std::nullopt, 0)
+                  .empty());
+}
+
 TEST_F(BTreeCursorTest, FindExactEntriesSharesInternalTraversal) {
   constexpr int kNumKeys = 500;
   for (int key = 0; key < kNumKeys; ++key) {
