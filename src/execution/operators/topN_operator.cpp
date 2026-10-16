@@ -2,6 +2,9 @@
 
 #include <algorithm>
 
+// When the input is not already in the requested order, TopN reads every row
+// but keeps only the best `limit_` rows in a heap. This avoids materializing
+// and sorting the entire input before returning the requested rows.
 void TopNOperator::open() {
   logger_.open();
   child_->open();
