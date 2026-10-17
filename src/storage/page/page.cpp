@@ -107,6 +107,14 @@ bool Page::updateRecordCell(int slot_id, const RecordCell& cell) {
   return true;
 }
 
+void Page::updateFixedRecordRegion(int slot_id, const RecordCell& after,
+                                   std::size_t offset, std::size_t size) {
+  char* cell_start = page_buffer_ + getCellOffsetOnXthPointer(slot_id);
+  const auto& after_bytes = after.serializedBytes();
+  std::memcpy(cell_start + offset, after_bytes.data() + offset, size);
+  markDirty();
+}
+
 /**
  * Attempts to insert a cell into this page.
  *

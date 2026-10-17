@@ -34,8 +34,10 @@
  */
 
 struct RecordCellLayout {
+  static constexpr uint16_t NULL_BITMAP_OFFSET =
+      Cell::FLAG_FIELD_SIZE + sizeof(uint16_t);
   static constexpr uint16_t HEADER_SIZE_BYTE =
-      Cell::FLAG_FIELD_SIZE + sizeof(uint16_t) + sizeof(uint32_t);
+      NULL_BITMAP_OFFSET + sizeof(uint32_t);
 };
 
 class RecordCell : public Cell {

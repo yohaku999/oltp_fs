@@ -82,6 +82,8 @@ class Page {
   std::optional<int> insertCell(const Cell& cell);
   void updateIndexCell(uint16_t slot_id, const LeafCell& cell);
   bool updateRecordCell(int slot_id, const RecordCell& cell);
+  void updateFixedRecordRegion(int slot_id, const RecordCell& after,
+                               std::size_t offset, std::size_t size);
   void invalidateSlot(uint16_t slot_id);
   std::uint64_t getPageLSN() const;
   void setPageLSN(std::uint64_t lsn) {

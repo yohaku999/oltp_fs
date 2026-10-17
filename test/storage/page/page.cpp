@@ -412,6 +412,72 @@ TEST(PageTest, HeapInsertInvalidateReuseSlot) {
   EXPECT_EQ(std::get<Column::VarcharType>(row.values[0]), payload);
 }
 
+TEST(PageTest, UpdateFixedRecordRegionPreservesOtherFields) {
+  const Schema schema(std::vector<Column>{
+      Column("id", Column::Type::Integer),
+      Column("note", Column::Type::Varchar),
+      Column("amount", Column::Type::Double),
+      Column("count", Column::Type::Integer),
+  });
+  const TypedRow original_row{{Column::IntegerType{1}, std::string("original"),
+                               Column::DoubleType{10.5},
+                               Column::IntegerType{2}}};
+  const TypedRow after_row{{Column::IntegerType{999}, std::string("changed"),
+                            Column::DoubleType{12.5}, Column::IntegerType{7}}};
+
+  std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
+  Page page(page_data.data(), PageKind::Heap, 0, 1);
+  const auto slot =
+      page.insertCell(RecordSerializer::serialize(schema, original_row));
+  ASSERT_TRUE(slot.has_value());
+  page.clearDirty();
+
+  const std::size_t amount_offset =
+      RecordCellLayout::HEADER_SIZE_BYTE + sizeof(Column::IntegerType);
+  page.updateFixedRecordRegion(
+      *slot, RecordSerializer::serialize(schema, after_row), amount_offset,
+      sizeof(Column::DoubleType) + sizeof(Column::IntegerType));
+
+  const TypedRow stored_row =
+      RecordCellView(page.getSlotCellStart(*slot)).getTypedRow(schema);
+  EXPECT_EQ(std::get<Column::IntegerType>(stored_row.values[0]), 1);
+  EXPECT_EQ(std::get<Column::VarcharType>(stored_row.values[1]), "original");
+  EXPECT_DOUBLE_EQ(std::get<Column::DoubleType>(stored_row.values[2]), 12.5);
+  EXPECT_EQ(std::get<Column::IntegerType>(stored_row.values[3]), 7);
+  EXPECT_TRUE(page.isDirty());
+}
+
+TEST(PageTest, UpdateFixedRecordRegionCanChangeNullState) {
+  const Schema schema(std::vector<Column>{
+      Column("id", Column::Type::Integer),
+      Column("count", Column::Type::Integer),
+      Column("note", Column::Type::Varchar),
+  });
+  const TypedRow original_row{
+      {Column::IntegerType{1}, std::monostate{}, std::string("original")}};
+  const TypedRow after_row{
+      {Column::IntegerType{1}, Column::IntegerType{8}, std::string("changed")}};
+
+  std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
+  Page page(page_data.data(), PageKind::Heap, 0, 1);
+  const auto slot =
+      page.insertCell(RecordSerializer::serialize(schema, original_row));
+  ASSERT_TRUE(slot.has_value());
+
+  const std::size_t fixed_region_end =
+      RecordCellLayout::HEADER_SIZE_BYTE + 2 * sizeof(Column::IntegerType);
+  page.updateFixedRecordRegion(
+      *slot, RecordSerializer::serialize(schema, after_row),
+      RecordCellLayout::NULL_BITMAP_OFFSET,
+      fixed_region_end - RecordCellLayout::NULL_BITMAP_OFFSET);
+
+  const TypedRow stored_row =
+      RecordCellView(page.getSlotCellStart(*slot)).getTypedRow(schema);
+  EXPECT_EQ(std::get<Column::IntegerType>(stored_row.values[0]), 1);
+  EXPECT_EQ(std::get<Column::IntegerType>(stored_row.values[1]), 8);
+  EXPECT_EQ(std::get<Column::VarcharType>(stored_row.values[2]), "original");
+}
+
 TEST(PageTest, SetPageLSNUpdatesHeaderAndMarksDirty) {
   std::array<char, Page::PAGE_SIZE_BYTE> page_data{};
   auto page = std::make_unique<Page>(page_data.data(), PageKind::Heap, 0, 1);

@@ -937,6 +937,42 @@ TEST_F(ExecutorTest, UpdateAppliesSelfPlusLiteralExpression) {
   EXPECT_FALSE(test_db::isPersisted(table_name));
 }
 
+TEST_F(ExecutorTest, UpdateChangesMultipleFixedColumnsAndPreservesVarchar) {
+  const std::string table_name = uniqueTableName("fixed_update_test");
+
+  executor::create_table(
+      *storage_, statement_cache_,
+      CreateTableParser("CREATE TABLE " + table_name +
+                        " (id int NOT NULL, amount decimal(12, 2) NOT NULL, "
+                        "quantity int NOT NULL, note varchar(32) NOT NULL, "
+                        "PRIMARY KEY (id))"));
+
+  {
+    Table table = test_db::getTable(table_name);
+    executor::insert(*pool_, *storage_, *index_accessor_, statement_cache_,
+                     InsertParser("INSERT INTO " + table_name +
+                                  " VALUES (1, 10.5, 2, 'original')"));
+    executor::update(
+        *pool_, *storage_, *index_accessor_, statement_cache_,
+        UpdateParser("UPDATE " + table_name +
+                     " SET amount = amount + 2.5, quantity = quantity + 3 "
+                     "WHERE id = 1"));
+  }
+
+  const std::vector<TypedRow> rows =
+      executor::read(*pool_, *storage_, *index_accessor_, statement_cache_,
+                     SelectParser("SELECT amount, quantity, note FROM " +
+                                  table_name + " WHERE id = 1"));
+  ASSERT_EQ(rows.size(), 1u);
+  ASSERT_EQ(rows[0].values.size(), 3u);
+  EXPECT_DOUBLE_EQ(std::get<Column::DoubleType>(rows[0].values[0]), 13.0);
+  EXPECT_EQ(std::get<Column::IntegerType>(rows[0].values[1]), 5);
+  EXPECT_EQ(std::get<Column::VarcharType>(rows[0].values[2]), "original");
+
+  executor::drop_table(*storage_, statement_cache_,
+                       DropTableParser("DROP TABLE " + table_name));
+}
+
 TEST_F(ExecutorTest, InsertPageOverflow) {
   try {
     std::mt19937 rng(0xC0FFEE);

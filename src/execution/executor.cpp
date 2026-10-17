@@ -171,6 +171,43 @@ TypedRow applyUpdateAssignments(
   return updated_row;
 }
 
+std::optional<std::pair<std::size_t, std::size_t>> fixedUpdateByteRange(
+    const Schema& schema,
+    const std::vector<BoundUpdateAssignment>& assignments) {
+  std::optional<std::pair<std::size_t, std::size_t>> region;
+  for (const BoundUpdateAssignment& assignment : assignments) {
+    const Column& column = schema.columns().at(assignment.target_column_index);
+    if (!column.isFixedLength()) {
+      return std::nullopt;
+    }
+
+    const std::size_t column_begin =
+        RecordCellLayout::HEADER_SIZE_BYTE +
+        schema.getFixedColumnsPrefixSize(
+            schema.getFixedColumnIndex(column.getName()));
+    const std::size_t column_end = column_begin + column.size();
+    if (!region) {
+      region = {column_begin, column_end};
+      continue;
+    }
+    region->first = std::min(region->first, column_begin);
+    region->second = std::max(region->second, column_end);
+  }
+  return region;
+}
+
+bool changesNullBitmap(const TypedRow& original_row,
+                       const TypedRow& updated_row,
+                       const std::vector<BoundUpdateAssignment>& assignments) {
+  return std::any_of(assignments.begin(), assignments.end(),
+                     [&](const BoundUpdateAssignment& assignment) {
+                       const std::size_t column =
+                           assignment.target_column_index;
+                       return isNullFieldValue(original_row.values[column]) !=
+                              isNullFieldValue(updated_row.values[column]);
+                     });
+}
+
 std::optional<TypedRow> readTypedRow(BufferPool& pool, const Table& table,
                                      HeapFile& heap, const RID& rid) {
   return heap.withRecord(pool, rid, [&](RecordCellView record) {
@@ -375,6 +412,9 @@ void updateMatchingRows(
     }
   }
 
+  const auto fixed_update_byte_range =
+      fixedUpdateByteRange(table.schema(), bound_assignments);
+
   for (const RID& rid : rids) {
     std::optional<TypedRow> original_row = readTypedRow(pool, table, heap, rid);
     if (!original_row.has_value()) {
@@ -391,6 +431,18 @@ void updateMatchingRows(
         RecordSerializer::serialize(table.schema(), *original_row);
     const RecordCell updated_cell =
         RecordSerializer::serialize(table.schema(), updated_row);
+
+    if (fixed_update_byte_range) {
+      const auto [fixed_begin, fixed_end] = *fixed_update_byte_range;
+      const std::size_t update_begin =
+          changesNullBitmap(*original_row, updated_row, bound_assignments)
+              ? RecordCellLayout::NULL_BITMAP_OFFSET
+              : fixed_begin;
+      heap.updateFixedRecordRegion(rid, pool, updated_cell, update_begin,
+                                   fixed_end - update_begin);
+      appendUpdateLog(pool, rid, original_cell, updated_cell);
+      continue;
+    }
 
     const bool updated_in_place = heap.tryUpdateRecord(rid, pool, updated_cell);
     if (updated_in_place) {
@@ -739,12 +791,9 @@ int executor::remove(BufferPool& pool, LocalStorageManager& storage,
 }
 
 /**
- * We first design updates to be idempotent by modeling them as a remove
- * followed by an insert. This is not necessarily the most efficient strategy,
- * but it keeps the update path simple and robust and fasten the development.
- * Also, this unlocks follow-on benefits (e.g., easier recovery/retry and
- * fewer page-structure assumptions) without requiring in-place updates or
- * special-case split handling.
+ * Fixed-length assignments update their record bytes in place. Updates that
+ * include a variable-length column retain the full-record update path and may
+ * relocate the record when it no longer fits in its page.
  */
 void executor::update(BufferPool& pool, LocalStorageManager& storage,
                       IndexAccessor& index_accessor,

@@ -101,6 +101,14 @@ class HeapFile {
     return is_updated;
   }
 
+  void updateFixedRecordRegion(const RID& rid, BufferPool& pool,
+                               const RecordCell& after, std::size_t offset,
+                               std::size_t size) {
+    Page* page = pool.pinPage(rid.heap_page_id, file_);
+    page->updateFixedRecordRegion(rid.slot_id, after, offset, size);
+    pool.unpinPage(page, file_);
+  }
+
  private:
   mutable PagedFile file_;
 
