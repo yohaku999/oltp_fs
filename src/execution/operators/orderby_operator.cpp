@@ -42,7 +42,7 @@ void OrderByOperator::materializeAndSort() {
 
   std::sort(sorted_rows_.begin(), sorted_rows_.end(),
             [this](const TypedRow& left, const TypedRow& right) {
-              for (const auto& order_by_spec : order_by_specs_) {
+              for (const auto& order_by_spec : output_properties_.ordering) {
                 const std::size_t order_by_index = order_by_spec.column_index;
                 if (order_by_index >= left.values.size() ||
                     order_by_index >= right.values.size()) {

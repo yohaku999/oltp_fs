@@ -20,6 +20,9 @@ class HeapFetchOperator : public TypedRowOperator {
   void open() override;
   std::optional<TypedRow> next() override;
   void close() override;
+  const OutputProperties& outputProperties() const override {
+    return child_->outputProperties();
+  }
 
  private:
   std::unique_ptr<RidOperator> child_;

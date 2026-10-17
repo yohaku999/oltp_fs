@@ -1,21 +1,19 @@
 #include "execution/operators/loop_join_operator.h"
 
+#include <cassert>
 #include <utility>
 
 LoopJoinOperator::LoopJoinOperator(
     std::vector<std::unique_ptr<TypedRowOperator>> children)
-    : children_(std::move(children)) {}
+    : children_(std::move(children)) {
+  assert(children_.size() >= 2);
+}
 
 void LoopJoinOperator::open() {
   logger_.open();
   materialized_source_rows_.clear();
   materialized_source_rows_.reserve(children_.size());
   source_row_cursors_.clear();
-
-  if (children_.empty()) {
-    exhausted_ = true;
-    return;
-  }
 
   for (const auto& child : children_) {
     materialized_source_rows_.push_back(materializeSourceRows(*child));

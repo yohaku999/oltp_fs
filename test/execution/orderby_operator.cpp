@@ -16,6 +16,11 @@ TEST(OrderByOperatorTest, SortsRowsBySingleColumnAscending) {
   auto child = std::make_unique<StubRowOperator>(std::move(rows));
   OrderByOperator order_by(std::move(child), {{0, OrderByDirection::Asc}});
 
+  EXPECT_TRUE(order_by.outputProperties().satisfiesOrdering(
+      {{0, OrderByDirection::Asc}}));
+  EXPECT_FALSE(order_by.outputProperties().satisfiesOrdering(
+      {{0, OrderByDirection::Desc}}));
+
   order_by.open();
 
   std::optional<TypedRow> first = order_by.next();

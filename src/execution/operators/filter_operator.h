@@ -38,6 +38,10 @@ class FilterOperator : public TypedRowOperator {
     logger_.close();
   }
 
+  const OutputProperties& outputProperties() const override {
+    return child_->outputProperties();
+  }
+
  private:
   std::unique_ptr<TypedRowOperator> child_;
   std::vector<BoundComparisonPredicate> predicates_;

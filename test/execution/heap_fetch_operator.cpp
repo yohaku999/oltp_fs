@@ -97,6 +97,21 @@ TEST_F(HeapFetchOperatorTest, NoPredicates) {
   EXPECT_EQ(values[3], 4);
 }
 
+TEST_F(HeapFetchOperatorTest, PreservesRidSourceOrdering) {
+  OutputProperties source_properties;
+  source_properties.ordering = {{0, OrderByDirection::Asc}};
+  auto stub = std::make_unique<StubRidOperator>(inserted_rids_,
+                                                std::move(source_properties));
+  HeapFetchOperator op(
+      std::move(stub), *pool_, storage_->openHeap(table_->heapFileName()),
+      table_->schema(), std::vector<BoundComparisonPredicate>());
+
+  const auto& ordering = op.outputProperties().ordering;
+  ASSERT_EQ(ordering.size(), 1u);
+  EXPECT_EQ(ordering.front().column_index, 0u);
+  EXPECT_EQ(ordering.front().direction, OrderByDirection::Asc);
+}
+
 TEST_F(HeapFetchOperatorTest, SinglePredicate_EqualityMatch) {
   // Filter for id = 2
   BoundComparisonPredicate pred{Op::Eq, BoundColumnRef{0, 0},

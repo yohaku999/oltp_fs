@@ -41,10 +41,16 @@ TEST(HashJoinOperatorTest, JoinsRowsUsingConfiguredColumnIndexes) {
   inner_rows.push_back(
       makeRow({Column::VarcharType("dept-a"), Column::VarcharType("carol")}));
 
+  OutputProperties outer_properties;
+  outer_properties.ordering = {{0, OrderByDirection::Asc}};
   HashJoinOperator join(
-      std::make_unique<StubRowOperator>(std::move(outer_rows)),
+      std::make_unique<StubRowOperator>(std::move(outer_rows),
+                                        std::move(outer_properties)),
       std::make_unique<StubRowOperator>(std::move(inner_rows)),
       physical::JoinColumnPair{1, 0});
+
+  EXPECT_TRUE(
+      join.outputProperties().satisfiesOrdering({{0, OrderByDirection::Asc}}));
 
   join.open();
 

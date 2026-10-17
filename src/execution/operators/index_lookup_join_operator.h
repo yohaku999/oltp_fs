@@ -37,6 +37,9 @@ class IndexLookupJoinOperator : public TypedRowOperator {
   void open() override;
   std::optional<TypedRow> next() override;
   void close() override;
+  const OutputProperties& outputProperties() const override {
+    return outer_child_->outputProperties();
+  }
 
  private:
   static constexpr std::size_t kLookupBatchSize = 512;
@@ -57,8 +60,7 @@ class IndexLookupJoinOperator : public TypedRowOperator {
   std::vector<physical::ColumnValuePair> constant_keys_;
   std::vector<BoundComparisonPredicate> inner_predicates_;
   std::vector<TypedRow> outer_row_batch_;
-  std::vector<std::optional<std::size_t>>
-      inner_row_group_index_by_outer_row_;
+  std::vector<std::optional<std::size_t>> inner_row_group_index_by_outer_row_;
   std::vector<std::vector<TypedRow>> matched_inner_row_groups_;
   std::size_t current_outer_pos_ = 0;
   std::size_t current_inner_pos_ = 0;

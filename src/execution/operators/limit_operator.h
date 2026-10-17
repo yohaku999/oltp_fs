@@ -40,6 +40,10 @@ class LimitOperator : public TypedRowOperator {
     logger_.close();
   }
 
+  const OutputProperties& outputProperties() const override {
+    return child_->outputProperties();
+  }
+
  private:
   std::unique_ptr<TypedRowOperator> child_;
   std::size_t limit_;

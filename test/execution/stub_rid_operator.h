@@ -9,7 +9,10 @@
 
 class StubRidOperator : public RidOperator {
  public:
-  explicit StubRidOperator(std::vector<RID> rids) : rids_(std::move(rids)) {}
+  explicit StubRidOperator(std::vector<RID> rids,
+                           OutputProperties output_properties = {})
+      : rids_(std::move(rids)),
+        output_properties_(std::move(output_properties)) {}
 
   void open() override {
     is_open_ = true;
@@ -25,8 +28,13 @@ class StubRidOperator : public RidOperator {
 
   void close() override { is_open_ = false; }
 
+  const OutputProperties& outputProperties() const override {
+    return output_properties_;
+  }
+
  private:
   std::vector<RID> rids_;
+  OutputProperties output_properties_;
   std::size_t cursor_ = 0;
   bool is_open_ = false;
 };

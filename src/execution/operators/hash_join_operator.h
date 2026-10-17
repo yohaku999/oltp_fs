@@ -18,6 +18,9 @@ class HashJoinOperator : public TypedRowOperator {
   void open() override;
   std::optional<TypedRow> next() override;
   void close() override;
+  const OutputProperties& outputProperties() const override {
+    return outer_child_->outputProperties();
+  }
 
  private:
   std::unique_ptr<TypedRowOperator> outer_child_;

@@ -15,6 +15,9 @@ class LoopJoinOperator : public TypedRowOperator {
   void open() override;
   std::optional<TypedRow> next() override;
   void close() override;
+  const OutputProperties& outputProperties() const override {
+    return children_.front()->outputProperties();
+  }
 
  private:
   std::vector<TypedRow> materializeSourceRows(TypedRowOperator& child) const;

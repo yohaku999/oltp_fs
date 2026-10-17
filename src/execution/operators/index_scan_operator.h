@@ -16,11 +16,15 @@ class IndexScanOperator : public RidOperator {
                     IndexAccessor::Boundaries boundaries,
                     std::vector<std::vector<BoundComparisonPredicate>>
                         index_ordered_predicates,
-                    std::optional<std::size_t> limit_count);
+                    std::optional<std::size_t> limit_count,
+                    OutputProperties output_properties);
 
   void open() override;
   std::optional<RID> next() override;
   void close() override;
+  const OutputProperties& outputProperties() const override {
+    return output_properties_;
+  }
 
  private:
   IndexAccessor& index_accessor_;
@@ -28,6 +32,7 @@ class IndexScanOperator : public RidOperator {
   IndexAccessor::Boundaries boundaries_;
   std::vector<std::vector<BoundComparisonPredicate>> index_ordered_predicates_;
   std::optional<std::size_t> limit_count_;
+  OutputProperties output_properties_;
   OperatorExecutionLogger logger_{"IndexScanOperator"};
   bool lookup_done_ = false;
   std::vector<RID> current_rids_;

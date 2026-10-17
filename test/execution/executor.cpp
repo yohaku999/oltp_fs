@@ -314,9 +314,12 @@ TEST_F(ExecutorTest,
   outer_rows.push_back(
       TypedRow{{513, Column::VarcharType("ten")}});
   const IndexMetadata& inner_index = join_table.indexes().front();
+  OutputProperties outer_properties;
+  outer_properties.ordering = {{0, OrderByDirection::Asc}};
   IndexLookupJoinOperator join(
-      std::make_unique<StubRowOperator>(std::move(outer_rows)), *pool_,
-      storage_->openHeap(join_table.heapFileName()), *index_accessor_,
+      std::make_unique<StubRowOperator>(std::move(outer_rows),
+                                        std::move(outer_properties)),
+      *pool_, storage_->openHeap(join_table.heapFileName()), *index_accessor_,
       inner_index, join_table.schema(),
       join_table.indexedColumnIndexes(inner_index),
       std::vector<physical::JoinColumnPair>{{1, 1}},
@@ -324,6 +327,9 @@ TEST_F(ExecutorTest,
       std::vector<BoundComparisonPredicate>{
           {Op::Eq, BoundColumnRef{0, 2, Column::Type::Integer},
            FieldValue{Column::IntegerType{1}}}});
+
+  EXPECT_TRUE(
+      join.outputProperties().satisfiesOrdering({{0, OrderByDirection::Asc}}));
 
   join.open();
   std::vector<std::pair<int, int>> joined_ids;

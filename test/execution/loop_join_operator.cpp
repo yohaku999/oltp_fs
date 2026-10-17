@@ -34,11 +34,17 @@ TEST(LoopJoinOperatorTest, ReturnsCartesianProductForTwoSources) {
   right_rows.push_back(makeJoinRow({Column::VarcharType("a")}));
   right_rows.push_back(makeJoinRow({Column::VarcharType("b")}));
 
+  OutputProperties outer_properties;
+  outer_properties.ordering = {{0, OrderByDirection::Asc}};
   std::vector<std::unique_ptr<TypedRowOperator>> children;
-  children.push_back(std::make_unique<StubRowOperator>(std::move(left_rows)));
+  children.push_back(std::make_unique<StubRowOperator>(
+      std::move(left_rows), std::move(outer_properties)));
   children.push_back(std::make_unique<StubRowOperator>(std::move(right_rows)));
 
   LoopJoinOperator join(std::move(children));
+
+  EXPECT_TRUE(
+      join.outputProperties().satisfiesOrdering({{0, OrderByDirection::Asc}}));
 
   join.open();
 

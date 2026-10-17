@@ -36,7 +36,7 @@ void TopNOperator::close() {
 
 bool TopNOperator::comesBefore(const TypedRow& left,
                                const TypedRow& right) const {
-  for (const auto& order_by_spec : order_by_specs_) {
+  for (const auto& order_by_spec : output_properties_.ordering) {
     const FieldValue& left_value = left.values[order_by_spec.column_index];
     const FieldValue& right_value = right.values[order_by_spec.column_index];
     const bool left_less = left_value < right_value;

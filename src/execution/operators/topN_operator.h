@@ -13,20 +13,23 @@ class TopNOperator : public TypedRowOperator {
  public:
   TopNOperator(std::unique_ptr<TypedRowOperator> child,
                std::vector<OrderBySpec> order_by_specs, std::size_t limit)
-      : child_(std::move(child)),
-        order_by_specs_(std::move(order_by_specs)),
-        limit_(limit) {}
+      : child_(std::move(child)), limit_(limit) {
+    output_properties_.ordering = std::move(order_by_specs);
+  }
 
   void open() override;
   std::optional<TypedRow> next() override;
   void close() override;
+  const OutputProperties& outputProperties() const override {
+    return output_properties_;
+  }
 
  private:
   bool comesBefore(const TypedRow& left, const TypedRow& right) const;
   void materializeTopRows();
 
   std::unique_ptr<TypedRowOperator> child_;
-  std::vector<OrderBySpec> order_by_specs_;
+  OutputProperties output_properties_;
   std::vector<TypedRow> top_rows_;
   OperatorExecutionLogger logger_{"TopNOperator"};
   std::size_t limit_;

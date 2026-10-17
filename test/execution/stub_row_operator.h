@@ -11,8 +11,10 @@
 
 class StubRowOperator : public TypedRowOperator {
  public:
-  explicit StubRowOperator(std::vector<TypedRow> rows)
-      : rows_(std::move(rows)) {}
+  explicit StubRowOperator(std::vector<TypedRow> rows,
+                           OutputProperties output_properties = {})
+      : rows_(std::move(rows)),
+        output_properties_(std::move(output_properties)) {}
 
   void open() override {
     is_open_ = true;
@@ -28,8 +30,13 @@ class StubRowOperator : public TypedRowOperator {
 
   void close() override { is_open_ = false; }
 
+  const OutputProperties& outputProperties() const override {
+    return output_properties_;
+  }
+
  private:
   std::vector<TypedRow> rows_;
+  OutputProperties output_properties_;
   std::size_t cursor_ = 0;
   bool is_open_ = false;
 };

@@ -81,3 +81,16 @@ TEST(FilterOperatorTest, AppliesAllPredicatesAsConjunction) {
   EXPECT_FALSE(filter.next().has_value());
   filter.close();
 }
+
+TEST(FilterOperatorTest, PreservesChildOrdering) {
+  OutputProperties child_properties;
+  child_properties.ordering = {{2, OrderByDirection::Desc}};
+  auto child = std::make_unique<StubRowOperator>(std::vector<TypedRow>{},
+                                                 std::move(child_properties));
+  FilterOperator filter(std::move(child), {});
+
+  const auto& ordering = filter.outputProperties().ordering;
+  ASSERT_EQ(ordering.size(), 1u);
+  EXPECT_EQ(ordering.front().column_index, 2u);
+  EXPECT_EQ(ordering.front().direction, OrderByDirection::Desc);
+}

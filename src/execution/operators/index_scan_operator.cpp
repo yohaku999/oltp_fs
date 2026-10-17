@@ -23,12 +23,13 @@ IndexScanOperator::IndexScanOperator(
     IndexAccessor& index_accessor, IndexMetadata index,
     IndexAccessor::Boundaries boundaries,
     std::vector<std::vector<BoundComparisonPredicate>> index_ordered_predicates,
-    std::optional<std::size_t> limit_count)
+    std::optional<std::size_t> limit_count, OutputProperties output_properties)
     : index_accessor_(index_accessor),
       index_(std::move(index)),
       boundaries_(boundaries),
       index_ordered_predicates_(std::move(index_ordered_predicates)),
       limit_count_(limit_count),
+      output_properties_(std::move(output_properties)),
       lookup_done_(false) {}
 
 void IndexScanOperator::open() {

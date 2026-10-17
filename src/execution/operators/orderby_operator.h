@@ -13,17 +13,22 @@ class OrderByOperator : public TypedRowOperator {
  public:
   OrderByOperator(std::unique_ptr<TypedRowOperator> child,
                   std::vector<OrderBySpec> order_by_specs)
-      : child_(std::move(child)), order_by_specs_(std::move(order_by_specs)) {}
+      : child_(std::move(child)) {
+    output_properties_.ordering = std::move(order_by_specs);
+  }
 
   void open() override;
   std::optional<TypedRow> next() override;
   void close() override;
+  const OutputProperties& outputProperties() const override {
+    return output_properties_;
+  }
 
  private:
   void materializeAndSort();
 
   std::unique_ptr<TypedRowOperator> child_;
-  std::vector<OrderBySpec> order_by_specs_;
+  OutputProperties output_properties_;
   std::vector<TypedRow> sorted_rows_;
   OperatorExecutionLogger logger_{"OrderByOperator"};
   std::size_t next_index_ = 0;

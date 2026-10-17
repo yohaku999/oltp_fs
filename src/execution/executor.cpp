@@ -250,6 +250,7 @@ std::vector<std::vector<BoundComparisonPredicate>> prepareIndexKeyPredicates(
 struct IndexLookupPlan {
   std::size_t index_position;
   std::vector<std::vector<BoundComparisonPredicate>> ordered_predicates;
+  OutputProperties output_properties;
 };
 
 std::optional<IndexLookupPlan> planIndexLookup(
@@ -260,9 +261,10 @@ std::optional<IndexLookupPlan> planIndexLookup(
   for (std::size_t index_position = 0; index_position < table.indexes().size();
        ++index_position) {
     const IndexMetadata& index = table.indexes()[index_position];
+    const std::vector<std::size_t> index_column_indexes =
+        table.indexedColumnIndexes(index);
     std::vector<std::vector<BoundComparisonPredicate>> ordered_predicates =
-        prepareIndexKeyPredicates(predicates,
-                                  table.indexedColumnIndexes(index));
+        prepareIndexKeyPredicates(predicates, index_column_indexes);
     std::size_t prefix_length = 0;
     while (prefix_length < ordered_predicates.size() &&
            !ordered_predicates[prefix_length].empty()) {
@@ -270,8 +272,32 @@ std::optional<IndexLookupPlan> planIndexLookup(
     }
     if (prefix_length > best_prefix_length) {
       best_prefix_length = prefix_length;
-      best_plan =
-          IndexLookupPlan{index_position, std::move(ordered_predicates)};
+
+      // calculate ordered_predicates for output_properties.
+      std::size_t equality_prefix_length = 0;
+      while (equality_prefix_length < ordered_predicates.size()) {
+        const auto& predicates_for_key =
+            ordered_predicates[equality_prefix_length];
+        if (predicates_for_key.size() != 1 ||
+            predicates_for_key.front().op != Op::Eq) {
+          break;
+        }
+        ++equality_prefix_length;
+      }
+
+      OutputProperties output_properties;
+      output_properties.ordering.reserve(index_column_indexes.size() -
+                                          equality_prefix_length);
+      for (std::size_t index = equality_prefix_length;
+           index < index_column_indexes.size(); ++index) {
+        output_properties.ordering.push_back(
+            OrderBySpec{index_column_indexes[index], OrderByDirection::Asc});
+      }
+      
+      // build plan
+      best_plan = IndexLookupPlan{index_position,
+                                  std::move(ordered_predicates),
+                                  std::move(output_properties)};
     }
   }
   return best_plan;
@@ -321,7 +347,8 @@ std::vector<RID> collectRidsNarrowedByPredicates(
   IndexScanOperator scan(
       index_accessor, index,
       buildTraversalBoundaries(index_plan->ordered_predicates),
-      std::move(index_plan->ordered_predicates), std::nullopt);
+      std::move(index_plan->ordered_predicates), std::nullopt,
+      std::move(index_plan->output_properties));
   return collectItems<RID>(scan);
 }
 
@@ -471,7 +498,8 @@ std::unique_ptr<TypedRowOperator> buildReadSource(
   auto scan = std::make_unique<IndexScanOperator>(
       index_accessor, table.indexes().at(index_plan->index_position),
       buildTraversalBoundaries(index_plan->ordered_predicates),
-      std::move(index_plan->ordered_predicates), limit_count);
+      std::move(index_plan->ordered_predicates), limit_count,
+      std::move(index_plan->output_properties));
   return std::make_unique<HeapFetchOperator>(
       std::move(scan), pool, storage.openHeap(table.heapFileName()),
       table.schema(), bound_predicates);
@@ -563,12 +591,16 @@ std::vector<TypedRow> executor::read(BufferPool& pool,
     }
     items = collectItems<TypedRow>(*pipeline);
   } else {
-    if (!query.order_by_specs.empty() && query.limit_count.has_value()) {
-      pipeline = std::make_unique<TopNOperator>(
-          std::move(pipeline), query.order_by_specs, query.limit_count.value());
-    } else if (!query.order_by_specs.empty()) {
-      pipeline = std::make_unique<OrderByOperator>(std::move(pipeline),
-                                                   query.order_by_specs);
+    if (!query.order_by_specs.empty() &&
+        !pipeline->outputProperties().satisfiesOrdering(query.order_by_specs)) {
+      if (query.limit_count.has_value()) {
+        pipeline = std::make_unique<TopNOperator>(std::move(pipeline),
+                                                  query.order_by_specs,
+                                                  query.limit_count.value());
+      } else {
+        pipeline = std::make_unique<OrderByOperator>(std::move(pipeline),
+                                                     query.order_by_specs);
+      }
     } else if (query.limit_count.has_value()) {
       pipeline = std::make_unique<LimitOperator>(std::move(pipeline),
                                                  query.limit_count.value());

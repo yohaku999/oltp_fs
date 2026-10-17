@@ -11,6 +11,7 @@
 #include <utility>
 #include <vector>
 
+#include "execution/output_properties.h"
 #include "storage/index/rid.h"
 #include "tuple/typed_row.h"
 
@@ -183,6 +184,11 @@ class Operator {
   virtual void open() = 0;
   virtual std::optional<T> next() = 0;
   virtual void close() = 0;
+
+  virtual const OutputProperties& outputProperties() const {
+    static const OutputProperties no_guarantees;
+    return no_guarantees;
+  }
 };
 
 template <typename T>
